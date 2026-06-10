@@ -21,7 +21,7 @@ export default function SignupPage() {
     setLoading(true);
     setError('');
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
@@ -30,6 +30,12 @@ export default function SignupPage() {
     if (error) {
       setError(error.message);
       setLoading(false);
+      return;
+    }
+
+    // If Supabase email confirmation is disabled, a session is returned immediately
+    if (data.session) {
+      router.push('/dashboard');
       return;
     }
 
