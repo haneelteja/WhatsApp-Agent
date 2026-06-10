@@ -1,0 +1,249 @@
+import type { FastifyInstance } from 'fastify';
+import { getServerClient } from '@alphabot/database';
+import type { Contact, Conversation, ProductType, WhatsAppProvider } from '@alphabot/shared';
+import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
+import { getAIResponse } from '../../services/ai/claude.js';
+import { lookupKB } from '../../services/kb/lookup.js';
+import { escalateConversation } from '../../services/escalation/index.js';
+
+// System prompts per product — replace with your actual prompts
+const SYSTEM_PROMPTS: Record<ProductType, string> = {
+  support_bot: `You are a helpful customer support assistant. Answer questions accurately using the knowledge base. If you cannot confidently answer, say so and offer to escalate to a human agent. Be concise, friendly, and professional.`,
+  sales_bot: `You are a sales assistant. Understand customer needs, share relevant product information, and guide warm leads toward a purchase decision. Detect buying intent and hand off to a human when the customer is ready to buy.`,
+  lifecycle_bot: `You are an onboarding and account management assistant. Help customers track their orders, answer invoicing questions, and collect payments. Be proactive and professional.`,
+};
+
+// Keywords that trigger escalation
+const ESCALATION_TRIGGERS = [
+  'speak to human', 'talk to agent', 'human please', 'escalate',
+  'complaint', 'refund', 'dispute', 'urgent', 'angry',
+];
+
+export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
+  // ─── GET: Meta webhook verification ─────────────────────────────────────
+  fastify.get<{ Querystring: Record<string, string> }>('/:tenantId/:productType', async (request, reply) => {
+    const { tenantId, productType } = request.params as {
+      tenantId: string;
+      productType: ProductType;
+    };
+
+    // Fetch the tenant's WhatsApp config to get the verify token
+    const db = getServerClient();
+    const { data: wn } = await db
+      .from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (!wn) {
+      return reply.status(404).send('Tenant not found');
+    }
+
+    const config = wn.config_json as { verify_token: string };
+    const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
+    const challenge = gateway.verifyWebhook(request.query, config.verify_token);
+
+    if (challenge === false) {
+      return reply.status(403).send('Verification failed');
+    }
+    return reply.status(200).send(challenge);
+  });
+
+  // ─── POST: Receive incoming WhatsApp messages ────────────────────────────
+  fastify.post<{ Body: unknown }>('/:tenantId/:productType', async (request, reply) => {
+    // Always respond 200 immediately — Meta retries on non-2xx
+    reply.status(200).send({ status: 'ok' });
+
+    const { tenantId, productType } = request.params as {
+      tenantId: string;
+      productType: ProductType;
+    };
+
+    const db = getServerClient();
+
+    // Load WhatsApp config for this tenant
+    const { data: wn } = await db
+      .from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (!wn) return;
+
+    const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
+    const incoming = gateway.parseIncoming(request.body);
+    if (!incoming || incoming.type === 'unsupported') return;
+
+    const config = wn.config_json as {
+      phone_number_id: string;
+      access_token: string;
+    };
+
+    // Mark message as read (non-blocking)
+    void gateway.markAsRead(config.phone_number_id, config.access_token, incoming.messageId);
+
+    // ── Upsert contact ──────────────────────────────────────────────────────
+    const { data: contact } = await db
+      .from('contacts')
+      .upsert(
+        {
+          tenant_id: tenantId,
+          phone: incoming.from,
+          name: incoming.contactName ?? null,
+        },
+        { onConflict: 'tenant_id,phone', ignoreDuplicates: false }
+      )
+      .select()
+      .single();
+
+    if (!contact) return;
+
+    // ── Upsert conversation (one open conversation per contact per product) ─
+    const { data: existingConvo } = await db
+      .from('conversations')
+      .select()
+      .eq('tenant_id', tenantId)
+      .eq('contact_id', (contact as Contact).id)
+      .eq('product_type', productType)
+      .in('status', ['open', 'escalated', 'bot_paused'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    let conversation = existingConvo as Conversation | null;
+
+    if (!conversation) {
+      const { data: newConvo } = await db
+        .from('conversations')
+        .insert({
+          tenant_id: tenantId,
+          contact_id: (contact as Contact).id,
+          product_type: productType,
+          status: 'open',
+        })
+        .select()
+        .single();
+
+      conversation = newConvo as Conversation;
+
+      // Track usage event
+      void db.from('usage_events').insert({
+        tenant_id: tenantId,
+        product_type: productType,
+        event_type: 'conversation_started',
+      });
+    }
+
+    if (!conversation) return;
+
+    // ── If bot is paused (human takeover), do not auto-reply ───────────────
+    if (conversation.status === 'bot_paused') {
+      // Still store the incoming message
+      await db.from('messages').insert({
+        conversation_id: conversation.id,
+        role: 'user',
+        content: incoming.text ?? `[${incoming.type} received]`,
+        media_url: incoming.mediaUrl ?? null,
+        media_type: (incoming.type !== 'text')
+          ? incoming.type
+          : null,
+        whatsapp_msg_id: incoming.messageId,
+      });
+      return;
+    }
+
+    // ── Store incoming message (dedup via whatsapp_msg_id unique constraint) ─
+    const { error: msgError } = await db.from('messages').insert({
+      conversation_id: conversation.id,
+      role: 'user',
+      content: incoming.text ?? `[${incoming.type} received]`,
+      media_url: incoming.mediaUrl ?? null,
+      media_type: (incoming.type !== 'text')
+        ? (incoming.type as 'image' | 'audio' | 'video' | 'document')
+        : null,
+      whatsapp_msg_id: incoming.messageId,
+    });
+
+    // 23505 = unique_violation — Meta retry; skip AI call
+    if (msgError?.code === '23505') return;
+    if (msgError) {
+      fastify.log.error({ msgError }, 'Failed to store incoming message');
+      return;
+    }
+
+    void db.from('usage_events').insert({
+      tenant_id: tenantId,
+      product_type: productType,
+      event_type: 'message_sent',
+    });
+
+    // ── Check for manual escalation request ────────────────────────────────
+    const messageText = incoming.text?.toLowerCase() ?? '';
+    const wantsHuman = ESCALATION_TRIGGERS.some((t) => messageText.includes(t));
+
+    if (wantsHuman && conversation.status === 'open') {
+      await escalateConversation(conversation, 'Customer requested human agent');
+      await gateway.sendMessage(config.phone_number_id, config.access_token, {
+        type: 'text',
+        to: incoming.from,
+        text: "I'm connecting you with a human agent right away. Please hold on for a moment.",
+      });
+      return;
+    }
+
+    // ── Fetch conversation history + KB context ────────────────────────────
+    const { data: history } = await db
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversation.id)
+      .order('timestamp', { ascending: true })
+      .limit(50);
+
+    const contactData = contact as Contact;
+    const kbResults = incoming.text
+      ? await lookupKB(tenantId, productType, incoming.text)
+      : [];
+
+    const contactMemory = JSON.stringify(contactData.memory_json);
+
+    // ── Generate AI response ──────────────────────────────────────────────
+    const aiResult = await getAIResponse(
+      SYSTEM_PROMPTS[productType],
+      (history ?? []) as import('@alphabot/shared').Message[],
+      kbResults,
+      contactMemory
+    );
+
+    // ── Store AI reply ────────────────────────────────────────────────────
+    await db.from('messages').insert({
+      conversation_id: conversation.id,
+      role: 'assistant',
+      content: aiResult.content,
+      confidence_score: aiResult.confidenceScore,
+    });
+
+    // Track token usage
+    void db.from('usage_events').insert({
+      tenant_id: tenantId,
+      product_type: productType,
+      event_type: 'ai_token_used',
+      token_count: aiResult.inputTokens + aiResult.outputTokens,
+    });
+
+    // ── Auto-escalate on low confidence ──────────────────────────────────
+    if (aiResult.confidenceScore < 0.6 && conversation.status === 'open') {
+      await escalateConversation(conversation, 'Low AI confidence — query unresolved');
+    }
+
+    // ── Send reply to WhatsApp ────────────────────────────────────────────
+    await gateway.sendMessage(config.phone_number_id, config.access_token, {
+      type: 'text',
+      to: incoming.from,
+      text: aiResult.content,
+    });
+
+    // ── Update conversation timestamp ─────────────────────────────────────
+    await db.from('conversations').update({ updated_at: new Date().toISOString() })
+      .eq('id', conversation.id);
+  });
+}

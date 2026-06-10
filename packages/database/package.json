@@ -1,0 +1,26 @@
+{
+  "name": "@alphabot/database",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit",
+    "migrate": "node --experimental-vm-modules dist/migrate.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.10"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
