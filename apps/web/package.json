@@ -10,7 +10,6 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@alphabot/shared": "*",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.10",
     "class-variance-authority": "^0.7.1",
