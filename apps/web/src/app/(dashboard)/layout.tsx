@@ -16,7 +16,7 @@ export default async function DashboardLayout({
   if (!user) redirect('/login');
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
       <DashboardNav />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar email={user.email ?? ''} />
