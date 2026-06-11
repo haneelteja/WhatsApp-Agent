@@ -50,7 +50,7 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // GET /api/kb/collections/:id — single collection with entries
-  fastify.get<{ Params: { id: string }; Querystring: { page?: string; limit?: string } }>(
+  fastify.get<{ Params: { id: string }; Querystring: { page?: string; limit?: string; search?: string } }>(
     '/collections/:id',
     { preHandler: [requireAuth] },
     async (request, reply) => {
@@ -59,9 +59,23 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
       if (!tenantId) return reply.status(401).send({ error: 'Unauthorized' });
 
       const { id } = request.params;
-      const page  = Math.max(1, parseInt(request.query.page  ?? '1',  10));
-      const limit = Math.min(100, parseInt(request.query.limit ?? '50', 10));
-      const from  = (page - 1) * limit;
+      const page   = Math.max(1, parseInt(request.query.page  ?? '1',  10));
+      const limit  = Math.min(100, parseInt(request.query.limit ?? '20', 10));
+      const from   = (page - 1) * limit;
+      const search = request.query.search?.trim();
+
+      let entriesQuery = db
+        .from('knowledge_base')
+        .select('id, question, answer, category, status, version, created_at', { count: 'exact' })
+        .eq('collection_id', id)
+        .order('created_at', { ascending: false })
+        .range(from, from + limit - 1);
+
+      if (search) {
+        entriesQuery = entriesQuery.or(
+          `question.ilike.%${search}%,answer.ilike.%${search}%,category.ilike.%${search}%`
+        );
+      }
 
       const [collectionRes, entriesRes] = await Promise.all([
         db.from('kb_collections')
@@ -69,11 +83,7 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
           .eq('id', id)
           .eq('tenant_id', tenantId)
           .single(),
-        db.from('knowledge_base')
-          .select('id, question, answer, category, status, version, created_at', { count: 'exact' })
-          .eq('collection_id', id)
-          .order('created_at', { ascending: false })
-          .range(from, from + limit - 1),
+        entriesQuery,
       ]);
 
       if (collectionRes.error || !collectionRes.data)

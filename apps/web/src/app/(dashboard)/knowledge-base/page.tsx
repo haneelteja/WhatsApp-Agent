@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, BookOpen, Trash2, ChevronRight, X } from 'lucide-react';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { kbFetch } from '@/lib/kb-client';
 
 interface CollectionRow {
@@ -33,14 +32,11 @@ export default function KnowledgeBasePage() {
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState('');
 
-  const supabase = getSupabaseBrowserClient();
-
   async function load() {
-    const { data } = await supabase
-      .from('kb_collections')
-      .select('*, kb_collection_bots(product_slug)')
-      .order('created_at', { ascending: false });
-    setCollections((data ?? []) as CollectionRow[]);
+    const res = await kbFetch('/api/kb/collections');
+    if (!res.ok) { setLoading(false); return; }
+    const json = await res.json() as { data: CollectionRow[] };
+    setCollections(json.data ?? []);
     setLoading(false);
   }
 

@@ -7,7 +7,6 @@ import {
   ChevronLeft, Plus, Pencil, Trash2, Search, X,
   Upload, ToggleLeft, ToggleRight, BookOpen,
 } from 'lucide-react';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { kbFetch } from '@/lib/kb-client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -49,7 +48,6 @@ const PAGE_SIZE = 20;
 export default function CollectionDetailPage() {
   const { collectionId } = useParams<{ collectionId: string }>();
   const router = useRouter();
-  const supabase = getSupabaseBrowserClient();
 
   // Collection state
   const [collection, setCollection]   = useState<Collection | null>(null);
@@ -79,36 +77,28 @@ export default function CollectionDetailPage() {
   // ── Data loading ─────────────────────────────────────────────────────────────
 
   const loadCollection = useCallback(async () => {
-    const { data } = await supabase
-      .from('kb_collections')
-      .select('*, kb_collection_bots(product_slug)')
-      .eq('id', collectionId)
-      .single();
-    if (!data) { router.push('/knowledge-base'); return; }
-    const { kb_collection_bots, ...col } = data as Collection & { kb_collection_bots: BotAssignment[] };
+    const res = await kbFetch(`/api/kb/collections/${collectionId}`);
+    if (!res.ok) { router.push('/knowledge-base'); return; }
+    const json = await res.json() as { data: Collection & { kb_collection_bots: BotAssignment[] } };
+    const { kb_collection_bots, ...col } = json.data;
     setCollection(col);
     setBots((kb_collection_bots ?? []).map((b: BotAssignment) => b.product_slug));
-  }, [collectionId, router, supabase]);
+  }, [collectionId, router]);
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
-    const from = (page - 1) * PAGE_SIZE;
-    let query = supabase
-      .from('knowledge_base')
-      .select('id, question, answer, category, status, version, created_at', { count: 'exact' })
-      .eq('collection_id', collectionId)
-      .order('created_at', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
-
-    if (search.trim()) {
-      query = query.or(`question.ilike.%${search}%,answer.ilike.%${search}%,category.ilike.%${search}%`);
-    }
-
-    const { data, count } = await query;
-    setEntries((data ?? []) as Entry[]);
-    setTotal(count ?? 0);
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(PAGE_SIZE),
+      ...(search.trim() ? { search: search.trim() } : {}),
+    });
+    const res = await kbFetch(`/api/kb/collections/${collectionId}?${params}`);
+    if (!res.ok) { setLoading(false); return; }
+    const json = await res.json() as { entries: Entry[]; total: number };
+    setEntries(json.entries ?? []);
+    setTotal(json.total ?? 0);
     setLoading(false);
-  }, [collectionId, page, search, supabase]);
+  }, [collectionId, page, search]);
 
   useEffect(() => { void loadCollection(); }, [loadCollection]);
   useEffect(() => { void loadEntries(); }, [loadEntries]);
