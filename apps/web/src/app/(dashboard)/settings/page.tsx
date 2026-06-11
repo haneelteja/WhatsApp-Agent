@@ -14,15 +14,25 @@ export default async function SettingsPage() {
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
 
-  // Get the authenticated user's tenant via the user client (respects auth)
-  const { data: tenant } = await supabase.from('tenants').select('*').single();
+  // Resolve the authenticated user's ID, then look up their tenant via admin client
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id ?? '';
 
-  // Use admin client for configs to bypass restrictive RLS policies
-  const [{ data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }] =
+  const { data: tenantUser } = await admin
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', userId)
+    .single();
+
+  const tenantId = tenantUser?.tenant_id ?? '';
+
+  // Fetch all data via admin client using the resolved tenant_id
+  const [{ data: tenant }, { data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }] =
     await Promise.all([
-      admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenant?.id ?? ''),
-      admin.from('tenant_products').select('*').eq('tenant_id', tenant?.id ?? ''),
-      admin.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)').eq('tenant_id', tenant?.id ?? ''),
+      admin.from('tenants').select('*').eq('id', tenantId).single(),
+      admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
+      admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
+      admin.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)').eq('tenant_id', tenantId),
       admin.from('products').select('slug, default_prompt'),
     ]);
 
