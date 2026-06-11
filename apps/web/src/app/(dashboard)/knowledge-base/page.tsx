@@ -1,240 +1,95 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Plus, BookOpen, Trash2, ChevronRight, X } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
-import { BookOpen, Plus, Pencil, Trash2, Search, X } from 'lucide-react';
+import { kbFetch } from '@/lib/kb-client';
 
-interface KBEntry {
+interface CollectionRow {
   id: string;
-  category: string;
-  question: string;
-  answer: string;
-  status: string;
-  product_type: string;
+  name: string;
+  description: string | null;
+  entry_count: number;
+  active: boolean;
+  created_at: string;
+  kb_collection_bots: { product_slug: string }[];
 }
 
-const EMPTY_FORM = {
-  category: '',
-  question: '',
-  answer: '',
-  product_type: 'support_bot',
-  status: 'live',
+const BOT_PILL: Record<string, string> = {
+  support_bot:   'bg-sky-50 text-sky-600 border-sky-200',
+  sales_bot:     'bg-violet-50 text-violet-600 border-violet-200',
+  lifecycle_bot: 'bg-orange-50 text-orange-600 border-orange-200',
 };
-
-const PRODUCT_OPTIONS = [
-  { value: 'support_bot',   label: 'Support Bot' },
-  { value: 'sales_bot',     label: 'Sales Bot' },
-  { value: 'lifecycle_bot', label: 'Lifecycle Bot' },
-];
-
-const PRODUCT_COLORS: Record<string, string> = {
-  support_bot:   'bg-sky-50 text-sky-600',
-  sales_bot:     'bg-violet-50 text-violet-600',
-  lifecycle_bot: 'bg-orange-50 text-orange-600',
+const BOT_LABEL: Record<string, string> = {
+  support_bot: 'Support', sales_bot: 'Sales', lifecycle_bot: 'Lifecycle',
 };
 
 export default function KnowledgeBasePage() {
-  const [entries,   setEntries]   = useState<KBEntry[]>([]);
-  const [filtered,  setFiltered]  = useState<KBEntry[]>([]);
-  const [search,    setSearch]    = useState('');
-  const [loading,   setLoading]   = useState(true);
-  const [showForm,  setShowForm]  = useState(false);
-  const [editing,   setEditing]   = useState<KBEntry | null>(null);
-  const [form,      setForm]      = useState(EMPTY_FORM);
-  const [saving,    setSaving]    = useState(false);
+  const [collections, setCollections] = useState<CollectionRow[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [showNew,     setShowNew]     = useState(false);
+  const [form,        setForm]        = useState({ name: '', description: '' });
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState('');
 
   const supabase = getSupabaseBrowserClient();
 
-  async function loadEntries() {
+  async function load() {
     const { data } = await supabase
-      .from('knowledge_base')
-      .select('id, category, question, answer, status, product_type')
-      .order('category', { ascending: true });
-    const list = data ?? [];
-    setEntries(list);
-    setFiltered(list);
+      .from('kb_collections')
+      .select('*, kb_collection_bots(product_slug)')
+      .order('created_at', { ascending: false });
+    setCollections((data ?? []) as CollectionRow[]);
     setLoading(false);
   }
 
-  useEffect(() => { void loadEntries(); }, []);
+  useEffect(() => { void load(); }, []);
 
-  useEffect(() => {
-    const q = search.toLowerCase();
-    setFiltered(
-      q
-        ? entries.filter(
-            (e) =>
-              e.question.toLowerCase().includes(q) ||
-              e.answer.toLowerCase().includes(q) ||
-              e.category.toLowerCase().includes(q)
-          )
-        : entries
-    );
-  }, [search, entries]);
-
-  function openNew() {
-    setEditing(null);
-    setForm(EMPTY_FORM);
-    setShowForm(true);
-  }
-
-  function openEdit(entry: KBEntry) {
-    setEditing(entry);
-    setForm({
-      category: entry.category,
-      question: entry.question,
-      answer: entry.answer,
-      product_type: entry.product_type,
-      status: entry.status,
-    });
-    setShowForm(true);
-  }
-
-  async function handleSave() {
-    if (!form.question.trim() || !form.answer.trim()) return;
+  async function handleCreate() {
+    if (!form.name.trim()) return;
     setSaving(true);
-    if (editing) {
-      await supabase.from('knowledge_base').update(form as never).eq('id', editing.id);
-    } else {
-      await supabase.from('knowledge_base').insert(form as never);
+    setError('');
+    const res = await kbFetch('/api/kb/collections', {
+      method: 'POST',
+      body: JSON.stringify({ name: form.name.trim(), description: form.description.trim() || undefined }),
+    });
+    if (!res.ok) {
+      setError((await res.json() as { error?: string }).error ?? 'Failed to create');
+      setSaving(false);
+      return;
     }
     setSaving(false);
-    setShowForm(false);
-    void loadEntries();
+    setShowNew(false);
+    setForm({ name: '', description: '' });
+    void load();
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this entry?')) return;
-    await supabase.from('knowledge_base').delete().eq('id', id);
-    void loadEntries();
+  async function handleDelete(id: string, e: React.MouseEvent) {
+    e.preventDefault();
+    if (!confirm('Delete this collection and all its entries? This cannot be undone.')) return;
+    await kbFetch(`/api/kb/collections/${id}`, { method: 'DELETE' });
+    void load();
   }
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
+
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Knowledge Base</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Q&amp;A entries that power your AI bots</p>
+          <p className="text-sm text-gray-500 mt-0.5">Collections of Q&amp;A entries that power your AI bots</p>
         </div>
         <button
           type="button"
-          onClick={openNew}
+          onClick={() => setShowNew(true)}
           className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold shadow-sm shadow-emerald-200 shrink-0"
         >
           <Plus size={15} />
-          Add Entry
+          New Collection
         </button>
       </div>
-
-      {/* Search bar */}
-      {!loading && entries.length > 0 && (
-        <div className="relative max-w-sm">
-          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search entries…"
-            className="w-full pl-9 pr-9 py-2.5 text-sm rounded-xl border border-green-200 bg-white text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent shadow-sm"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch('')}
-              aria-label="Clear search"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 border border-green-100">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">
-                {editing ? 'Edit Entry' : 'New Knowledge Base Entry'}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                aria-label="Close"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Category</label>
-                <input
-                  className="w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  placeholder="e.g. Shipping"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Bot</label>
-                <select
-                  aria-label="Bot type"
-                  className="w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  value={form.product_type}
-                  onChange={(e) => setForm({ ...form, product_type: e.target.value })}
-                >
-                  {PRODUCT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Question</label>
-              <input
-                className="w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                value={form.question}
-                onChange={(e) => setForm({ ...form, question: e.target.value })}
-                placeholder="What is your return policy?"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Answer</label>
-              <textarea
-                className="w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-                rows={4}
-                value={form.answer}
-                onChange={(e) => setForm({ ...form, answer: e.target.value })}
-                placeholder="We accept returns within 30 days of purchase…"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="text-sm px-4 py-2.5 rounded-xl border border-green-200 text-gray-600 hover:bg-green-50 transition-colors font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="text-sm px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold disabled:opacity-50 shadow-sm shadow-emerald-200"
-              >
-                {saving ? 'Saving…' : 'Save Entry'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Loading */}
       {loading && (
@@ -243,66 +98,130 @@ export default function KnowledgeBasePage() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && !entries.length && (
+      {/* Empty */}
+      {!loading && !collections.length && (
         <div className="bg-white rounded-2xl border border-green-100 shadow-sm flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center mb-4 border border-green-100">
             <BookOpen size={28} className="text-green-400" />
           </div>
-          <p className="text-sm font-semibold text-gray-600">No entries yet</p>
-          <p className="text-xs text-gray-400 mt-1">Add Q&amp;As to help the bot answer accurately.</p>
+          <p className="text-sm font-semibold text-gray-600">No collections yet</p>
+          <p className="text-xs text-gray-400 mt-1 mb-4">Create a collection and assign it to a bot to get started.</p>
+          <button
+            type="button"
+            onClick={() => setShowNew(true)}
+            className="text-sm px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold"
+          >
+            Create your first collection
+          </button>
         </div>
       )}
 
-      {/* Table */}
-      {!loading && entries.length > 0 && (
-        <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-3 border-b border-green-50 flex items-center justify-between">
-            <p className="text-xs text-gray-400">
-              {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}
-              {search && ` matching "${search}"`}
-            </p>
-          </div>
-          <div className="divide-y divide-green-50">
-            {filtered.map((entry) => (
-              <div key={entry.id} className="flex items-start gap-4 px-6 py-4 hover:bg-green-50/50 transition-colors group">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    {entry.category && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 font-medium">
-                        {entry.category}
-                      </span>
-                    )}
-                    <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium ${PRODUCT_COLORS[entry.product_type] ?? 'bg-gray-100 text-gray-500'}`}>
-                      {PRODUCT_OPTIONS.find((o) => o.value === entry.product_type)?.label ?? entry.product_type}
-                    </span>
+      {/* Grid */}
+      {!loading && collections.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {collections.map((col) => (
+            <div key={col.id} className="relative bg-white rounded-2xl border border-green-100 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all group">
+              <Link href={`/knowledge-base/${col.id}`} className="block p-5 pr-10">
+                {/* Icon + status */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                    <BookOpen size={16} className="text-emerald-600" />
                   </div>
-                  <p className="text-sm font-semibold text-gray-800">{entry.question}</p>
-                  <p className="text-sm text-gray-500 mt-1 line-clamp-2">{entry.answer}</p>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${col.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {col.active ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(entry)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
-                    aria-label="Edit entry"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(entry.id)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                    aria-label="Delete entry"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                {/* Name + description */}
+                <p className="font-semibold text-gray-900 text-sm">{col.name}</p>
+                {col.description && (
+                  <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{col.description}</p>
+                )}
+
+                {/* Footer */}
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-green-50">
+                  <p className="text-xs text-gray-400">
+                    <span className="font-semibold text-gray-700">{col.entry_count}</span>{' '}
+                    {col.entry_count === 1 ? 'entry' : 'entries'}
+                  </p>
+                  <div className="flex items-center gap-1 flex-wrap justify-end">
+                    {col.kb_collection_bots.length ? (
+                      col.kb_collection_bots.map((b) => (
+                        <span key={b.product_slug} className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${BOT_PILL[b.product_slug] ?? 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                          {BOT_LABEL[b.product_slug] ?? b.product_slug}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[10px] text-gray-300 italic">no bots</span>
+                    )}
+                  </div>
                 </div>
+              </Link>
+
+              {/* Hover actions */}
+              <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  onClick={(e) => void handleDelete(col.id, e)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors"
+                  aria-label="Delete collection"
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
-            ))}
+              <ChevronRight size={14} className="absolute bottom-5 right-4 text-gray-200 group-hover:text-emerald-400 transition-colors" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* New Collection Modal */}
+      {showNew && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 border border-green-100">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900">New Collection</h2>
+              <button type="button" aria-label="Close" onClick={() => { setShowNew(false); setError(''); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Name <span className="text-red-400">*</span></label>
+                <input
+                  autoFocus
+                  className="w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && void handleCreate()}
+                  placeholder="e.g. Support FAQ"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1.5 block">Description <span className="text-gray-300">(optional)</span></label>
+                <input
+                  className="w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="What this collection covers…"
+                />
+              </div>
+              {error && <p className="text-xs text-red-500">{error}</p>}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => { setShowNew(false); setError(''); }} className="text-sm px-4 py-2.5 rounded-xl border border-green-200 text-gray-600 hover:bg-green-50 transition-colors font-medium">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleCreate()} disabled={saving || !form.name.trim()} className="text-sm px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold disabled:opacity-50 shadow-sm shadow-emerald-200">
+                {saving ? 'Creating…' : 'Create Collection'}
+              </button>
+            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

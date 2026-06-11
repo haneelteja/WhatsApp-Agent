@@ -25,7 +25,14 @@ await server.register(formbody);
 // ─── Security plugins ─────────────────────────────────────────────────────────
 await server.register(helmet);
 await server.register(cors, {
-  origin: process.env['WEB_BASE_URL'] ?? 'http://localhost:3000',
+  origin: (origin, cb) => {
+    const allowed = (process.env['WEB_BASE_URL'] ?? 'http://localhost:3000').split(',').map(s => s.trim());
+    if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin)) {
+      cb(null, true);
+    } else {
+      cb(new Error('CORS: origin not allowed'), false);
+    }
+  },
   credentials: true,
 });
 await server.register(rateLimit, {
