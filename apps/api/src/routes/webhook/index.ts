@@ -51,8 +51,9 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
   // ─── POST: Receive incoming WhatsApp messages ────────────────────────────
   fastify.post<{ Body: unknown }>('/:tenantId/:productType', async (request, reply) => {
-    // Always respond 200 immediately — Meta retries on non-2xx
-    reply.status(200).send({ status: 'ok' });
+    // Always respond 200 immediately — Meta/Twilio retries on non-2xx.
+    // Must be empty or TwiML (Twilio error 12300 fires on JSON responses).
+    reply.status(200).type('text/plain').send('');
 
     const { tenantId, productType } = request.params as {
       tenantId: string;
@@ -247,11 +248,12 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     // ── Send reply to WhatsApp ────────────────────────────────────────────
-    await gateway.sendMessage(config.phone_number_id, config.access_token, {
+    const sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
       type: 'text',
       to: incoming.from,
       text: aiResult.content,
     });
+    fastify.log.info({ sendResult }, '[Webhook] sendMessage result');
 
     // ── Update conversation timestamp ─────────────────────────────────────
     await db.from('conversations').update({ updated_at: new Date().toISOString() })
