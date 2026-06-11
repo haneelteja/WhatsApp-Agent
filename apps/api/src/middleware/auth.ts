@@ -41,22 +41,48 @@ export async function requireAuth(
     return;
   }
 
-  // Load tenant membership using service-role client to bypass RLS on tenant_users
   const db = getServerClient();
+
+  // Try tenant_users first (service-role bypasses RLS)
   const { data: membership } = await db
     .from('tenant_users')
     .select('tenant_id, role')
     .eq('user_id', user.id)
     .single();
 
-  if (!membership) {
-    await reply.status(403).send({ success: false, error: 'No tenant membership found' });
+  if (membership) {
+    request.tenantId = membership.tenant_id as string;
+    request.userId = user.id;
+    request.userRole = membership.role as 'admin' | 'supervisor' | 'agent';
     return;
   }
 
-  request.tenantId = membership.tenant_id as string;
-  request.userId = user.id;
-  request.userRole = membership.role as 'admin' | 'supervisor' | 'agent';
+  // Fallback: platform_users get admin access to the first available tenant
+  const { data: platformUser } = await db
+    .from('platform_users')
+    .select('user_id')
+    .eq('user_id', user.id)
+    .single();
+
+  if (platformUser) {
+    const { data: tenant } = await db
+      .from('tenants')
+      .select('id')
+      .limit(1)
+      .single();
+
+    if (!tenant) {
+      await reply.status(403).send({ success: false, error: 'No tenant found' });
+      return;
+    }
+
+    request.tenantId = tenant.id as string;
+    request.userId = user.id;
+    request.userRole = 'admin';
+    return;
+  }
+
+  await reply.status(403).send({ success: false, error: 'No tenant membership found' });
 }
 
 export function requireRole(...roles: Array<'admin' | 'supervisor' | 'agent'>) {
