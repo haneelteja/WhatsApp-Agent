@@ -44,11 +44,13 @@ export async function requireAuth(
   const db = getServerClient();
 
   // Try tenant_users first (service-role bypasses RLS)
-  const { data: membership } = await db
+  const { data: membership, error: membershipError } = await db
     .from('tenant_users')
     .select('tenant_id, role')
     .eq('user_id', user.id)
     .single();
+
+  request.log.info({ userId: user.id, membership, membershipError }, '[auth] tenant_users lookup');
 
   if (membership) {
     request.tenantId = membership.tenant_id as string;
@@ -58,11 +60,13 @@ export async function requireAuth(
   }
 
   // Fallback: platform_users get admin access to the first available tenant
-  const { data: platformUser } = await db
+  const { data: platformUser, error: platformError } = await db
     .from('platform_users')
     .select('user_id')
     .eq('user_id', user.id)
     .single();
+
+  request.log.info({ userId: user.id, platformUser, platformError }, '[auth] platform_users lookup');
 
   if (platformUser) {
     const { data: tenant } = await db
