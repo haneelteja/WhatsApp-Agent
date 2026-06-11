@@ -59,6 +59,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       productType: ProductType;
     };
 
+    try {
+
     const db = getServerClient();
 
     // Load WhatsApp config for this tenant
@@ -245,5 +247,9 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     // ── Update conversation timestamp ─────────────────────────────────────
     await db.from('conversations').update({ updated_at: new Date().toISOString() })
       .eq('id', conversation.id);
+
+    } catch (err) {
+      fastify.log.error({ err, tenantId, productType }, '[Webhook] async processing failed');
+    }
   });
 }
