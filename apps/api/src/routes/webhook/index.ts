@@ -1,23 +1,26 @@
 import type { FastifyInstance } from 'fastify';
 import { getServerClient } from '@alphabot/database';
-import type { Contact, Conversation, ProductType, WhatsAppProvider } from '@alphabot/shared';
+import type { BotConfig, Contact, Conversation, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKB } from '../../services/kb/lookup.js';
 import { escalateConversation } from '../../services/escalation/index.js';
 
-// System prompts per product — replace with your actual prompts
-const SYSTEM_PROMPTS: Record<ProductType, string> = {
+// Default system prompts used only when no bot_config row exists yet
+const DEFAULT_SYSTEM_PROMPTS: Record<ProductType, string> = {
   support_bot: `You are a helpful customer support assistant. Answer questions accurately using the knowledge base. If you cannot confidently answer, say so and offer to escalate to a human agent. Be concise, friendly, and professional.`,
   sales_bot: `You are a sales assistant. Understand customer needs, share relevant product information, and guide warm leads toward a purchase decision. Detect buying intent and hand off to a human when the customer is ready to buy.`,
   lifecycle_bot: `You are an onboarding and account management assistant. Help customers track their orders, answer invoicing questions, and collect payments. Be proactive and professional.`,
 };
 
-// Keywords that trigger escalation
-const ESCALATION_TRIGGERS = [
+// Default keywords that trigger escalation (overridden by bot_config.escalation_triggers)
+const DEFAULT_ESCALATION_TRIGGERS = [
   'speak to human', 'talk to agent', 'human please', 'escalate',
   'complaint', 'refund', 'dispute', 'urgent', 'angry',
 ];
+
+// Default confidence threshold (overridden by bot_config.confidence_threshold)
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.6;
 
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET: Meta webhook verification ─────────────────────────────────────
@@ -33,6 +36,9 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       .from('whatsapp_numbers')
       .select('config_json, provider')
       .eq('tenant_id', tenantId)
+      .eq('product_slug', productType)
+      .eq('active', true)
+      .limit(1)
       .single();
 
     if (!wn) {
@@ -65,12 +71,23 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const db = getServerClient();
     fastify.log.info({ tenantId, productType }, '[Webhook] processing message');
 
-    // Load WhatsApp config for this tenant
-    const { data: wn, error: wnError } = await db
-      .from('whatsapp_numbers')
-      .select('config_json, provider')
-      .eq('tenant_id', tenantId)
-      .single();
+    // Load WhatsApp config + bot config in parallel
+    const [wnRes, botConfigRes] = await Promise.all([
+      db.from('whatsapp_numbers')
+        .select('config_json, provider')
+        .eq('tenant_id', tenantId)
+        .eq('product_slug', productType)
+        .eq('active', true)
+        .limit(1)
+        .single(),
+      db.from('bot_configs')
+        .select('*, product:products(default_prompt, default_model)')
+        .eq('tenant_id', tenantId)
+        .eq('product_slug', productType)
+        .maybeSingle(),
+    ]);
+
+    const { data: wn, error: wnError } = wnRes;
 
     if (!wn) {
       fastify.log.warn({ tenantId, wnError }, '[Webhook] whatsapp_numbers not found');
@@ -189,9 +206,22 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       event_type: 'message_sent',
     });
 
+    // Resolve bot config values (DB row takes precedence over defaults)
+    const botConfig = botConfigRes.data as (BotConfig & { product: Product | null }) | null;
+    const systemPrompt =
+      botConfig?.system_prompt ??
+      (botConfig?.product as Product | null)?.default_prompt ??
+      DEFAULT_SYSTEM_PROMPTS[productType];
+    const escalationTriggers: string[] =
+      botConfig?.escalation_triggers?.length
+        ? botConfig.escalation_triggers
+        : DEFAULT_ESCALATION_TRIGGERS;
+    const confidenceThreshold =
+      botConfig?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
+
     // ── Check for manual escalation request ────────────────────────────────
     const messageText = incoming.text?.toLowerCase() ?? '';
-    const wantsHuman = ESCALATION_TRIGGERS.some((t) => messageText.includes(t));
+    const wantsHuman = escalationTriggers.some((t) => messageText.includes(t));
 
     if (wantsHuman && conversation.status === 'open') {
       await escalateConversation(conversation, 'Customer requested human agent');
@@ -220,7 +250,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     // ── Generate AI response ──────────────────────────────────────────────
     const aiResult = await getAIResponse(
-      SYSTEM_PROMPTS[productType],
+      systemPrompt,
       (history ?? []) as import('@alphabot/shared').Message[],
       kbResults,
       contactMemory
@@ -243,7 +273,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     });
 
     // ── Auto-escalate on low confidence ──────────────────────────────────
-    if (aiResult.confidenceScore < 0.6 && conversation.status === 'open') {
+    if (aiResult.confidenceScore < confidenceThreshold && conversation.status === 'open') {
       await escalateConversation(conversation, 'Low AI confidence — query unresolved');
     }
 

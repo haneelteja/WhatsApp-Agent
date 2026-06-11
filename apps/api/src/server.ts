@@ -6,6 +6,7 @@ import formbody from '@fastify/formbody';
 
 import { webhookRoutes } from './routes/webhook/index.js';
 import { conversationRoutes } from './routes/conversations/index.js';
+import { kbRoutes } from './routes/kb/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { startDailyReportWorker } from './workers/daily-report.worker.js';
 import { getRedis } from './lib/redis.js';
@@ -35,6 +36,7 @@ await server.register(rateLimit, {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 await server.register(webhookRoutes, { prefix: '/api/webhook' });
 await server.register(conversationRoutes, { prefix: '/api/conversations' });
+await server.register(kbRoutes, { prefix: '/api/kb' });
 
 // ─── Health check (also serves as the external keep-alive ping target) ────────
 // Point UptimeRobot / cron-job.org at GET /health every 5 minutes to keep

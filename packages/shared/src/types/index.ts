@@ -146,6 +146,42 @@ export interface NotificationConfig {
   updated_at: string;
 }
 
+// ─── Knowledge Base Collections ──────────────────────────────────────────────
+
+export type EmbeddingModel = 'voyage-3' | 'voyage-3-lite';
+
+export interface KBCollection {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  embedding_model: EmbeddingModel;
+  entry_count: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KBCollectionBot {
+  collection_id: string;
+  tenant_id: string;
+  product_slug: ProductSlug;
+  priority: number;
+  created_at: string;
+}
+
+export interface KBCollectionWithBots extends KBCollection {
+  bots: KBCollectionBot[];
+}
+
+export interface RAGResult {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  similarity: number;
+}
+
 // ─── Database Row Types ───────────────────────────────────────────────────────
 
 export interface Tenant {
@@ -253,6 +289,7 @@ export interface KnowledgeBase {
   id: string;
   tenant_id: string;
   product_type: ProductSlug;
+  collection_id: string | null;   // null = legacy entry without a collection
   category: string;
   question: string;
   answer: string;
