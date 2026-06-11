@@ -90,7 +90,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     void gateway.markAsRead(config.phone_number_id, config.access_token, incoming.messageId);
 
     // ── Upsert contact ──────────────────────────────────────────────────────
-    const { data: contact } = await db
+    const { data: contact, error: contactError } = await db
       .from('contacts')
       .upsert(
         {
@@ -103,10 +103,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       .select()
       .single();
 
+    fastify.log.info({ contact: contact ? (contact as Contact).id : null, contactError }, '[Webhook] contact upsert');
     if (!contact) return;
 
     // ── Upsert conversation (one open conversation per contact per product) ─
-    const { data: existingConvo } = await db
+    const { data: existingConvo, error: convoLookupError } = await db
       .from('conversations')
       .select()
       .eq('tenant_id', tenantId)
@@ -117,10 +118,12 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       .limit(1)
       .single();
 
+    fastify.log.info({ existingConvo: existingConvo ? (existingConvo as Conversation).id : null, convoLookupError }, '[Webhook] conversation lookup');
+
     let conversation = existingConvo as Conversation | null;
 
     if (!conversation) {
-      const { data: newConvo } = await db
+      const { data: newConvo, error: newConvoError } = await db
         .from('conversations')
         .insert({
           tenant_id: tenantId,
@@ -131,6 +134,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         .select()
         .single();
 
+      fastify.log.info({ newConvo: newConvo ? (newConvo as Conversation).id : null, newConvoError }, '[Webhook] conversation insert');
       conversation = newConvo as Conversation;
 
       // Track usage event
