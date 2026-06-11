@@ -1,4 +1,4 @@
-import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Bot, Clock, MessageSquare, Copy } from 'lucide-react';
@@ -25,7 +25,7 @@ export default async function ClientDetailPage({
   params: Promise<{ tenantId: string }>;
 }) {
   const { tenantId } = await params;
-  const supabase = await getSupabaseServerClient();
+  const supabase = getSupabaseAdminClient();
 
   const [
     { data: tenant },

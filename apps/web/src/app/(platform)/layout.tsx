@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { PlatformNav } from '@/components/platform-nav';
 import { PlatformTopbar } from '@/components/platform-topbar';
 
@@ -13,8 +14,9 @@ export default async function PlatformLayout({
 
   if (!user) redirect('/login');
 
-  // Only platform users can access this layout
-  const { data: platformUser } = await supabase
+  // Use admin client to bypass RLS on platform_users
+  const admin = getSupabaseAdminClient();
+  const { data: platformUser } = await admin
     .from('platform_users')
     .select('role, name')
     .eq('user_id', user.id)

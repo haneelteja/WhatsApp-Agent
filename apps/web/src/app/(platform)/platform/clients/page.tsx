@@ -1,4 +1,4 @@
-import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import Link from 'next/link';
 import { Plus, Building2, CheckCircle2, Clock, XCircle, type LucideIcon } from 'lucide-react';
 
@@ -33,7 +33,7 @@ type TenantRow = {
 };
 
 export default async function PlatformClientsPage() {
-  const supabase = await getSupabaseServerClient();
+  const supabase = getSupabaseAdminClient();
 
   const { data: tenants } = await supabase
     .from('tenants')
