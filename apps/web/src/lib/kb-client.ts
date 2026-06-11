@@ -17,3 +17,14 @@ export async function kbFetch(path: string, init?: RequestInit): Promise<Respons
   const headers = await kbHeaders();
   return fetch(`${KB_API}${path}`, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
 }
+
+// Multipart file upload — does NOT set Content-Type (browser sets it with boundary)
+export async function kbUpload(path: string, formData: FormData): Promise<Response> {
+  const supabase = getSupabaseBrowserClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return fetch(`${KB_API}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+    body: formData,
+  });
+}

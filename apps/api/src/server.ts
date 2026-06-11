@@ -3,10 +3,12 @@ import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import formbody from '@fastify/formbody';
+import multipart from '@fastify/multipart';
 
 import { webhookRoutes } from './routes/webhook/index.js';
 import { conversationRoutes } from './routes/conversations/index.js';
 import { kbRoutes } from './routes/kb/index.js';
+import { kbDocumentRoutes } from './routes/kb/documents.js';
 import { escalationRoutes } from './routes/escalations/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { startDailyReportWorker } from './workers/daily-report.worker.js';
@@ -22,6 +24,9 @@ const server = Fastify({
 
 // ─── Body parsers ─────────────────────────────────────────────────────────────
 await server.register(formbody);
+await server.register(multipart, {
+  limits: { fileSize: 50 * 1024 * 1024, files: 1 },  // 50 MB max
+});
 
 // ─── Security plugins ─────────────────────────────────────────────────────────
 await server.register(helmet);
@@ -44,7 +49,8 @@ await server.register(rateLimit, {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 await server.register(webhookRoutes, { prefix: '/api/webhook' });
 await server.register(conversationRoutes, { prefix: '/api/conversations' });
-await server.register(kbRoutes, { prefix: '/api/kb' });
+await server.register(kbRoutes,         { prefix: '/api/kb' });
+await server.register(kbDocumentRoutes, { prefix: '/api/kb' });
 await server.register(escalationRoutes, { prefix: '/api/escalations' });
 
 // ─── Health check (also serves as the external keep-alive ping target) ────────

@@ -387,6 +387,27 @@ export interface AgentSession {
   resolution_note: string | null;
 }
 
+// ─── Knowledge Base Documents ─────────────────────────────────────────────────
+
+export type KBDocumentStatus   = 'pending' | 'processing' | 'done' | 'error';
+export type KBDocumentFileType = 'pdf' | 'docx' | 'txt' | 'md' | 'image';
+
+export interface KBDocument {
+  id:               string;
+  tenant_id:        string;
+  collection_id:    string;
+  name:             string;
+  file_type:        KBDocumentFileType;
+  mime_type:        string;
+  storage_path:     string;
+  file_size:        number | null;
+  status:           KBDocumentStatus;
+  error_message:    string | null;
+  chunk_count:      number;
+  created_at:       string;
+  updated_at:       string;
+}
+
 // ─── Enriched view types (joins) ─────────────────────────────────────────────
 
 export interface ConversationWithContact extends Conversation {

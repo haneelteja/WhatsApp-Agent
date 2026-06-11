@@ -66,7 +66,7 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
 
       let entriesQuery = db
         .from('knowledge_base')
-        .select('id, question, answer, category, status, version, created_at', { count: 'exact' })
+        .select('id, question, answer, category, status, version, source_document_id, created_at', { count: 'exact' })
         .eq('collection_id', id)
         .order('created_at', { ascending: false })
         .range(from, from + limit - 1);
