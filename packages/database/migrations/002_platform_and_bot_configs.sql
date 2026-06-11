@@ -6,22 +6,6 @@
 -- ============================================================================
 
 -- ============================================================================
--- PLATFORM HELPER FUNCTIONS
--- ============================================================================
-
--- Returns true if the calling user exists in platform_users
-create or replace function is_platform_user()
-returns boolean language sql stable security definer as $$
-  select exists (select 1 from platform_users where user_id = auth.uid());
-$$;
-
--- Returns the calling platform user's role ('manager' | 'admin'), or null
-create or replace function get_platform_role()
-returns text language sql stable security definer as $$
-  select role from platform_users where user_id = auth.uid() limit 1;
-$$;
-
--- ============================================================================
 -- PLATFORM USERS  (your company's staff — not tied to any tenant)
 -- ============================================================================
 create table if not exists platform_users (
@@ -38,6 +22,22 @@ create trigger platform_users_updated_at before update on platform_users
   for each row execute function set_updated_at();
 
 create index idx_platform_users_user on platform_users(user_id);
+
+-- ============================================================================
+-- PLATFORM HELPER FUNCTIONS  (defined after table exists)
+-- ============================================================================
+
+-- Returns true if the calling user exists in platform_users
+create or replace function is_platform_user()
+returns boolean language sql stable security definer as $$
+  select exists (select 1 from platform_users where user_id = auth.uid());
+$$;
+
+-- Returns the calling platform user's role ('manager' | 'admin'), or null
+create or replace function get_platform_role()
+returns text language sql stable security definer as $$
+  select role from platform_users where user_id = auth.uid() limit 1;
+$$;
 
 -- ============================================================================
 -- PRODUCTS  (your platform's product catalog — source of truth)
