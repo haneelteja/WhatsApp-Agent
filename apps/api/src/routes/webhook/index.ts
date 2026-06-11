@@ -62,18 +62,23 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     try {
 
     const db = getServerClient();
+    fastify.log.info({ tenantId, productType }, '[Webhook] processing message');
 
     // Load WhatsApp config for this tenant
-    const { data: wn } = await db
+    const { data: wn, error: wnError } = await db
       .from('whatsapp_numbers')
       .select('config_json, provider')
       .eq('tenant_id', tenantId)
       .single();
 
-    if (!wn) return;
+    if (!wn) {
+      fastify.log.warn({ tenantId, wnError }, '[Webhook] whatsapp_numbers not found');
+      return;
+    }
 
     const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
     const incoming = gateway.parseIncoming(request.body);
+    fastify.log.info({ incoming: incoming ? { type: incoming.type, from: incoming.from } : null }, '[Webhook] parsed incoming');
     if (!incoming || incoming.type === 'unsupported') return;
 
     const config = wn.config_json as {
