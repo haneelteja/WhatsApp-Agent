@@ -1,6 +1,22 @@
-import { getSupabaseServerClient } from '@/lib/supabase/server';
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { kbFetch } from '@/lib/kb-client';
+
+interface EscalationRow {
+  id: string;
+  trigger_reason: string;
+  status: string;
+  created_at: string;
+  conversations: {
+    id: string;
+    product_type: string;
+    status: string;
+    contacts: { phone: string; name: string | null } | null;
+  } | null;
+}
 
 const AVATAR_COLORS = [
   'bg-emerald-100 text-emerald-700',
@@ -15,14 +31,21 @@ const PRODUCT_LABELS: Record<string, { label: string; color: string }> = {
   lifecycle_bot: { label: 'Lifecycle', color: 'bg-orange-50 text-orange-600' },
 };
 
-export default async function EscalationsPage() {
-  const supabase = await getSupabaseServerClient();
+export default function EscalationsPage() {
+  const [escalations, setEscalations] = useState<EscalationRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const { data: escalations } = await supabase
-    .from('escalations')
-    .select('*, conversations(id, product_type, status, contacts(phone, name))')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false });
+  async function load() {
+    setLoading(true);
+    const res = await kbFetch('/api/escalations');
+    if (res.ok) {
+      const json = await res.json() as { data: EscalationRow[] };
+      setEscalations(json.data ?? []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { void load(); }, []);
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
@@ -32,14 +55,18 @@ export default async function EscalationsPage() {
           <h2 className="text-xl font-bold text-gray-900">Escalations</h2>
           <p className="text-sm text-gray-500 mt-0.5">Conversations requiring human agent attention</p>
         </div>
-        {!!escalations?.length && (
+        {!!escalations.length && (
           <span className="text-xs font-semibold text-red-600 bg-red-50 border border-red-100 px-3 py-1.5 rounded-full">
             {escalations.length} pending
           </span>
         )}
       </div>
 
-      {!escalations?.length ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-24">
+          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : !escalations.length ? (
         <div className="bg-white rounded-2xl border border-green-100 shadow-sm flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4 border border-emerald-100">
             <CheckCircle2 size={28} className="text-emerald-500" />
@@ -50,12 +77,7 @@ export default async function EscalationsPage() {
       ) : (
         <div className="space-y-3">
           {escalations.map((esc) => {
-            const conv = esc.conversations as {
-              id: string;
-              product_type: string;
-              status: string;
-              contacts: { phone: string; name: string | null } | null;
-            } | null;
+            const conv        = esc.conversations;
             const contact     = conv?.contacts;
             const displayName = contact?.name ?? contact?.phone ?? 'Unknown';
             const product     = conv?.product_type ? PRODUCT_LABELS[conv.product_type] : null;
