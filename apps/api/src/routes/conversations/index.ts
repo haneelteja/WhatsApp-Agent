@@ -163,17 +163,26 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
   });
 
   // ─── POST /api/conversations/:id/claim — agent claims escalation ──────────
-  fastify.post<{
-    Params: { id: string };
-    Body: { escalationId: string };
-  }>('/:id/claim', { preHandler: [requireAuth] }, async (request, reply) => {
-    await claimEscalation(
-      request.params.id,
-      request.body.escalationId,
-      request.userId
-    );
-    return { success: true };
-  });
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/claim',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const db = getServerClient();
+      const { data: esc } = await db
+        .from('escalations')
+        .select('id')
+        .eq('conversation_id', request.params.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!esc) return reply.status(404).send({ success: false, error: 'No pending escalation found' });
+
+      await claimEscalation(request.params.id, (esc as { id: string }).id, request.userId);
+      return { success: true };
+    }
+  );
 
   // ─── POST /api/conversations/:id/release — release back to bot ───────────
   fastify.post<{

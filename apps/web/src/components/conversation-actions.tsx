@@ -52,7 +52,7 @@ export function ConversationActions({ conversationId, status }: Props) {
     e.preventDefault();
     if (!message.trim()) return;
     setSending(true);
-    await apiPost(`/api/conversations/${conversationId}/send`, { content: message });
+    await apiPost(`/api/conversations/${conversationId}/send`, { message });
     setMessage('');
     setSending(false);
   }
