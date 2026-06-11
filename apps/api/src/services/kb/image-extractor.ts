@@ -1,38 +1,30 @@
-// Extract structured text from images using Claude Haiku vision.
-// Haiku is the cheapest model — keeps cost minimal for image ingestion.
-// Max 400 output tokens per image (just the facts, no prose).
+// Extract structured text from images via OpenRouter's free vision models.
+// Default: meta-llama/llama-3.2-11b-vision-instruct:free (zero cost, ~200 req/day).
+// Override with OPENROUTER_VISION_MODEL env var if you need higher throughput.
 
-import Anthropic from '@anthropic-ai/sdk';
+import { chatCompletion, VISION_MODEL } from '../../lib/openrouter.js';
 
-const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
-
-type SupportedMime = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-
-const SUPPORTED_MIMES = new Set<string>(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']);
+const SUPPORTED_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']);
 
 export async function extractImageContent(
   imageBuffer: Buffer,
-  mimeType: string,
+  mimeType:    string,
 ): Promise<string> {
   const normalized = mimeType === 'image/jpg' ? 'image/jpeg' : mimeType;
   if (!SUPPORTED_MIMES.has(normalized)) {
     throw new Error(`Unsupported image MIME type: ${mimeType}`);
   }
 
-  const response = await client.messages.create({
-    model:      'claude-haiku-4-5-20251001',
+  // OpenRouter vision models accept base64 data URIs
+  const dataUrl = `data:${normalized};base64,${imageBuffer.toString('base64')}`;
+
+  const { content } = await chatCompletion({
+    model:      VISION_MODEL,
     max_tokens: 400,
     messages: [{
       role: 'user',
       content: [
-        {
-          type:   'image',
-          source: {
-            type:       'base64',
-            media_type: normalized as SupportedMime,
-            data:       imageBuffer.toString('base64'),
-          },
-        },
+        { type: 'image_url', image_url: { url: dataUrl } },
         {
           type: 'text',
           text: 'Extract all text, tables, labels, and key facts from this image. Output only the extracted information, structured and concise. No commentary.',
@@ -41,6 +33,5 @@ export async function extractImageContent(
     }],
   });
 
-  const block = response.content[0];
-  return block?.type === 'text' ? block.text.trim() : '';
+  return content.trim();
 }
