@@ -97,6 +97,27 @@ export interface BotConfig {
   confidence_threshold: number;
   escalation_triggers: string[];
   guardrails_json: GuardrailsConfig;
+  kb_only_mode: boolean;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+// ─── Platform Settings ────────────────────────────────────────────────────────
+
+export interface PlatformGuardrails {
+  global_blocked_topics: string[];
+  global_blocked_keywords: string[];
+  max_response_length: number;
+  enforce_kb_only_globally: boolean;
+  content_filters: {
+    no_personal_data: boolean;
+    no_external_links: boolean;
+  };
+}
+
+export interface PlatformSettings {
+  key: string;
+  value: PlatformGuardrails | Record<string, unknown>;
   updated_at: string;
   updated_by: string | null;
 }

@@ -1,5 +1,7 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { Building2, Phone, Bot, Link2 } from 'lucide-react';
+import { Building2, Phone, Bot, Link2, ShieldAlert } from 'lucide-react';
+import { BotConfigForm } from '@/components/dashboard/BotConfigForm';
+import type { BotConfig, Product } from '@alphabot/shared';
 
 const PRODUCT_COLORS: Record<string, string> = {
   support_bot:   'bg-sky-50 text-sky-600',
@@ -10,22 +12,33 @@ const PRODUCT_COLORS: Record<string, string> = {
 export default async function SettingsPage() {
   const supabase = await getSupabaseServerClient();
 
-  const [{ data: tenant }, { data: numbers }, { data: products }] = await Promise.all([
-    supabase.from('tenants').select('*').single(),
-    supabase.from('whatsapp_numbers').select('*'),
-    supabase.from('tenant_products').select('*'),
-  ]);
+  const [{ data: tenant }, { data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }] =
+    await Promise.all([
+      supabase.from('tenants').select('*').single(),
+      supabase.from('whatsapp_numbers').select('*'),
+      supabase.from('tenant_products').select('*'),
+      supabase.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)'),
+      supabase.from('products').select('slug, default_prompt'),
+    ]);
 
   const apiBase    = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
   const webhookUrl = tenant?.id
     ? `${apiBase}/api/webhook/${tenant.id}/support_bot`
     : null;
 
+  // Build product default prompts map
+  const productDefaults: Record<string, string> = {};
+  for (const p of productCatalog ?? []) {
+    productDefaults[p.slug] = p.default_prompt;
+  }
+
+  const resolvedConfigs = (botConfigs ?? []) as (BotConfig & { product: Product | null })[];
+
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-5">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Settings</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Your workspace and integration configuration</p>
+        <p className="text-sm text-gray-500 mt-0.5">Your workspace and bot configuration</p>
       </div>
 
       {/* Workspace */}
@@ -82,6 +95,19 @@ export default async function SettingsPage() {
             ))}
           </div>
         )}
+      </Section>
+
+      {/* Bot Configuration (editable) */}
+      <Section icon={<ShieldAlert size={16} />} title="Bot Configuration & Guardrails">
+        <div className="px-5 py-4 space-y-1">
+          <p className="text-xs text-gray-400">
+            Configure system prompts, KB-only mode, tone, blocked topics, and response guardrails per bot.
+            Click a bot to expand its settings.
+          </p>
+        </div>
+        <div className="px-5 pb-5">
+          <BotConfigForm configs={resolvedConfigs} productDefaults={productDefaults} />
+        </div>
       </Section>
 
       {/* Webhook URL */}

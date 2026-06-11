@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getServerClient } from '@alphabot/database';
-import type { BotConfig, Contact, Conversation, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
+import type { BotConfig, Contact, Conversation, PlatformGuardrails, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKB } from '../../services/kb/lookup.js';
@@ -71,8 +71,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const db = getServerClient();
     fastify.log.info({ tenantId, productType }, '[Webhook] processing message');
 
-    // Load WhatsApp config + bot config in parallel
-    const [wnRes, botConfigRes] = await Promise.all([
+    // Load WhatsApp config + bot config + platform guardrails in parallel
+    const [wnRes, botConfigRes, platformSettingsRes] = await Promise.all([
       db.from('whatsapp_numbers')
         .select('config_json, provider')
         .eq('tenant_id', tenantId)
@@ -84,6 +84,10 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         .select('*, product:products(default_prompt, default_model)')
         .eq('tenant_id', tenantId)
         .eq('product_slug', productType)
+        .maybeSingle(),
+      db.from('platform_settings')
+        .select('value')
+        .eq('key', 'guardrails')
         .maybeSingle(),
     ]);
 
@@ -208,7 +212,9 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     // Resolve bot config values (DB row takes precedence over defaults)
     const botConfig = botConfigRes.data as (BotConfig & { product: Product | null }) | null;
-    const systemPrompt =
+    const platformGuardrails = (platformSettingsRes.data?.value ?? null) as PlatformGuardrails | null;
+
+    const baseSystemPrompt =
       botConfig?.system_prompt ??
       (botConfig?.product as Product | null)?.default_prompt ??
       DEFAULT_SYSTEM_PROMPTS[productType];
@@ -218,6 +224,22 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         : DEFAULT_ESCALATION_TRIGGERS;
     const confidenceThreshold =
       botConfig?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
+
+    // ── Effective guardrails (platform + client merged) ───────────────────────
+    const clientGuardrails = botConfig?.guardrails_json;
+    const kbOnly = botConfig?.kb_only_mode ?? platformGuardrails?.enforce_kb_only_globally ?? false;
+    const effectiveMaxLength = Math.min(
+      clientGuardrails?.max_response_length ?? 1000,
+      platformGuardrails?.max_response_length ?? 2000,
+    );
+    const allBlockedKeywords = [
+      ...(platformGuardrails?.global_blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
+      ...(clientGuardrails?.blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
+    ];
+    const allBlockedTopics = [
+      ...(platformGuardrails?.global_blocked_topics ?? []),
+      ...(clientGuardrails?.blocked_topics ?? []),
+    ];
 
     // ── Check for manual escalation request ────────────────────────────────
     const messageText = incoming.text?.toLowerCase() ?? '';
@@ -230,6 +252,27 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         to: incoming.from,
         text: "I'm connecting you with a human agent right away. Please hold on for a moment.",
       });
+      return;
+    }
+
+    // ── Check blocked keywords (guardrails) ───────────────────────────────
+    if (allBlockedKeywords.length > 0 && allBlockedKeywords.some((kw) => messageText.includes(kw))) {
+      const blockedMsg = clientGuardrails?.custom_blocked_message
+        ?? "I'm sorry, I'm not able to help with that topic.";
+      if ((clientGuardrails?.on_blocked_topic ?? 'escalate') === 'escalate' && conversation.status === 'open') {
+        await escalateConversation(conversation, 'Blocked keyword detected in message');
+        await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'text',
+          to: incoming.from,
+          text: "I'm connecting you with a human agent who can better assist you.",
+        });
+      } else {
+        await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'text',
+          to: incoming.from,
+          text: blockedMsg,
+        });
+      }
       return;
     }
 
@@ -248,6 +291,37 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     const contactMemory = JSON.stringify(contactData.memory_json);
 
+    // ── Build effective system prompt with guardrails injected ───────────
+    let systemPrompt = baseSystemPrompt;
+
+    if (kbOnly) {
+      systemPrompt += kbResults.length > 0
+        ? '\n\nIMPORTANT: Only answer using the knowledge base entries provided. If the answer is not there, say "I don\'t have information on that" and offer to connect with a human agent.'
+        : '\n\nIMPORTANT: Only answer from your knowledge base. If you cannot find an answer, tell the customer you don\'t have that information and offer to escalate.';
+    }
+
+    if (allBlockedTopics.length > 0) {
+      systemPrompt += `\n\nDo NOT discuss: ${allBlockedTopics.join(', ')}. If asked, politely decline.`;
+    }
+
+    const toneMap: Record<string, string> = {
+      professional: 'Maintain a professional and courteous tone.',
+      casual:       'Use a friendly, casual and conversational tone.',
+      empathetic:   'Be empathetic, warm and understanding in every response.',
+      formal:       'Use formal, business-appropriate language at all times.',
+    };
+    systemPrompt += `\n\nTone: ${toneMap[clientGuardrails?.tone ?? 'professional']}`;
+
+    if (clientGuardrails?.content_filters?.no_external_links || platformGuardrails?.content_filters?.no_external_links) {
+      systemPrompt += '\nNever include external URLs or links in your responses.';
+    }
+    if (clientGuardrails?.content_filters?.no_phone_numbers_in_response) {
+      systemPrompt += '\nDo not include phone numbers in your responses.';
+    }
+    if (clientGuardrails?.content_filters?.no_personal_data || platformGuardrails?.content_filters?.no_personal_data) {
+      systemPrompt += '\nNever share or reference personally identifiable information.';
+    }
+
     // ── Generate AI response ──────────────────────────────────────────────
     const aiResult = await getAIResponse(
       systemPrompt,
@@ -256,11 +330,16 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       contactMemory
     );
 
+    // Truncate to max_response_length guardrail
+    const replyText = aiResult.content.length > effectiveMaxLength
+      ? aiResult.content.substring(0, effectiveMaxLength).trimEnd() + '…'
+      : aiResult.content;
+
     // ── Store AI reply ────────────────────────────────────────────────────
     await db.from('messages').insert({
       conversation_id: conversation.id,
       role: 'assistant',
-      content: aiResult.content,
+      content: replyText,
       confidence_score: aiResult.confidenceScore,
     });
 
@@ -281,7 +360,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
       type: 'text',
       to: incoming.from,
-      text: aiResult.content,
+      text: replyText,
     });
     fastify.log.info({ sendResult }, '[Webhook] sendMessage result');
 

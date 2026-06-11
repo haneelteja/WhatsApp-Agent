@@ -11,8 +11,9 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 function getTitle(pathname: string): { section: string; page: string | null } {
-  if (pathname === '/platform/clients/new')          return { section: 'Clients', page: 'New Client' };
-  if (pathname.match(/\/platform\/clients\/[^/]+$/)) return { section: 'Clients', page: 'Client Detail' };
+  if (pathname === '/platform/clients/new')          return { section: 'Clients',  page: 'New Client' };
+  if (pathname.match(/\/platform\/clients\/[^/]+$/)) return { section: 'Clients',  page: 'Client Detail' };
+  if (pathname === '/platform/settings')             return { section: 'Settings', page: null };
   return { section: PAGE_TITLES[pathname] ?? 'Platform', page: null };
 }
 
