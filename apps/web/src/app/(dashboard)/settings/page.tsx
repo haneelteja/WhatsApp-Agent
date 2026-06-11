@@ -1,4 +1,5 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { Building2, Phone, Bot, Link2, ShieldAlert } from 'lucide-react';
 import { BotConfigForm } from '@/components/dashboard/BotConfigForm';
 import type { BotConfig, Product } from '@alphabot/shared';
@@ -11,20 +12,55 @@ const PRODUCT_COLORS: Record<string, string> = {
 
 export default async function SettingsPage() {
   const supabase = await getSupabaseServerClient();
+  const admin    = getSupabaseAdminClient();
 
-  const [{ data: tenant }, { data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }] =
+  // Get the authenticated user's tenant via the user client (respects auth)
+  const { data: tenant } = await supabase.from('tenants').select('*').single();
+
+  // Use admin client for configs to bypass restrictive RLS policies
+  const [{ data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }] =
     await Promise.all([
-      supabase.from('tenants').select('*').single(),
-      supabase.from('whatsapp_numbers').select('*'),
-      supabase.from('tenant_products').select('*'),
-      supabase.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)'),
-      supabase.from('products').select('slug, default_prompt'),
+      admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenant?.id ?? ''),
+      admin.from('tenant_products').select('*').eq('tenant_id', tenant?.id ?? ''),
+      admin.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)').eq('tenant_id', tenant?.id ?? ''),
+      admin.from('products').select('slug, default_prompt'),
     ]);
 
   const apiBase    = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
   const webhookUrl = tenant?.id
     ? `${apiBase}/api/webhook/${tenant.id}/support_bot`
     : null;
+
+  // Auto-seed bot_configs for active products that don't have one yet
+  if (tenant?.id && (products ?? []).length > 0) {
+    const existingSlugs = new Set((botConfigs ?? []).map((c) => c.product_slug));
+    const missing = (products ?? []).filter((p) => p.active && !existingSlugs.has(p.product_type));
+    for (const p of missing) {
+      await admin.from('bot_configs').insert({
+        tenant_id:            tenant.id,
+        product_slug:         p.product_type,
+        system_prompt:        null,
+        ai_model:             null,
+        confidence_threshold: 0.6,
+        kb_only_mode:         false,
+        escalation_triggers:  ['speak to human', 'talk to agent', 'human please', 'escalate', 'complaint', 'refund', 'dispute', 'urgent'],
+        guardrails_json: {
+          blocked_topics: [], blocked_keywords: [], max_response_length: 1000,
+          tone: 'professional',
+          content_filters: { no_personal_data: false, no_external_links: false, no_phone_numbers_in_response: false },
+          on_blocked_topic: 'escalate', on_low_confidence: 'escalate',
+        },
+      });
+    }
+    // Reload if we inserted any
+    if (missing.length > 0) {
+      const { data: refreshed } = await admin
+        .from('bot_configs')
+        .select('*, product:products(slug, default_prompt, default_model, name)')
+        .eq('tenant_id', tenant.id);
+      botConfigs?.splice(0, botConfigs.length, ...(refreshed ?? []));
+    }
+  }
 
   // Build product default prompts map
   const productDefaults: Record<string, string> = {};
