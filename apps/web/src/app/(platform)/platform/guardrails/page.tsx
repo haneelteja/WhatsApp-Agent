@@ -1,5 +1,5 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { Globe, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Globe, ShieldCheck } from 'lucide-react';
 import { PlatformGuardrailsForm } from '@/components/platform/PlatformGuardrailsForm';
 import { BotTypeGuardrailsForm } from '@/components/platform/BotTypeGuardrailsForm';
 import { CollapsibleCard } from '@/components/CollapsibleCard';
@@ -63,30 +63,6 @@ export default async function PlatformGuardrailsPage() {
         </p>
       </div>
 
-      {/* Cascade legend */}
-      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-2.5">
-        <p className="text-xs font-semibold text-indigo-800">4-layer cascade — most restrictive always wins</p>
-        <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-          {[
-            { label: 'Layer 1 — Global',     active: true  },
-            { label: 'Layer 2 — Bot-type',   active: true  },
-            { label: 'Layer 3 — Client-wide',active: false },
-            { label: 'Layer 4 — Per-bot',    active: false },
-          ].map((l, i) => (
-            <span key={l.label} className="flex items-center gap-1">
-              {i > 0 && <ChevronRight size={10} className="text-indigo-300" />}
-              <span className={l.active ? 'font-semibold text-indigo-800' : 'text-indigo-400'}>
-                {l.label}
-              </span>
-            </span>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-3 text-[11px] text-indigo-600 pt-0.5">
-          <span>Keywords &amp; topics → <strong>union</strong></span>
-          <span>Max length → <strong>minimum</strong></span>
-          <span>KB-only → <strong>OR</strong></span>
-        </div>
-      </div>
 
       {/* ── Layer 1: Global ──────────────────────────────────────────────────── */}
       <div>
