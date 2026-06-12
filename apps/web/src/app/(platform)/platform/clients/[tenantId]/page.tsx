@@ -35,6 +35,7 @@ export default async function ClientDetailPage({
     { data: trials },
     { count: convCount },
     { data: tenantUsers },
+    { data: pendingInvites },
   ] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
     supabase.from('tenant_products').select('product_type, active, tier').eq('tenant_id', tenantId),
@@ -42,6 +43,7 @@ export default async function ClientDetailPage({
     supabase.from('free_trials').select('ends_at, status, allowed_model, product_slug').eq('tenant_id', tenantId),
     supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
     supabase.from('tenant_users').select('user_id, role, created_at').eq('tenant_id', tenantId),
+    supabase.from('client_invites').select('email, role, created_at, expires_at').eq('tenant_id', tenantId).is('accepted_at', null),
   ]);
 
   // Fetch auth user details for team members
@@ -183,18 +185,25 @@ export default async function ClientDetailPage({
         <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
           <Users size={15} className="text-indigo-500" />
           <h3 className="text-sm font-semibold text-slate-800">Team Members</h3>
-          <span className="ml-auto text-xs text-slate-400">{(tenantUsers ?? []).length} member{(tenantUsers ?? []).length !== 1 ? 's' : ''}</span>
+          <span className="ml-auto text-xs text-slate-400">
+            {(tenantUsers ?? []).length} active
+            {(pendingInvites ?? []).length > 0 && ` · ${(pendingInvites ?? []).length} pending`}
+          </span>
         </div>
         <div className="px-6 py-4 space-y-4">
           {(tenantUsers ?? []).length > 0 && (
             <div className="divide-y divide-slate-50">
               {(tenantUsers ?? []).map(u => {
                 const info = authUsers[u.user_id];
+                const joinedAt = new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 return (
-                  <div key={u.user_id} className="flex items-center justify-between py-2.5">
+                  <div key={u.user_id} className="flex items-center justify-between py-3">
                     <div>
-                      <p className="text-sm font-medium text-slate-700">{info?.name ?? u.user_id}</p>
-                      <p className="text-xs text-slate-400">{info?.email ?? ''}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-slate-700">{info?.name ?? u.user_id}</p>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-semibold ring-1 ring-emerald-200">Active</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">{info?.email ?? ''} · Joined {joinedAt}</p>
                     </div>
                     <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-medium capitalize">
                       {u.role.replace(/_/g, ' ')}
@@ -204,6 +213,35 @@ export default async function ClientDetailPage({
               })}
             </div>
           )}
+
+          {(pendingInvites ?? []).length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Pending Invites</p>
+              <div className="divide-y divide-slate-50">
+                {(pendingInvites ?? []).map(inv => {
+                  const isExpired = new Date(inv.expires_at) < new Date();
+                  const sentAt = new Date(inv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  return (
+                    <div key={inv.email + inv.created_at} className="flex items-center justify-between py-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-slate-500">{inv.email}</p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ring-1 ${isExpired ? 'bg-red-50 text-red-600 ring-red-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>
+                            {isExpired ? 'Expired' : 'Pending'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">Invited {sentAt}</p>
+                      </div>
+                      <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full font-medium capitalize">
+                        {inv.role.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Invite a new member</p>
             <InviteUserForm tenantId={tenantId} />
