@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   Bot,
+  BarChart2,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -19,6 +20,7 @@ const navItems = [
   { href: '/conversations',  label: 'Conversations',  icon: MessageSquare },
   { href: '/escalations',    label: 'Escalations',    icon: AlertCircle },
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
+  { href: '/analytics',      label: 'Analytics',      icon: BarChart2 },
   { href: '/settings',       label: 'Settings',       icon: Settings },
 ];
 
