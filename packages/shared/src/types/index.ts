@@ -131,6 +131,39 @@ export interface TenantGuardrails {
   updated_by: string | null;
 }
 
+// ─── LLM Configuration (multi-level hierarchy) ───────────────────────────────
+
+export type LlmProvider = 'openrouter' | 'openai' | 'custom';
+export type LlmValidationStatus = 'pending' | 'valid' | 'invalid';
+
+export interface LlmCreditInfo {
+  usage:        number | null;   // USD spent (OpenRouter)
+  limit:        number | null;   // USD credit limit; null = unlimited / unknown
+  is_free_tier: boolean;
+}
+
+export interface LlmConfig {
+  id:                string;
+  tenant_id:         string | null;   // null = platform level
+  product_slug:      string | null;   // null = generic (all bots)
+  provider:          LlmProvider;
+  api_key:           string;          // full key (server-only); UI always receives masked form
+  model:             string;
+  base_url:          string | null;
+  validation_status: LlmValidationStatus;
+  validation_error:  string | null;
+  validated_at:      string | null;
+  credit_info:       LlmCreditInfo | null;
+  created_at:        string;
+  updated_at:        string;
+  created_by:        string | null;
+}
+
+// Masked form — safe to pass to client components
+export interface MaskedLlmConfig extends Omit<LlmConfig, 'api_key'> {
+  api_key_masked: string;   // e.g. "••••••••••••abcd"
+}
+
 // ─── Platform Settings ────────────────────────────────────────────────────────
 
 export interface PlatformGuardrails {

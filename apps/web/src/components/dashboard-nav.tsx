@@ -12,6 +12,7 @@ import {
   Bot,
   BarChart2,
   ShieldCheck,
+  Cpu,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -22,6 +23,7 @@ const navItems = [
   { href: '/escalations',    label: 'Escalations',    icon: AlertCircle     },
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
+  { href: '/ai-models',      label: 'AI Models',      icon: Cpu             },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
@@ -81,6 +83,7 @@ export function DashboardNav({ tenantName, userRole }: { tenantName: string; use
       {/* Bottom */}
       <div className="p-3 border-t border-emerald-900/40">
         <button
+          type="button"
           onClick={handleSignOut}
           className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm text-emerald-800 hover:bg-white/5 hover:text-emerald-300 transition-all group"
         >

@@ -20,6 +20,7 @@ export async function getAIResponse(
   history:        Message[],
   kbContext:      KnowledgeBase[],
   contactMemory?: string,
+  llmOverride?:   { apiKey?: string; model?: string; baseUrl?: string },
 ): Promise<AIResponseResult> {
   const contextWindow = history.slice(-MAX_CONTEXT_MESSAGES);
 
@@ -41,13 +42,15 @@ export async function getAIResponse(
     content: m.content,
   }));
 
-  const model = process.env['OPENROUTER_REPLY_MODEL'] ?? REPLY_MODEL;
+  const model = llmOverride?.model ?? process.env['OPENROUTER_REPLY_MODEL'] ?? REPLY_MODEL;
 
   const { content, inputTokens, outputTokens } = await chatCompletion({
     model,
     system:     fullSystemPrompt,
     messages,
     max_tokens: 1024,
+    apiKey:     llmOverride?.apiKey,
+    baseUrl:    llmOverride?.baseUrl,
   });
 
   const confidenceScore = content.length > 20 ? 0.9 : 0.5;

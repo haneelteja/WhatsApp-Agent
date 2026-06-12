@@ -42,15 +42,21 @@ export async function chatCompletion(params: {
   messages:    ChatMessage[];
   system?:     string;
   max_tokens?: number;
+  apiKey?:     string;   // override OPENROUTER_API_KEY env var (per-tenant/per-bot key)
+  baseUrl?:    string;   // override default base URL (custom/self-hosted endpoints)
 }): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
-  const apiKey = process.env['OPENROUTER_API_KEY'];
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured');
+  const apiKey = params.apiKey ?? process.env['OPENROUTER_API_KEY'];
+  if (!apiKey) throw new Error('No LLM API key configured. Set OPENROUTER_API_KEY or configure an API key in Platform Settings → AI Models.');
+
+  const url = params.baseUrl
+    ? `${params.baseUrl.replace(/\/$/, '')}/chat/completions`
+    : BASE_URL;
 
   const messages: ChatMessage[] = params.system
     ? [{ role: 'system', content: params.system }, ...params.messages]
     : params.messages;
 
-  const res = await fetch(BASE_URL, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
@@ -67,7 +73,12 @@ export async function chatCompletion(params: {
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`OpenRouter ${res.status}: ${body.slice(0, 300)}`);
+    let detail = body.slice(0, 400);
+    try {
+      const j = JSON.parse(body);
+      detail = j?.error?.message ?? j?.message ?? detail;
+    } catch { /* use raw body */ }
+    throw new Error(`LLM API error ${res.status}: ${detail}`);
   }
 
   const json = await res.json() as ORResponse;

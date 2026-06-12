@@ -71,8 +71,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const db = getServerClient();
     fastify.log.info({ tenantId, productType }, '[Webhook] processing message');
 
-    // Load all 4 guardrail layers in parallel along with WhatsApp config + bot config
-    const [wnRes, botConfigRes, platformSettingsRes, botTypeGuardrailsRes, tenantGuardrailsRes] = await Promise.all([
+    // Load all 4 guardrail layers + 4 LLM config levels in parallel with WhatsApp config + bot config
+    const [wnRes, botConfigRes, platformSettingsRes, botTypeGuardrailsRes, tenantGuardrailsRes, llmConfigsRes] = await Promise.all([
       db.from('whatsapp_numbers')
         .select('config_json, provider')
         .eq('tenant_id', tenantId)
@@ -89,16 +89,20 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         .select('value')
         .eq('key', 'guardrails')
         .maybeSingle(),
-      // Layer 2: platform-set defaults per bot type
+      // Guardrail Layer 2: platform-set defaults per bot type
       db.from('bot_type_guardrails')
         .select('guardrails_json')
         .eq('product_slug', productType)
         .maybeSingle(),
-      // Layer 3: per-client rules across all their bots
+      // Guardrail Layer 3: per-client rules across all their bots
       db.from('tenant_guardrails')
         .select('guardrails_json')
         .eq('tenant_id', tenantId)
         .maybeSingle(),
+      // LLM config: all 4 levels — platform-generic, platform-bot, client-generic, client-bot
+      db.from('llm_configs')
+        .select('tenant_id, product_slug, api_key, model, base_url, validation_status')
+        .or(`and(tenant_id.is.null,product_slug.is.null),and(tenant_id.is.null,product_slug.eq.${productType}),and(tenant_id.eq.${tenantId},product_slug.is.null),and(tenant_id.eq.${tenantId},product_slug.eq.${productType})`),
     ]);
 
     const { data: wn, error: wnError } = wnRes;
@@ -369,13 +373,42 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       systemPrompt += '\nNever share or reference personally identifiable information.';
     }
 
-    // ── Generate AI response ──────────────────────────────────────────────
-    const aiResult = await getAIResponse(
-      systemPrompt,
-      (history ?? []) as import('@alphabot/shared').Message[],
-      kbResults,
-      contactMemory
+    // ── Resolve LLM config (most-specific valid key wins) ────────────────
+    // Priority: Client Bot → Client Generic → Platform Bot → Platform Generic → env vars
+    type LlmRow = { tenant_id: string | null; product_slug: string | null; api_key: string; model: string; base_url: string | null; validation_status: string };
+    const llmRows = (llmConfigsRes.data ?? []) as LlmRow[];
+
+    const resolvedLlm = (
+      llmRows.find(r => r.tenant_id === tenantId  && r.product_slug === productType) ??
+      llmRows.find(r => r.tenant_id === tenantId  && r.product_slug === null) ??
+      llmRows.find(r => r.tenant_id === null       && r.product_slug === productType) ??
+      llmRows.find(r => r.tenant_id === null       && r.product_slug === null)
     );
+
+    const llmOverride = (resolvedLlm?.validation_status === 'valid')
+      ? { apiKey: resolvedLlm.api_key, model: resolvedLlm.model, baseUrl: resolvedLlm.base_url ?? undefined }
+      : undefined;
+
+    // ── Generate AI response ──────────────────────────────────────────────
+    let aiResult: Awaited<ReturnType<typeof getAIResponse>>;
+    try {
+      aiResult = await getAIResponse(
+        systemPrompt,
+        (history ?? []) as import('@alphabot/shared').Message[],
+        kbResults,
+        contactMemory,
+        llmOverride,
+      );
+    } catch (aiErr) {
+      const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
+      fastify.log.error({ aiErr: errMsg, tenantId, productType, resolvedLlm: resolvedLlm ? `${resolvedLlm.tenant_id ?? 'platform'}/${resolvedLlm.product_slug ?? 'generic'}` : 'env-vars' }, '[Webhook] AI generation failed');
+      await gateway.sendMessage(config.phone_number_id, config.access_token, {
+        type: 'text',
+        to: incoming.from,
+        text: "I'm having trouble responding right now. Please try again in a moment, or type 'agent' to speak with a human.",
+      });
+      return;
+    }
 
     // Truncate to max_response_length guardrail
     const replyText = aiResult.content.length > effectiveMaxLength

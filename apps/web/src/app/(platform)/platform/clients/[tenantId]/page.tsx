@@ -1,9 +1,11 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert, Cpu } from 'lucide-react';
 import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
 import { ClientProductsManager } from '@/components/platform/ClientProductsManager';
+import { LlmConfigCard } from '@/components/LlmConfigCard';
+import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { saveTenantGuardrailsByIdAction } from '@/app/actions/tenant-guardrails';
 import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 import { InviteUserForm } from '@/components/platform/InviteUserForm';
@@ -41,6 +43,7 @@ export default async function ClientDetailPage({
     { data: tenantUsers },
     { data: pendingInvites },
     { data: tenantGuardrailsRow },
+    { data: llmConfigRows },
   ] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
     supabase.from('tenant_products').select('product_type, active, tier').eq('tenant_id', tenantId),
@@ -50,6 +53,7 @@ export default async function ClientDetailPage({
     supabase.from('tenant_users').select('user_id, role, created_at').eq('tenant_id', tenantId),
     supabase.from('client_invites').select('email, role, created_at, expires_at').eq('tenant_id', tenantId).is('accepted_at', null),
     supabase.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
+    supabase.from('llm_configs').select('id, product_slug, provider, api_key, model, base_url, validation_status, validation_error, validated_at, credit_info, created_at').eq('tenant_id', tenantId),
   ]);
 
   // Fetch auth user details for team members
@@ -241,6 +245,48 @@ export default async function ClientDetailPage({
                 These rules apply to every bot this client uses. They stack on top of global and bot-type guardrails.
               </p>
               <TenantGuardrailsForm initial={initial} action={saveAction} accentColor="indigo" />
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Client AI Models */}
+      {(() => {
+        type RawLlmRow = { id: string; product_slug: string | null; provider: string; api_key: string; model: string; base_url: string | null; validation_status: 'pending' | 'valid' | 'invalid'; validation_error: string | null; validated_at: string | null; credit_info: { usage: number | null; limit: number | null; is_free_tier: boolean } | null; created_at: string };
+
+        function maskLlm(row: RawLlmRow): LlmConfigCardProps['initial'] {
+          return { id: row.id, provider: row.provider, api_key_masked: '••••' + row.api_key.slice(-4), model: row.model, base_url: row.base_url, validation_status: row.validation_status, validation_error: row.validation_error, validated_at: row.validated_at, credit_info: row.credit_info, created_at: row.created_at };
+        }
+
+        const llmMap: Record<string, RawLlmRow | null> = { __generic__: null };
+        for (const r of (llmConfigRows ?? []) as RawLlmRow[]) llmMap[r.product_slug ?? '__generic__'] = r;
+
+        const BOT_META: Record<string, { name: string; badge: string }> = {
+          support_bot:   { name: 'Support Bot',   badge: 'bg-sky-100 text-sky-700 border-sky-200'          },
+          sales_bot:     { name: 'Sales Bot',     badge: 'bg-violet-100 text-violet-700 border-violet-200' },
+          lifecycle_bot: { name: 'Lifecycle Bot', badge: 'bg-orange-100 text-orange-700 border-orange-200' },
+        };
+
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+              <Cpu size={15} className="text-indigo-500" />
+              <h3 className="text-sm font-semibold text-slate-800">AI Models</h3>
+              <span className="ml-auto text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">
+                Overrides platform defaults
+              </span>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-xs text-slate-400">
+                Configure a dedicated API key and model for this client. These override platform-level defaults and allow separate billing or rate limits per client.
+              </p>
+              <LlmConfigCard label="Client Default" description="Applies to all this client's bots when no per-bot key is set." tenantId={tenantId} productSlug={null} initial={llmMap['__generic__'] ? maskLlm(llmMap['__generic__']!) : null} accent="indigo" />
+              {tpRows.filter(p => p.active).map(p => {
+                const meta = BOT_META[p.product_type] ?? { name: p.product_type, badge: 'bg-gray-100 text-gray-600 border-gray-200' };
+                return (
+                  <LlmConfigCard key={p.product_type} label={meta.name} description={`Override for this client's ${meta.name.toLowerCase()} only.`} tenantId={tenantId} productSlug={p.product_type} initial={llmMap[p.product_type] ? maskLlm(llmMap[p.product_type]!) : null} accent="indigo" />
+                );
+              })}
             </div>
           </div>
         );
