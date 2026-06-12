@@ -373,8 +373,14 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       systemPrompt += '\nNever share or reference personally identifiable information.';
     }
 
-    // ── Resolve LLM config (most-specific valid key wins) ────────────────
-    // Priority: Client Bot → Client Generic → Platform Bot → Platform Generic → env vars
+    // ── Resolve LLM config — 6-level hierarchy (most specific wins) ─────
+    // 1. llm_configs Client Bot      (validated API key + model)
+    // 2. llm_configs Client Generic  (validated API key + model)
+    // 3. llm_configs Platform Bot    (validated API key + model)
+    // 4. llm_configs Platform Generic(validated API key + model)
+    // 5. bot_configs.ai_model        (model only, uses env API key)
+    // 6. products.default_model      (model only, uses env API key)
+    // 7. OPENROUTER_REPLY_MODEL env  (ultimate fallback in claude.ts)
     type LlmRow = { tenant_id: string | null; product_slug: string | null; api_key: string; model: string; base_url: string | null; validation_status: string };
     const llmRows = (llmConfigsRes.data ?? []) as LlmRow[];
 
@@ -385,9 +391,17 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       llmRows.find(r => r.tenant_id === null       && r.product_slug === null)
     );
 
+    // DB-configured model (no custom API key — falls back to env OPENROUTER_API_KEY)
+    const dbModel =
+      botConfig?.ai_model ??
+      (botConfig?.product as Product | null)?.default_model ??
+      null;
+
     const llmOverride = (resolvedLlm?.validation_status === 'valid')
       ? { apiKey: resolvedLlm.api_key, model: resolvedLlm.model, baseUrl: resolvedLlm.base_url ?? undefined }
-      : undefined;
+      : dbModel
+        ? { model: dbModel }   // use DB model with platform env API key
+        : undefined;           // fall through to env var in claude.ts
 
     // ── Generate AI response ──────────────────────────────────────────────
     let aiResult: Awaited<ReturnType<typeof getAIResponse>>;
