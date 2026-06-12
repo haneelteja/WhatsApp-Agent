@@ -29,12 +29,16 @@ create policy "messages: client manager/admin read"
     )
   );
 
--- Escalations
+-- Escalations (no tenant_id — join via conversation)
 create policy "escalations: client manager/admin read"
   on escalations for select
   using (
-    tenant_id = get_user_tenant_id()
-    and get_user_role() in ('client_manager', 'client_admin')
+    exists (
+      select 1 from conversations c
+      where c.id = escalations.conversation_id
+        and c.tenant_id = get_user_tenant_id()
+        and get_user_role() in ('client_manager', 'client_admin')
+    )
   );
 
 -- Contacts (already has a read policy but only covers insert/update, not the role gap)
