@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { notFound } from 'next/navigation';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { ConversationMessages } from '@/components/conversation-messages';
@@ -25,16 +26,29 @@ export default async function ConversationDetailPage({
 }) {
   const { id } = await params;
   const supabase = await getSupabaseServerClient();
+  const admin    = getSupabaseAdminClient();
 
-  const { data: conversation } = await supabase
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { data: tenantUser } = await admin
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single();
+
+  const tenantId = tenantUser?.tenant_id;
+
+  const { data: conversation } = await admin
     .from('conversations')
     .select('*, contacts(phone, name)')
     .eq('id', id)
+    .eq('tenant_id', tenantId ?? '')
     .single();
 
   if (!conversation) notFound();
 
-  const { data: messages } = await supabase
+  const { data: messages } = await admin
     .from('messages')
     .select('id, role, content, timestamp, confidence_score')
     .eq('conversation_id', id)
