@@ -38,7 +38,7 @@ export default async function GuardrailsPage() {
     { data: productCatalog },
     { data: tenantGuardrailsRow },
   ] = await Promise.all([
-    admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
+    admin.from('tenant_products').select('*').eq('tenant_id', tenantId).eq('active', true),
     admin.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)').eq('tenant_id', tenantId),
     admin.from('products').select('slug, default_prompt'),
     admin.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
@@ -77,7 +77,9 @@ export default async function GuardrailsPage() {
   const productDefaults: Record<string, string> = {};
   for (const p of productCatalog ?? []) productDefaults[p.slug] = p.default_prompt;
 
-  const resolvedConfigs = (botConfigs ?? []) as (BotConfig & { product: Product | null })[];
+  const activeSlugs = new Set((products ?? []).map(p => p.product_type));
+  const resolvedConfigs = ((botConfigs ?? []) as (BotConfig & { product: Product | null })[])
+    .filter(c => activeSlugs.has(c.product_slug));
   const tenantGuardrails = (tenantGuardrailsRow?.guardrails_json as LayeredGuardrailsConfig) ?? DEFAULT_TENANT_G;
 
   return (
