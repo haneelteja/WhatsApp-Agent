@@ -2,14 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, Bell, Settings, LogOut, Shield } from 'lucide-react';
+import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const NAV_ITEMS = [
-  { href: '/platform/clients',       label: 'Clients',       icon: Building2 },
-  { href: '/platform/users',         label: 'Team',          icon: Users },
-  { href: '/platform/notifications', label: 'Notifications', icon: Bell },
-  { href: '/platform/settings',      label: 'Settings',      icon: Settings },
+  { href: '/platform/clients',        label: 'Clients',        icon: Building2   },
+  { href: '/platform/users',          label: 'Team',           icon: Users       },
+  { href: '/platform/bot-guardrails', label: 'Bot Guardrails', icon: ShieldCheck },
+  { href: '/platform/notifications',  label: 'Notifications',  icon: Bell        },
+  { href: '/platform/settings',       label: 'Settings',       icon: Settings    },
 ];
 
 export function PlatformNav({ role }: { role: string }) {

@@ -1,7 +1,10 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Bot, Clock, MessageSquare, Users } from 'lucide-react';
+import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert } from 'lucide-react';
+import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
+import { saveTenantGuardrailsByIdAction } from '@/app/actions/tenant-guardrails';
+import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 import { InviteUserForm } from '@/components/platform/InviteUserForm';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
@@ -36,6 +39,7 @@ export default async function ClientDetailPage({
     { count: convCount },
     { data: tenantUsers },
     { data: pendingInvites },
+    { data: tenantGuardrailsRow },
   ] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
     supabase.from('tenant_products').select('product_type, active, tier').eq('tenant_id', tenantId),
@@ -44,6 +48,7 @@ export default async function ClientDetailPage({
     supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
     supabase.from('tenant_users').select('user_id, role, created_at').eq('tenant_id', tenantId),
     supabase.from('client_invites').select('email, role, created_at, expires_at').eq('tenant_id', tenantId).is('accepted_at', null),
+    supabase.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
   ]);
 
   // Fetch auth user details for team members
@@ -255,6 +260,34 @@ export default async function ClientDetailPage({
           </div>
         </div>
       </div>
+
+      {/* Client-wide guardrails (Layer 3) */}
+      {(() => {
+        const DEFAULT_G: LayeredGuardrailsConfig = {
+          blocked_topics: [], blocked_keywords: [], max_response_length: 2000,
+          kb_only_mode: false, no_personal_data: false, no_external_links: false,
+          on_blocked_topic: 'escalate',
+        };
+        const initial = (tenantGuardrailsRow?.guardrails_json as LayeredGuardrailsConfig) ?? DEFAULT_G;
+        const saveAction = saveTenantGuardrailsByIdAction.bind(null, tenantId);
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+              <ShieldAlert size={15} className="text-indigo-500" />
+              <h3 className="text-sm font-semibold text-slate-800">Client-Wide Guardrails</h3>
+              <span className="ml-auto text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">
+                Applies to all bots
+              </span>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-xs text-slate-400 mb-5">
+                These rules apply to every bot this client uses. They stack on top of global and bot-type guardrails.
+              </p>
+              <TenantGuardrailsForm initial={initial} action={saveAction} accentColor="indigo" />
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Webhook info */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getServerClient } from '@alphabot/database';
-import type { BotConfig, Contact, Conversation, PlatformGuardrails, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
+import type { BotConfig, Contact, Conversation, LayeredGuardrailsConfig, PlatformGuardrails, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKB } from '../../services/kb/lookup.js';
@@ -71,8 +71,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const db = getServerClient();
     fastify.log.info({ tenantId, productType }, '[Webhook] processing message');
 
-    // Load WhatsApp config + bot config + platform guardrails in parallel
-    const [wnRes, botConfigRes, platformSettingsRes] = await Promise.all([
+    // Load all 4 guardrail layers in parallel along with WhatsApp config + bot config
+    const [wnRes, botConfigRes, platformSettingsRes, botTypeGuardrailsRes, tenantGuardrailsRes] = await Promise.all([
       db.from('whatsapp_numbers')
         .select('config_json, provider')
         .eq('tenant_id', tenantId)
@@ -88,6 +88,16 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       db.from('platform_settings')
         .select('value')
         .eq('key', 'guardrails')
+        .maybeSingle(),
+      // Layer 2: platform-set defaults per bot type
+      db.from('bot_type_guardrails')
+        .select('guardrails_json')
+        .eq('product_slug', productType)
+        .maybeSingle(),
+      // Layer 3: per-client rules across all their bots
+      db.from('tenant_guardrails')
+        .select('guardrails_json')
+        .eq('tenant_id', tenantId)
         .maybeSingle(),
     ]);
 
@@ -212,7 +222,16 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     // Resolve bot config values (DB row takes precedence over defaults)
     const botConfig = botConfigRes.data as (BotConfig & { product: Product | null }) | null;
-    const platformGuardrails = (platformSettingsRes.data?.value ?? null) as PlatformGuardrails | null;
+
+    // ── 4-layer guardrails ────────────────────────────────────────────────────
+    // Layer 1: global (platform_settings)
+    const globalG   = (platformSettingsRes.data?.value ?? null) as PlatformGuardrails | null;
+    // Layer 2: per-bot-type (bot_type_guardrails)
+    const botTypeG  = (botTypeGuardrailsRes.data?.guardrails_json ?? null) as LayeredGuardrailsConfig | null;
+    // Layer 3: per-client across all bots (tenant_guardrails)
+    const tenantG   = (tenantGuardrailsRes.data?.guardrails_json   ?? null) as LayeredGuardrailsConfig | null;
+    // Layer 4: per-client per-bot (bot_configs.guardrails_json)
+    const clientBotG = botConfig?.guardrails_json ?? null;
 
     const baseSystemPrompt =
       botConfig?.system_prompt ??
@@ -225,21 +244,50 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const confidenceThreshold =
       botConfig?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
-    // ── Effective guardrails (platform + client merged) ───────────────────────
-    const clientGuardrails = botConfig?.guardrails_json;
-    const kbOnly = botConfig?.kb_only_mode ?? platformGuardrails?.enforce_kb_only_globally ?? false;
-    const effectiveMaxLength = Math.min(
-      clientGuardrails?.max_response_length ?? 1000,
-      platformGuardrails?.max_response_length ?? 2000,
-    );
+    // Arrays: UNION across all layers (every layer contributes its list)
     const allBlockedKeywords = [
-      ...(platformGuardrails?.global_blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
-      ...(clientGuardrails?.blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
+      ...(globalG?.global_blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
+      ...(botTypeG?.blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
+      ...(tenantG?.blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
+      ...(clientBotG?.blocked_keywords?.map((k: string) => k.toLowerCase()) ?? []),
     ];
     const allBlockedTopics = [
-      ...(platformGuardrails?.global_blocked_topics ?? []),
-      ...(clientGuardrails?.blocked_topics ?? []),
+      ...(globalG?.global_blocked_topics ?? []),
+      ...(botTypeG?.blocked_topics ?? []),
+      ...(tenantG?.blocked_topics ?? []),
+      ...(clientBotG?.blocked_topics ?? []),
     ];
+
+    // Numbers: MIN across all layers (most restrictive wins)
+    const effectiveMaxLength = Math.min(
+      globalG?.max_response_length   ?? 2000,
+      botTypeG?.max_response_length  ?? 2000,
+      tenantG?.max_response_length   ?? 2000,
+      clientBotG?.max_response_length ?? 1000,
+    );
+
+    // Booleans: OR across all layers (any layer can switch it on)
+    const kbOnly =
+      !!(clientBotG as { kb_only_mode?: boolean } | null)?.kb_only_mode ||
+      !!tenantG?.kb_only_mode   ||
+      !!botTypeG?.kb_only_mode  ||
+      !!globalG?.enforce_kb_only_globally;
+
+    const noExternalLinks =
+      !!clientBotG?.content_filters?.no_external_links ||
+      !!tenantG?.no_external_links  ||
+      !!botTypeG?.no_external_links ||
+      !!globalG?.content_filters?.no_external_links;
+
+    const noPersonalData =
+      !!clientBotG?.content_filters?.no_personal_data ||
+      !!tenantG?.no_personal_data  ||
+      !!botTypeG?.no_personal_data ||
+      !!globalG?.content_filters?.no_personal_data;
+
+    // Most-specific layer wins for action/message strings
+    const onBlockedTopic   = clientBotG?.on_blocked_topic ?? tenantG?.on_blocked_topic ?? botTypeG?.on_blocked_topic ?? 'escalate';
+    const customBlockedMsg = clientBotG?.custom_blocked_message ?? tenantG?.custom_blocked_message ?? botTypeG?.custom_blocked_message;
 
     // ── Check for manual escalation request ────────────────────────────────
     const messageText = incoming.text?.toLowerCase() ?? '';
@@ -255,11 +303,10 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       return;
     }
 
-    // ── Check blocked keywords (guardrails) ───────────────────────────────
+    // ── Check blocked keywords (4-layer guardrails) ───────────────────────
     if (allBlockedKeywords.length > 0 && allBlockedKeywords.some((kw) => messageText.includes(kw))) {
-      const blockedMsg = clientGuardrails?.custom_blocked_message
-        ?? "I'm sorry, I'm not able to help with that topic.";
-      if ((clientGuardrails?.on_blocked_topic ?? 'escalate') === 'escalate' && conversation.status === 'open') {
+      const blockedMsg = customBlockedMsg ?? "I'm sorry, I'm not able to help with that topic.";
+      if (onBlockedTopic === 'escalate' && conversation.status === 'open') {
         await escalateConversation(conversation, 'Blocked keyword detected in message');
         await gateway.sendMessage(config.phone_number_id, config.access_token, {
           type: 'text',
@@ -310,15 +357,15 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       empathetic:   'Be empathetic, warm and understanding in every response.',
       formal:       'Use formal, business-appropriate language at all times.',
     };
-    systemPrompt += `\n\nTone: ${toneMap[clientGuardrails?.tone ?? 'professional']}`;
+    systemPrompt += `\n\nTone: ${toneMap[clientBotG?.tone ?? 'professional']}`;
 
-    if (clientGuardrails?.content_filters?.no_external_links || platformGuardrails?.content_filters?.no_external_links) {
+    if (noExternalLinks) {
       systemPrompt += '\nNever include external URLs or links in your responses.';
     }
-    if (clientGuardrails?.content_filters?.no_phone_numbers_in_response) {
+    if (clientBotG?.content_filters?.no_phone_numbers_in_response) {
       systemPrompt += '\nDo not include phone numbers in your responses.';
     }
-    if (clientGuardrails?.content_filters?.no_personal_data || platformGuardrails?.content_filters?.no_personal_data) {
+    if (noPersonalData) {
       systemPrompt += '\nNever share or reference personally identifiable information.';
     }
 

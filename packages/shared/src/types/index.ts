@@ -102,6 +102,35 @@ export interface BotConfig {
   updated_by: string | null;
 }
 
+// ─── Layered Guardrail Config (shared shape for Layers 2 & 3) ────────────────
+// Used by bot_type_guardrails (Layer 2) and tenant_guardrails (Layer 3).
+// Layer 1 (global) uses PlatformGuardrails; Layer 4 (per-client-bot) uses GuardrailsConfig.
+
+export interface LayeredGuardrailsConfig {
+  blocked_topics: string[];
+  blocked_keywords: string[];
+  max_response_length: number;
+  kb_only_mode: boolean;
+  no_personal_data: boolean;
+  no_external_links: boolean;
+  on_blocked_topic: 'escalate' | 'ignore' | 'custom_message';
+  custom_blocked_message?: string;
+}
+
+export interface BotTypeGuardrails {
+  product_slug: string;
+  guardrails_json: LayeredGuardrailsConfig;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface TenantGuardrails {
+  tenant_id: string;
+  guardrails_json: LayeredGuardrailsConfig;
+  updated_at: string;
+  updated_by: string | null;
+}
+
 // ─── Platform Settings ────────────────────────────────────────────────────────
 
 export interface PlatformGuardrails {

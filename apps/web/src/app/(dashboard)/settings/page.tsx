@@ -1,8 +1,10 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { Building2, Phone, Bot, Link2, ShieldAlert } from 'lucide-react';
+import { Building2, Phone, Bot, Link2, ShieldAlert, Shield } from 'lucide-react';
 import { BotConfigForm } from '@/components/dashboard/BotConfigForm';
-import type { BotConfig, Product } from '@alphabot/shared';
+import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
+import { saveTenantGuardrailsAction } from '@/app/actions/tenant-guardrails';
+import type { BotConfig, Product, LayeredGuardrailsConfig } from '@alphabot/shared';
 
 const PRODUCT_COLORS: Record<string, string> = {
   support_bot:   'bg-sky-50 text-sky-600',
@@ -27,13 +29,14 @@ export default async function SettingsPage() {
   const tenantId = tenantUser?.tenant_id ?? '';
 
   // Fetch all data via admin client using the resolved tenant_id
-  const [{ data: tenant }, { data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }] =
+  const [{ data: tenant }, { data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }, { data: tenantGuardrailsRow }] =
     await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
       admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
       admin.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)').eq('tenant_id', tenantId),
       admin.from('products').select('slug, default_prompt'),
+      admin.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
     ]);
 
   const apiBase    = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
@@ -142,6 +145,29 @@ export default async function SettingsPage() {
           </div>
         )}
       </Section>
+
+      {/* General guardrails — apply across ALL bots (Layer 3) */}
+      {(() => {
+        const DEFAULT_G: LayeredGuardrailsConfig = {
+          blocked_topics: [], blocked_keywords: [], max_response_length: 2000,
+          kb_only_mode: false, no_personal_data: false, no_external_links: false,
+          on_blocked_topic: 'escalate',
+        };
+        const initial = (tenantGuardrailsRow?.guardrails_json as LayeredGuardrailsConfig) ?? DEFAULT_G;
+        return (
+          <Section icon={<Shield size={16} />} title="General Guardrails (All Bots)">
+            <div className="px-5 py-4 space-y-1">
+              <p className="text-xs text-gray-400">
+                Rules set here apply across <span className="font-medium text-gray-600">every bot</span> you use — no need to repeat them per-bot.
+                These stack on top of any platform-level rules, and per-bot settings can add further restrictions.
+              </p>
+            </div>
+            <div className="px-5 pb-5">
+              <TenantGuardrailsForm initial={initial} action={saveTenantGuardrailsAction} accentColor="emerald" />
+            </div>
+          </Section>
+        );
+      })()}
 
       {/* Bot Configuration (editable) */}
       <Section icon={<ShieldAlert size={16} />} title="Bot Configuration & Guardrails">
