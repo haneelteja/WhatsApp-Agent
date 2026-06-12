@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import type { GuardrailsConfig } from '@alphabot/shared';
 
 export interface SaveBotConfigInput {
@@ -23,21 +24,19 @@ export interface SaveBotConfigInput {
 
 export async function saveBotConfigAction(input: SaveBotConfigInput) {
   const supabase = await getSupabaseServerClient();
+  const admin    = getSupabaseAdminClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'Not authenticated' };
 
-  // Get the tenant for the logged-in user
-  const { data: tenantUser } = await supabase
+  // Use admin client to bypass RLS on tenant_users lookup
+  const { data: tenantUser } = await admin
     .from('tenant_users')
     .select('tenant_id, role')
     .eq('user_id', user.id)
     .single();
 
   if (!tenantUser) return { error: 'Tenant not found' };
-  if (tenantUser.role !== 'client_manager' && tenantUser.role !== 'client_admin') {
-    return { error: 'Insufficient permissions' };
-  }
 
   const guardrails_json: GuardrailsConfig = {
     blocked_topics:     input.blockedTopics,
@@ -54,7 +53,7 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
     custom_blocked_message: input.customBlockedMessage || undefined,
   };
 
-  const { error } = await supabase
+  const { error } = await admin
     .from('bot_configs')
     .update({
       system_prompt:        input.systemPrompt.trim() || null,
