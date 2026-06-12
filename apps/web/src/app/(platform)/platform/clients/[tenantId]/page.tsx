@@ -1,7 +1,8 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Bot, Clock, MessageSquare, Copy } from 'lucide-react';
+import { ArrowLeft, Bot, Clock, MessageSquare, Users } from 'lucide-react';
+import { InviteUserForm } from '@/components/platform/InviteUserForm';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
   support_bot:   { name: 'Support Bot',   desc: 'Q&A, issue resolution, escalations',  textColor: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200' },
@@ -33,13 +34,30 @@ export default async function ClientDetailPage({
     { data: botConfigs },
     { data: trials },
     { count: convCount },
+    { data: tenantUsers },
   ] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
     supabase.from('tenant_products').select('product_type, active, tier').eq('tenant_id', tenantId),
     supabase.from('bot_configs').select('product_slug, ai_model, confidence_threshold, system_prompt').eq('tenant_id', tenantId),
     supabase.from('free_trials').select('ends_at, status, allowed_model, product_slug').eq('tenant_id', tenantId),
     supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+    supabase.from('tenant_users').select('user_id, role, created_at').eq('tenant_id', tenantId),
   ]);
+
+  // Fetch auth user details for team members
+  const userIds = (tenantUsers ?? []).map(u => u.user_id);
+  const authUsers: Record<string, { email: string; name: string }> = {};
+  if (userIds.length > 0) {
+    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    for (const u of users) {
+      if (userIds.includes(u.id)) {
+        authUsers[u.id] = {
+          email: u.email ?? '',
+          name:  (u.user_metadata?.['full_name'] as string) ?? u.email ?? u.id,
+        };
+      }
+    }
+  }
 
   if (!tenant) notFound();
 
@@ -159,6 +177,39 @@ export default async function ClientDetailPage({
           </div>
         </div>
       )}
+
+      {/* Team & Invites */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+          <Users size={15} className="text-indigo-500" />
+          <h3 className="text-sm font-semibold text-slate-800">Team Members</h3>
+          <span className="ml-auto text-xs text-slate-400">{(tenantUsers ?? []).length} member{(tenantUsers ?? []).length !== 1 ? 's' : ''}</span>
+        </div>
+        <div className="px-6 py-4 space-y-4">
+          {(tenantUsers ?? []).length > 0 && (
+            <div className="divide-y divide-slate-50">
+              {(tenantUsers ?? []).map(u => {
+                const info = authUsers[u.user_id];
+                return (
+                  <div key={u.user_id} className="flex items-center justify-between py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{info?.name ?? u.user_id}</p>
+                      <p className="text-xs text-slate-400">{info?.email ?? ''}</p>
+                    </div>
+                    <span className="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-medium capitalize">
+                      {u.role.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Invite a new member</p>
+            <InviteUserForm tenantId={tenantId} />
+          </div>
+        </div>
+      </div>
 
       {/* Webhook info */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
