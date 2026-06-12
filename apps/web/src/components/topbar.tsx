@@ -16,7 +16,7 @@ function getTitle(pathname: string): string {
   return PAGE_TITLES[pathname] ?? 'Alphabot';
 }
 
-export function Topbar({ email }: { email: string }) {
+export function Topbar({ email, tenantName }: { email: string; tenantName: string }) {
   const pathname = usePathname();
   const title    = getTitle(pathname);
   const initial  = email[0]?.toUpperCase() ?? 'U';
@@ -26,7 +26,7 @@ export function Topbar({ email }: { email: string }) {
     <header className="h-[64px] shrink-0 flex items-center justify-between px-6 bg-white border-b border-green-100">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-green-600/50 font-medium">Alphabot</span>
+        <span className="text-green-600/50 font-medium">{tenantName}</span>
         <ChevronRight size={14} className="text-green-300" />
         <span className={`font-semibold ${isDetail ? 'text-green-600/50' : 'text-gray-800'}`}>
           {isDetail ? 'Conversations' : title}

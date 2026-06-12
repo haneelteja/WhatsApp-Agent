@@ -150,5 +150,6 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
   // Mark invite as accepted
   await admin.from('client_invites').update({ accepted_at: new Date().toISOString() }).eq('token', token);
 
+  revalidatePath(`/platform/clients/${invite.tenant_id}`);
   return { success: true, email: invite.email };
 }

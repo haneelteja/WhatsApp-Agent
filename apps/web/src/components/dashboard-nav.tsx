@@ -22,7 +22,7 @@ const navItems = [
   { href: '/settings',       label: 'Settings',       icon: Settings },
 ];
 
-export function DashboardNav() {
+export function DashboardNav({ tenantName, userRole }: { tenantName: string; userRole: string }) {
   const pathname = usePathname();
   const router   = useRouter();
   const supabase = getSupabaseBrowserClient();
@@ -32,6 +32,8 @@ export function DashboardNav() {
     router.push('/login');
   }
 
+  const roleLabel = userRole.replace(/_/g, ' ');
+
   return (
     <aside className="w-[240px] shrink-0 flex flex-col h-screen bg-[#071c0f] border-r border-emerald-900/40">
       {/* Logo */}
@@ -39,9 +41,9 @@ export function DashboardNav() {
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-900/60 shrink-0">
           <Bot size={15} className="text-white" />
         </div>
-        <div>
-          <p className="text-white font-bold text-sm tracking-tight">Alphabot</p>
-          <p className="text-emerald-700 text-[10px] leading-none mt-0.5 font-medium">AI Agent Platform</p>
+        <div className="min-w-0">
+          <p className="text-white font-bold text-sm tracking-tight truncate">{tenantName}</p>
+          <p className="text-emerald-600 text-[10px] leading-none mt-0.5 font-medium capitalize">{roleLabel}</p>
         </div>
       </div>
 
