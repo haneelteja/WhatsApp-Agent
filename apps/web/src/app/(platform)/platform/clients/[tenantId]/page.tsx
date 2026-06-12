@@ -63,6 +63,13 @@ export default async function ClientDetailPage({
 
   if (!tenant) notFound();
 
+  // Filter out pending invites for emails that are already active members
+  type InviteRow = { email: string; role: string; created_at: string; expires_at: string };
+  const activeEmails = new Set(Object.values(authUsers).map(u => u.email.toLowerCase()));
+  const filteredPendingInvites: InviteRow[] = ((pendingInvites ?? []) as InviteRow[]).filter(
+    (inv: InviteRow) => !activeEmails.has(inv.email.toLowerCase())
+  );
+
   const tpRows    = (products   ?? []) as TenantProductRow[];
   const bcRows    = (botConfigs ?? []) as BotConfigRow[];
   const trialRows = (trials     ?? []) as TrialRow[];
@@ -187,7 +194,7 @@ export default async function ClientDetailPage({
           <h3 className="text-sm font-semibold text-slate-800">Team Members</h3>
           <span className="ml-auto text-xs text-slate-400">
             {(tenantUsers ?? []).length} active
-            {(pendingInvites ?? []).length > 0 && ` · ${(pendingInvites ?? []).length} pending`}
+            {filteredPendingInvites.length > 0 && ` · ${filteredPendingInvites.length} pending`}
           </span>
         </div>
         <div className="px-6 py-4 space-y-4">
@@ -214,11 +221,11 @@ export default async function ClientDetailPage({
             </div>
           )}
 
-          {(pendingInvites ?? []).length > 0 && (
+          {filteredPendingInvites.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Pending Invites</p>
               <div className="divide-y divide-slate-50">
-                {(pendingInvites ?? []).map(inv => {
+                {filteredPendingInvites.map(inv => {
                   const isExpired = new Date(inv.expires_at) < new Date();
                   const sentAt = new Date(inv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                   return (
