@@ -1,10 +1,7 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { Building2, Phone, Bot, Link2, ShieldAlert, Shield } from 'lucide-react';
-import { BotConfigForm } from '@/components/dashboard/BotConfigForm';
-import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
-import { saveTenantGuardrailsAction } from '@/app/actions/tenant-guardrails';
-import type { BotConfig, Product, LayeredGuardrailsConfig } from '@alphabot/shared';
+import { Building2, Phone, Bot, Link2, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
 
 const PRODUCT_COLORS: Record<string, string> = {
   support_bot:   'bg-sky-50 text-sky-600',
@@ -29,59 +26,17 @@ export default async function SettingsPage() {
   const tenantId = tenantUser?.tenant_id ?? '';
 
   // Fetch all data via admin client using the resolved tenant_id
-  const [{ data: tenant }, { data: numbers }, { data: products }, { data: botConfigs }, { data: productCatalog }, { data: tenantGuardrailsRow }] =
+  const [{ data: tenant }, { data: numbers }, { data: products }] =
     await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
       admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
-      admin.from('bot_configs').select('*, product:products(slug, default_prompt, default_model, name)').eq('tenant_id', tenantId),
-      admin.from('products').select('slug, default_prompt'),
-      admin.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
     ]);
 
   const apiBase    = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
   const webhookUrl = tenant?.id
     ? `${apiBase}/api/webhook/${tenant.id}/support_bot`
     : null;
-
-  // Auto-seed bot_configs for active products that don't have one yet
-  if (tenant?.id && (products ?? []).length > 0) {
-    const existingSlugs = new Set((botConfigs ?? []).map((c) => c.product_slug));
-    const missing = (products ?? []).filter((p) => p.active && !existingSlugs.has(p.product_type));
-    for (const p of missing) {
-      await admin.from('bot_configs').insert({
-        tenant_id:            tenant.id,
-        product_slug:         p.product_type,
-        system_prompt:        null,
-        ai_model:             null,
-        confidence_threshold: 0.6,
-        kb_only_mode:         false,
-        escalation_triggers:  ['speak to human', 'talk to agent', 'human please', 'escalate', 'complaint', 'refund', 'dispute', 'urgent'],
-        guardrails_json: {
-          blocked_topics: [], blocked_keywords: [], max_response_length: 1000,
-          tone: 'professional',
-          content_filters: { no_personal_data: false, no_external_links: false, no_phone_numbers_in_response: false },
-          on_blocked_topic: 'escalate', on_low_confidence: 'escalate',
-        },
-      });
-    }
-    // Reload if we inserted any
-    if (missing.length > 0) {
-      const { data: refreshed } = await admin
-        .from('bot_configs')
-        .select('*, product:products(slug, default_prompt, default_model, name)')
-        .eq('tenant_id', tenant.id);
-      botConfigs?.splice(0, botConfigs.length, ...(refreshed ?? []));
-    }
-  }
-
-  // Build product default prompts map
-  const productDefaults: Record<string, string> = {};
-  for (const p of productCatalog ?? []) {
-    productDefaults[p.slug] = p.default_prompt;
-  }
-
-  const resolvedConfigs = (botConfigs ?? []) as (BotConfig & { product: Product | null })[];
 
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-5">
@@ -146,39 +101,13 @@ export default async function SettingsPage() {
         )}
       </Section>
 
-      {/* General guardrails — apply across ALL bots (Layer 3) */}
-      {(() => {
-        const DEFAULT_G: LayeredGuardrailsConfig = {
-          blocked_topics: [], blocked_keywords: [], max_response_length: 2000,
-          kb_only_mode: false, no_personal_data: false, no_external_links: false,
-          on_blocked_topic: 'escalate',
-        };
-        const initial = (tenantGuardrailsRow?.guardrails_json as LayeredGuardrailsConfig) ?? DEFAULT_G;
-        return (
-          <Section icon={<Shield size={16} />} title="General Guardrails (All Bots)">
-            <div className="px-5 py-4 space-y-1">
-              <p className="text-xs text-gray-400">
-                Rules set here apply across <span className="font-medium text-gray-600">every bot</span> you use — no need to repeat them per-bot.
-                These stack on top of any platform-level rules, and per-bot settings can add further restrictions.
-              </p>
-            </div>
-            <div className="px-5 pb-5">
-              <TenantGuardrailsForm initial={initial} action={saveTenantGuardrailsAction} accentColor="emerald" />
-            </div>
-          </Section>
-        );
-      })()}
-
-      {/* Bot Configuration (editable) */}
-      <Section icon={<ShieldAlert size={16} />} title="Bot Configuration & Guardrails">
-        <div className="px-5 py-4 space-y-1">
-          <p className="text-xs text-gray-400">
-            Configure system prompts, KB-only mode, tone, blocked topics, and response guardrails per bot.
-            Click a bot to expand its settings.
+      {/* Guardrails moved notice */}
+      <Section icon={<ShieldCheck size={16} />} title="Guardrails">
+        <div className="px-5 py-4">
+          <p className="text-xs text-gray-500">
+            Bot guardrails (general rules &amp; per-bot configuration) are managed in the dedicated{' '}
+            <Link href="/guardrails" className="text-emerald-600 font-semibold underline">Guardrails</Link> section.
           </p>
-        </div>
-        <div className="px-5 pb-5">
-          <BotConfigForm configs={resolvedConfigs} productDefaults={productDefaults} />
         </div>
       </Section>
 

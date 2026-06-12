@@ -11,17 +11,19 @@ import {
   LogOut,
   Bot,
   BarChart2,
+  ShieldCheck,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 const navItems = [
   { href: '/dashboard',      label: 'Overview',       icon: LayoutDashboard },
-  { href: '/conversations',  label: 'Conversations',  icon: MessageSquare },
-  { href: '/escalations',    label: 'Escalations',    icon: AlertCircle },
-  { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
-  { href: '/analytics',      label: 'Analytics',      icon: BarChart2 },
-  { href: '/settings',       label: 'Settings',       icon: Settings },
+  { href: '/conversations',  label: 'Conversations',  icon: MessageSquare   },
+  { href: '/escalations',    label: 'Escalations',    icon: AlertCircle     },
+  { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
+  { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
+  { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
+  { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
 
 export function DashboardNav({ tenantName, userRole }: { tenantName: string; userRole: string }) {

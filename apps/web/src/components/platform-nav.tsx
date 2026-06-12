@@ -2,15 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck } from 'lucide-react';
+import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck, Box } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const NAV_ITEMS = [
-  { href: '/platform/clients',        label: 'Clients',        icon: Building2   },
-  { href: '/platform/users',          label: 'Team',           icon: Users       },
-  { href: '/platform/bot-guardrails', label: 'Bot Guardrails', icon: ShieldCheck },
-  { href: '/platform/notifications',  label: 'Notifications',  icon: Bell        },
-  { href: '/platform/settings',       label: 'Settings',       icon: Settings    },
+  { href: '/platform/clients',    label: 'Clients',    icon: Building2  },
+  { href: '/platform/users',      label: 'Team',       icon: Users      },
+  { href: '/platform/products',   label: 'Products',   icon: Box        },
+  { href: '/platform/guardrails', label: 'Guardrails', icon: ShieldCheck },
+  { href: '/platform/notifications', label: 'Notifications', icon: Bell },
+  { href: '/platform/settings',   label: 'Settings',   icon: Settings   },
 ];
 
 export function PlatformNav({ role }: { role: string }) {
@@ -75,6 +76,7 @@ export function PlatformNav({ role }: { role: string }) {
           </span>
         </div>
         <button
+          type="button"
           onClick={handleSignOut}
           className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm text-slate-500 hover:bg-white/5 hover:text-slate-200 transition-all"
         >

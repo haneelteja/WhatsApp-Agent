@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert } from 'lucide-react';
 import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
+import { ClientProductsManager } from '@/components/platform/ClientProductsManager';
 import { saveTenantGuardrailsByIdAction } from '@/app/actions/tenant-guardrails';
 import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 import { InviteUserForm } from '@/components/platform/InviteUserForm';
@@ -120,59 +121,15 @@ export default async function ClientDetailPage({
         ))}
       </div>
 
-      {/* Products */}
+      {/* Products — interactive manager */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100">
           <h3 className="text-sm font-semibold text-slate-800">Assigned Products</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Bot configurations for this client</p>
+          <p className="text-xs text-slate-400 mt-0.5">Activate or deactivate bots for this client</p>
         </div>
-
-        {tpRows.length === 0 ? (
-          <div className="px-6 py-10 text-center">
-            <p className="text-sm text-slate-400">No products assigned yet.</p>
-          </div>
-        ) : (
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {tpRows.map(tp => {
-              const cfg    = PRODUCT_CONFIG[tp.product_type];
-              const botCfg = bcRows.find(bc => bc.product_slug === tp.product_type);
-              if (!cfg) return null;
-
-              return (
-                <div
-                  key={tp.product_type}
-                  className={`rounded-xl border p-4 ${tp.active ? `${cfg.bg} ${cfg.border}` : 'bg-slate-50 border-slate-200 opacity-60'}`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${tp.active ? 'bg-white border border-white/50' : 'bg-slate-100'}`}>
-                      <Bot size={14} className={tp.active ? cfg.textColor : 'text-slate-400'} />
-                    </div>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${tp.active ? 'bg-white/80 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                      {tp.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-
-                  <p className={`text-sm font-semibold ${tp.active ? cfg.textColor : 'text-slate-500'}`}>{cfg.name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{cfg.desc}</p>
-
-                  {botCfg && (
-                    <div className="mt-3 pt-3 border-t border-white/40 space-y-1">
-                      <p className="text-[10px] text-slate-500">
-                        Model: <span className="font-semibold text-slate-700">{botCfg.ai_model ?? 'product default'}</span>
-                      </p>
-                      <p className="text-[10px] text-slate-500">
-                        Confidence: <span className="font-semibold text-slate-700">{botCfg.confidence_threshold}</span>
-                      </p>
-                      <p className="text-[10px] text-slate-500">
-                        Tier: <span className="font-semibold text-slate-700 capitalize">{tp.tier}</span>
-                      </p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="p-4">
+          <ClientProductsManager tenantId={tenantId} initialProducts={tpRows} />
+        </div>
       </div>
 
       {/* Trial info */}
