@@ -38,49 +38,49 @@ export async function sendInviteAction(tenantId: string, email: string, role: st
 
   if (inviteError || !invite) return { error: inviteError?.message ?? 'Failed to create invite' };
 
-  // Send email via Resend
+  // Send email via Brevo
   const webUrl    = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
   const inviteUrl = `${webUrl}/invite/${invite.token}`;
-  const fromEmail = process.env['RESEND_FROM_EMAIL'] ?? 'noreply@alphabot.in';
-  const apiKey    = process.env['RESEND_API_KEY'];
+  const apiKey    = process.env['BREVO_API_KEY'];
 
-  if (apiKey && !apiKey.startsWith('re_...')) {
-    const res = await fetch('https://api.resend.com/emails', {
+  if (apiKey) {
+    const emailHtml = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;">
+        <div style="margin-bottom:24px;">
+          <span style="font-weight:700;font-size:18px;color:#111">Alphabot</span>
+        </div>
+        <h2 style="font-size:20px;font-weight:700;color:#111;margin:0 0 8px">You've been invited</h2>
+        <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 24px">
+          You've been invited to join <strong>${tenant.name}</strong> as a <strong>${role.replace(/_/g, ' ')}</strong> on Alphabot.
+        </p>
+        <a href="${inviteUrl}"
+           style="display:inline-block;background:#059669;color:#fff;font-weight:600;font-size:14px;padding:12px 24px;border-radius:8px;text-decoration:none;">
+          Accept Invitation
+        </a>
+        <p style="color:#999;font-size:12px;margin-top:32px;line-height:1.6">
+          This link expires in 7 days. If you didn't expect this email, you can ignore it.<br/>
+          Or copy this URL: ${inviteUrl}
+        </p>
+      </div>
+    `;
+
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type':  'application/json',
+        'api-key':      apiKey,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from:    `Alphabot <${fromEmail}>`,
-        to:      [email],
-        subject: `You've been invited to ${tenant.name} on Alphabot`,
-        html: `
-          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;">
-            <div style="margin-bottom:24px;">
-              <span style="font-weight:700;font-size:18px;color:#111">Alphabot</span>
-            </div>
-            <h2 style="font-size:20px;font-weight:700;color:#111;margin:0 0 8px">You've been invited</h2>
-            <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 24px">
-              You've been invited to join <strong>${tenant.name}</strong> as a <strong>${role.replace(/_/g, ' ')}</strong> on Alphabot.
-            </p>
-            <a href="${inviteUrl}"
-               style="display:inline-block;background:#059669;color:#fff;font-weight:600;font-size:14px;padding:12px 24px;border-radius:8px;text-decoration:none;">
-              Accept Invitation
-            </a>
-            <p style="color:#999;font-size:12px;margin-top:32px;line-height:1.6">
-              This link expires in 7 days. If you didn't expect this email, you can ignore it.<br/>
-              Or copy this URL: ${inviteUrl}
-            </p>
-          </div>
-        `,
+        sender:      { name: 'Alphabot', email: 'pega2023test@gmail.com' },
+        to:          [{ email }],
+        subject:     `You've been invited to ${tenant.name} on Alphabot`,
+        htmlContent: emailHtml,
       }),
     });
 
     if (!res.ok) {
       const body = await res.text();
-      console.error('[sendInvite] Resend error:', body);
-      // Don't block — invite record is created, share the link manually
+      console.error('[sendInvite] Brevo error:', body);
     }
   }
 
