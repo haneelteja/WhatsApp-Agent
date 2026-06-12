@@ -1,4 +1,6 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { MessageSquare, AlertCircle, CheckCircle2, Bot, ArrowRight, TrendingUp } from 'lucide-react';
 
@@ -17,6 +19,18 @@ const PRODUCT_LABELS: Record<string, { label: string; color: string }> = {
 
 export default async function DashboardPage() {
   const supabase = await getSupabaseServerClient();
+  const admin    = getSupabaseAdminClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { data: tenantUser } = await admin
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single();
+
+  const tid = tenantUser?.tenant_id ?? '';
 
   const [
     { count: openCount },
@@ -25,13 +39,14 @@ export default async function DashboardPage() {
     { count: totalCount },
     { data: recent },
   ] = await Promise.all([
-    supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'open'),
-    supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'escalated'),
-    supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('status', 'resolved'),
-    supabase.from('conversations').select('*', { count: 'exact', head: true }),
-    supabase
+    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tid).eq('status', 'open'),
+    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tid).eq('status', 'escalated'),
+    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tid).eq('status', 'resolved'),
+    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tid),
+    admin
       .from('conversations')
       .select('id, status, product_type, updated_at, contacts(name, phone)')
+      .eq('tenant_id', tid)
       .order('updated_at', { ascending: false })
       .limit(8),
   ]);

@@ -1,4 +1,6 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { MessageSquare, Search } from 'lucide-react';
 
@@ -24,12 +26,27 @@ const AVATAR_COLORS = [
 
 export default async function ConversationsPage() {
   const supabase = await getSupabaseServerClient();
+  const admin    = getSupabaseAdminClient();
 
-  const { data: conversations } = await supabase
-    .from('conversations')
-    .select('*, contacts(phone, name)')
-    .order('updated_at', { ascending: false })
-    .limit(100);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { data: tenantUser } = await admin
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single();
+
+  const tenantId = tenantUser?.tenant_id;
+
+  const { data: conversations } = tenantId
+    ? await admin
+        .from('conversations')
+        .select('*, contacts(phone, name)')
+        .eq('tenant_id', tenantId)
+        .order('updated_at', { ascending: false })
+        .limit(100)
+    : { data: [] };
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
