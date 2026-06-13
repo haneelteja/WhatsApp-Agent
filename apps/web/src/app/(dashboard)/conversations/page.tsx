@@ -3,6 +3,8 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { MessageSquare } from 'lucide-react';
+import { Suspense } from 'react';
+import { BotFilterBar } from '@/components/dashboard/BotFilterBar';
 import type { ContactSentiment } from '@alphabot/shared';
 
 const STATUS_STYLES: Record<string, { dot: string; badge: string }> = {
@@ -32,7 +34,16 @@ const AVATAR_COLORS = [
   'bg-amber-100 text-amber-700',
 ];
 
-export default async function ConversationsPage() {
+const VALID_BOTS = new Set(['support_bot', 'sales_bot', 'lifecycle_bot']);
+
+export default async function ConversationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ bot?: string }>;
+}) {
+  const { bot: botParam } = await searchParams;
+  const botFilter = botParam && VALID_BOTS.has(botParam) ? botParam : null;
+
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
 
@@ -47,45 +58,70 @@ export default async function ConversationsPage() {
 
   const tenantId = tenantUser?.tenant_id;
 
-  const { data: conversations } = tenantId
-    ? await admin
-        .from('conversations')
-        .select('*, contacts(phone, name, memory_json)')
-        .eq('tenant_id', tenantId)
-        .order('updated_at', { ascending: false })
-        .limit(100)
-    : { data: [] };
+  const [convResult, productsResult] = await Promise.all([
+    tenantId
+      ? (() => {
+          let q = admin
+            .from('conversations')
+            .select('*, contacts(phone, name, memory_json)')
+            .eq('tenant_id', tenantId)
+            .order('updated_at', { ascending: false })
+            .limit(100);
+          if (botFilter) q = q.eq('product_type', botFilter);
+          return q;
+        })()
+      : Promise.resolve({ data: [] as unknown[] }),
+    tenantId
+      ? admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const conversations = (convResult as { data: unknown[] | null }).data ?? [];
+  const activeSlugs   = ((productsResult as { data: { product_type: string }[] | null }).data ?? []).map(p => p.product_type);
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Conversations</h2>
-          <p className="text-sm text-gray-500 mt-0.5">All customer conversations across your bots</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {botFilter ? `${PRODUCT_LABELS[botFilter]?.label ?? botFilter} bot conversations` : 'All customer conversations across your bots'}
+          </p>
         </div>
-        {!!conversations?.length && (
-          <span className="text-xs font-semibold text-gray-500 bg-white border border-green-100 px-3 py-1.5 rounded-full shadow-sm">
+        {!!conversations.length && (
+          <span className="text-xs font-semibold text-gray-500 bg-white border border-green-100 px-3 py-1.5 rounded-full shadow-sm self-start">
             {conversations.length} total
           </span>
         )}
       </div>
 
-      {!conversations?.length ? (
+      {/* Bot filter tabs — only visible when 2+ bots are active */}
+      <Suspense>
+        <BotFilterBar activeSlugs={activeSlugs} current={botFilter} />
+      </Suspense>
+
+      {!conversations.length ? (
         <div className="bg-white rounded-2xl border border-green-100 shadow-sm flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center mb-4 border border-green-100">
             <MessageSquare size={28} className="text-green-400" />
           </div>
           <p className="text-sm font-semibold text-gray-600">No conversations yet</p>
           <p className="text-xs text-gray-400 mt-1 max-w-xs">
-            Send a WhatsApp message to your bot number to start.
+            {botFilter ? 'No conversations for this bot. Switch to All or try another bot.' : 'Send a WhatsApp message to your bot number to start.'}
           </p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
           <div className="divide-y divide-green-50">
-            {conversations.map((conv) => {
-              const contact = conv.contacts as { phone: string; name: string | null; memory_json: Record<string, unknown> | null } | null;
+            {(conversations as {
+              id: string;
+              status: string;
+              product_type: string;
+              updated_at: string;
+              contacts: { phone: string; name: string | null; memory_json: Record<string, unknown> | null } | null;
+            }[]).map((conv) => {
+              const contact = conv.contacts;
               const displayName = contact?.name ?? contact?.phone ?? 'Unknown';
               const style    = STATUS_STYLES[conv.status] ?? STATUS_STYLES.resolved;
               const product  = PRODUCT_LABELS[conv.product_type];
@@ -133,7 +169,7 @@ export default async function ConversationsPage() {
                         {sentimentMeta.emoji} {sentimentMeta.label}
                       </span>
                     )}
-                    {product && (
+                    {product && !botFilter && (
                       <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium ${product.color}`}>
                         {product.label}
                       </span>

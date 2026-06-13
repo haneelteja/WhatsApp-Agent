@@ -1,7 +1,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert, Cpu } from 'lucide-react';
+import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert, Cpu, Phone } from 'lucide-react';
 import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
 import { ClientProductsManager } from '@/components/platform/ClientProductsManager';
 import { LlmConfigCard } from '@/components/LlmConfigCard';
@@ -9,6 +9,7 @@ import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { saveTenantGuardrailsByIdAction } from '@/app/actions/tenant-guardrails';
 import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 import { InviteUserForm } from '@/components/platform/InviteUserForm';
+import { WhatsAppNumberSection } from '@/components/platform/WhatsAppNumberSection';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
   support_bot:   { name: 'Support Bot',   desc: 'Q&A, issue resolution, escalations',  textColor: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200' },
@@ -44,6 +45,7 @@ export default async function ClientDetailPage({
     { data: pendingInvites },
     { data: tenantGuardrailsRow },
     { data: llmConfigRows },
+    { data: waNumbers },
   ] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
     supabase.from('tenant_products').select('product_type, active, tier').eq('tenant_id', tenantId),
@@ -54,6 +56,7 @@ export default async function ClientDetailPage({
     supabase.from('client_invites').select('email, role, created_at, expires_at').eq('tenant_id', tenantId).is('accepted_at', null),
     supabase.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
     supabase.from('llm_configs').select('id, product_slug, provider, api_key, model, base_url, validation_status, validation_error, validated_at, credit_info, created_at').eq('tenant_id', tenantId),
+    supabase.from('whatsapp_numbers').select('id, phone_number, provider, label, config_json, product_slug').eq('tenant_id', tenantId).eq('active', true),
   ]);
 
   // Fetch auth user details for team members
@@ -133,6 +136,25 @@ export default async function ClientDetailPage({
         </div>
         <div className="p-4">
           <ClientProductsManager tenantId={tenantId} initialProducts={tpRows} />
+        </div>
+      </div>
+
+      {/* WhatsApp Numbers */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+          <Phone size={15} className="text-indigo-500" />
+          <h3 className="text-sm font-semibold text-slate-800">WhatsApp Numbers</h3>
+          <span className="ml-auto text-xs text-slate-400">One number per bot</span>
+        </div>
+        <div className="px-6 py-4">
+          <p className="text-xs text-slate-400 mb-4">
+            Each active bot needs its own WhatsApp number. The webhook URL for each bot is shown below.
+          </p>
+          <WhatsAppNumberSection
+            tenantId={tenantId}
+            activeBots={tpRows.filter(p => p.active)}
+            waNumbers={(waNumbers ?? []) as { id: string; phone_number: string; provider: string; label: string | null; config_json: Record<string, string>; product_slug: string | null }[]}
+          />
         </div>
       </div>
 
