@@ -21,7 +21,7 @@ async function processFollowUps(): Promise<void> {
       ).toISOString();
 
       // Find open conversations idle longer than the configured threshold
-      const { data: conversations } = await db
+      const { data: allConversations } = await db
         .from('conversations')
         .select('id, contact_id')
         .eq('tenant_id', config.tenant_id)
@@ -29,7 +29,16 @@ async function processFollowUps(): Promise<void> {
         .eq('status', 'open')
         .lt('updated_at', cutoff);
 
-      if (!conversations?.length) continue;
+      // Apply scope filter in JS (avoids PostgREST uuid[] syntax complexity)
+      const scope       = config.scope ?? 'all';
+      const contactIds  = (config.contact_ids ?? []) as string[];
+      const conversations = (allConversations ?? []).filter(conv => {
+        if (scope === 'include' && contactIds.length > 0) return contactIds.includes(conv.contact_id);
+        if (scope === 'exclude' && contactIds.length > 0) return !contactIds.includes(conv.contact_id);
+        return true; // 'all'
+      });
+
+      if (!conversations.length) continue;
 
       // Get WhatsApp gateway config for this tenant + product
       const { data: wn } = await db

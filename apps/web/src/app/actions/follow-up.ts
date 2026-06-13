@@ -4,11 +4,15 @@ import { revalidatePath } from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 
+export type FollowUpScope = 'all' | 'include' | 'exclude';
+
 interface FollowUpConfig {
   enabled:          boolean;
   idle_days:        number;
   message_template: string;
   max_follow_ups:   number;
+  scope:            FollowUpScope;
+  contact_ids:      string[];
 }
 
 async function getCallerTenantId(): Promise<string | null> {
