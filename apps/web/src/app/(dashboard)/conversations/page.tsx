@@ -2,7 +2,8 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { MessageSquare, Search } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
+import type { ContactSentiment } from '@alphabot/shared';
 
 const STATUS_STYLES: Record<string, { dot: string; badge: string }> = {
   open:       { dot: 'bg-emerald-400', badge: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
@@ -15,6 +16,13 @@ const PRODUCT_LABELS: Record<string, { label: string; color: string }> = {
   support_bot:   { label: 'Support',   color: 'bg-sky-50 text-sky-600' },
   sales_bot:     { label: 'Sales',     color: 'bg-violet-50 text-violet-600' },
   lifecycle_bot: { label: 'Lifecycle', color: 'bg-orange-50 text-orange-600' },
+};
+
+const SENTIMENT_META: Record<ContactSentiment, { emoji: string; bg: string; text: string; label: string }> = {
+  positive:   { emoji: '😊', bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Positive'   },
+  neutral:    { emoji: '😐', bg: 'bg-slate-100',  text: 'text-slate-500',  label: 'Neutral'    },
+  negative:   { emoji: '😟', bg: 'bg-amber-50',   text: 'text-amber-700',  label: 'Unhappy'    },
+  frustrated: { emoji: '😤', bg: 'bg-red-50',     text: 'text-red-700',    label: 'Frustrated' },
 };
 
 const AVATAR_COLORS = [
@@ -42,7 +50,7 @@ export default async function ConversationsPage() {
   const { data: conversations } = tenantId
     ? await admin
         .from('conversations')
-        .select('*, contacts(phone, name)')
+        .select('*, contacts(phone, name, memory_json)')
         .eq('tenant_id', tenantId)
         .order('updated_at', { ascending: false })
         .limit(100)
@@ -77,11 +85,15 @@ export default async function ConversationsPage() {
         <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
           <div className="divide-y divide-green-50">
             {conversations.map((conv) => {
-              const contact = conv.contacts as { phone: string; name: string | null } | null;
+              const contact = conv.contacts as { phone: string; name: string | null; memory_json: Record<string, unknown> | null } | null;
               const displayName = contact?.name ?? contact?.phone ?? 'Unknown';
-              const style   = STATUS_STYLES[conv.status] ?? STATUS_STYLES.resolved;
-              const product = PRODUCT_LABELS[conv.product_type];
+              const style    = STATUS_STYLES[conv.status] ?? STATUS_STYLES.resolved;
+              const product  = PRODUCT_LABELS[conv.product_type];
               const colorIdx = displayName.charCodeAt(0) % AVATAR_COLORS.length;
+
+              const sentiment = contact?.memory_json?.['sentiment'] as ContactSentiment | undefined;
+              const sentimentMeta = sentiment ? SENTIMENT_META[sentiment] : null;
+
               const updatedAt = new Date(conv.updated_at);
               const diffMins  = Math.floor((Date.now() - updatedAt.getTime()) / 60000);
               const timeAgo   =
@@ -96,9 +108,12 @@ export default async function ConversationsPage() {
                   href={`/conversations/${conv.id}`}
                   className="flex items-center gap-4 px-6 py-4 hover:bg-green-50/60 transition-colors group"
                 >
+                  {/* Avatar */}
                   <div className={`w-10 h-10 rounded-full ${AVATAR_COLORS[colorIdx]} flex items-center justify-center font-bold text-sm shrink-0`}>
                     {displayName[0]?.toUpperCase() ?? '?'}
                   </div>
+
+                  {/* Name + phone */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-emerald-700 transition-colors">
                       {displayName}
@@ -107,7 +122,17 @@ export default async function ConversationsPage() {
                       <p className="text-xs text-gray-400 truncate">{contact.phone}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2.5 shrink-0">
+
+                  {/* Badges + time */}
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                    {sentimentMeta && (
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${sentimentMeta.bg} ${sentimentMeta.text}`}
+                        title={sentimentMeta.label}
+                      >
+                        {sentimentMeta.emoji} {sentimentMeta.label}
+                      </span>
+                    )}
                     {product && (
                       <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium ${product.color}`}>
                         {product.label}

@@ -12,6 +12,7 @@ import { kbDocumentRoutes } from './routes/kb/documents.js';
 import { escalationRoutes } from './routes/escalations/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { startDailyReportWorker } from './workers/daily-report.worker.js';
+import { startFollowUpWorker } from './workers/follow-up.worker.js';
 import { getRedis } from './lib/redis.js';
 import { getServerClient } from '@alphabot/database';
 
@@ -87,6 +88,7 @@ try {
 
   // Start background jobs after server is up
   startDailyReportWorker();
+  startFollowUpWorker();
   await startScheduler();
 } catch (err) {
   server.log.error(err);

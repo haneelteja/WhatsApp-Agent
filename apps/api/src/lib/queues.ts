@@ -7,6 +7,7 @@ const JOB_OPTIONS = {
 } as const;
 
 let _dailyReportQueue: Queue | null = null;
+let _followUpQueue:    Queue | null = null;
 
 export function getDailyReportQueue(): Queue {
   if (_dailyReportQueue) return _dailyReportQueue;
@@ -15,4 +16,13 @@ export function getDailyReportQueue(): Queue {
     defaultJobOptions: JOB_OPTIONS,
   });
   return _dailyReportQueue;
+}
+
+export function getFollowUpQueue(): Queue {
+  if (_followUpQueue) return _followUpQueue;
+  _followUpQueue = new Queue('follow-ups', {
+    connection: getRedis(),
+    defaultJobOptions: JOB_OPTIONS,
+  });
+  return _followUpQueue;
 }

@@ -13,6 +13,7 @@ import {
   BarChart2,
   ShieldCheck,
   Cpu,
+  RefreshCw,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -24,6 +25,7 @@ const navItems = [
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
   { href: '/ai-models',      label: 'AI Models',      icon: Cpu             },
+  { href: '/follow-ups',     label: 'Follow-ups',     icon: RefreshCw       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];

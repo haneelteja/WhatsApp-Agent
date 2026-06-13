@@ -328,11 +328,15 @@ export interface Contact {
   updated_at: string;
 }
 
+export type ContactSentiment = 'positive' | 'neutral' | 'negative' | 'frustrated';
+
 export interface ContactMemory {
   preferences: Record<string, string>;
   order_history: string[];
   open_issues: string[];
   last_interaction: string | null;
+  sentiment?: ContactSentiment;
+  sentiment_updated_at?: string | null;
 }
 
 export interface Conversation {

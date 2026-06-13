@@ -5,6 +5,7 @@ import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKB } from '../../services/kb/lookup.js';
 import { escalateConversation } from '../../services/escalation/index.js';
+import { detectAndStoreSentiment } from '../../services/sentiment/detector.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const DEFAULT_SYSTEM_PROMPTS: Record<ProductType, string> = {
@@ -216,6 +217,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     if (msgError) {
       fastify.log.error({ msgError }, 'Failed to store incoming message');
       return;
+    }
+
+    // Non-blocking: classify customer sentiment and persist to contact memory
+    if (incoming.text) {
+      void detectAndStoreSentiment((contact as Contact).id, incoming.text);
     }
 
     void db.from('usage_events').insert({

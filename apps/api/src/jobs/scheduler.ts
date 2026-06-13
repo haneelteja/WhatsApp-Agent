@@ -1,5 +1,5 @@
 import { getRedis } from '../lib/redis.js';
-import { getDailyReportQueue } from '../lib/queues.js';
+import { getDailyReportQueue, getFollowUpQueue } from '../lib/queues.js';
 import { getServerClient } from '@alphabot/database';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -43,5 +43,19 @@ export async function startScheduler(): Promise<void> {
     console.log('[Scheduler] Daily report job scheduled (08:00 UTC)');
   } catch (err) {
     console.warn('[Scheduler] Could not schedule daily report (Redis unavailable?):', (err as Error).message);
+  }
+
+  // ── Follow-up schedule ────────────────────────────────────────────────────
+  // Runs every hour to find idle conversations and send configured follow-ups.
+  try {
+    const fuQueue = getFollowUpQueue();
+    await fuQueue.upsertJobScheduler(
+      'follow-up-hourly',
+      { every: 60 * 60 * 1000 },  // every 60 minutes
+      { name: 'follow-up', data: {} }
+    );
+    console.log('[Scheduler] Follow-up job scheduled (every 60 min)');
+  } catch (err) {
+    console.warn('[Scheduler] Could not schedule follow-up (Redis unavailable?):', (err as Error).message);
   }
 }
