@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Cpu,
   RefreshCw,
+  CreditCard,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -27,6 +28,7 @@ const navItems = [
   { href: '/ai-models',      label: 'AI Models',      icon: Cpu             },
   { href: '/follow-ups',     label: 'Follow-ups',     icon: RefreshCw       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
+  { href: '/billing',        label: 'Billing',        icon: CreditCard      },
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
 

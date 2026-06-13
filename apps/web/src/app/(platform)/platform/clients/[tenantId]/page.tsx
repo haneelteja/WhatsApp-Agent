@@ -10,6 +10,8 @@ import { saveTenantGuardrailsByIdAction } from '@/app/actions/tenant-guardrails'
 import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 import { InviteUserForm } from '@/components/platform/InviteUserForm';
 import { WhatsAppNumberSection } from '@/components/platform/WhatsAppNumberSection';
+import { BillingManager } from '@/components/platform/BillingManager';
+import { CreditCard } from 'lucide-react';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
   support_bot:   { name: 'Support Bot',   desc: 'Q&A, issue resolution, escalations',  textColor: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200' },
@@ -46,6 +48,7 @@ export default async function ClientDetailPage({
     { data: tenantGuardrailsRow },
     { data: llmConfigRows },
     { data: waNumbers },
+    { data: subscriptions },
   ] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
     supabase.from('tenant_products').select('product_type, active, tier').eq('tenant_id', tenantId),
@@ -57,6 +60,7 @@ export default async function ClientDetailPage({
     supabase.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
     supabase.from('llm_configs').select('id, product_slug, provider, api_key, model, base_url, validation_status, validation_error, validated_at, credit_info, created_at').eq('tenant_id', tenantId),
     supabase.from('whatsapp_numbers').select('id, phone_number, provider, label, config_json, product_slug').eq('tenant_id', tenantId).eq('active', true),
+    supabase.from('subscriptions').select('product_type, tier, billing_cycle, next_billing_date').eq('tenant_id', tenantId),
   ]);
 
   // Fetch auth user details for team members
@@ -174,6 +178,24 @@ export default async function ClientDetailPage({
           </div>
         </div>
       )}
+
+      {/* Billing & Subscription */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+          <CreditCard size={15} className="text-indigo-500" />
+          <h3 className="text-sm font-semibold text-slate-800">Billing & Subscription</h3>
+        </div>
+        <div className="px-6 py-5">
+          <BillingManager
+            tenantId={tenantId}
+            initialPlan={(tenant.plan as 'starter' | 'growth' | 'scale')}
+            initialStatus={(tenant.status as 'active' | 'trial' | 'suspended')}
+            activeBots={tpRows.filter(p => p.active)}
+            subs={(subscriptions ?? []) as { product_type: string; tier: string | null; billing_cycle: string | null; next_billing_date: string | null }[]}
+            trials={trialRows}
+          />
+        </div>
+      </div>
 
       {/* Team & Invites */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
