@@ -5,7 +5,7 @@
 const BASE_URL = 'https://api.anthropic.com/v1/messages';
 const API_VERSION = '2023-06-01';
 
-export const REPLY_MODEL = process.env['ANTHROPIC_MODEL'] ?? 'claude-3-5-haiku-20241022';
+export const REPLY_MODEL = process.env['ANTHROPIC_MODEL'] ?? 'claude-haiku-4-5-20251001';
 
 export interface AnthropicMessage {
   role: 'user' | 'assistant';

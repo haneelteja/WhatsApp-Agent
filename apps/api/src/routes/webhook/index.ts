@@ -397,17 +397,19 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       llmRows.find(r => r.tenant_id === null       && r.product_slug === null)
     );
 
-    // DB-configured model (no custom API key — falls back to env ANTHROPIC_API_KEY)
-    const dbModel =
+    // DB-configured model — only use if it's an Anthropic model name (starts with 'claude-').
+    // Ignore legacy OpenRouter slugs (e.g. 'meta-llama/...') that would fail against Anthropic API.
+    const rawDbModel =
       botConfig?.ai_model ??
       (botConfig?.product as Product | null)?.default_model ??
       null;
+    const dbModel = rawDbModel?.startsWith('claude-') ? rawDbModel : null;
 
     const llmOverride = (resolvedLlm?.validation_status === 'valid')
       ? { apiKey: resolvedLlm.api_key, model: resolvedLlm.model }
       : dbModel
-        ? { model: dbModel }   // use DB model with platform env API key
-        : undefined;           // fall through to env var in anthropic.ts
+        ? { model: dbModel }   // use DB Anthropic model with platform env API key
+        : undefined;           // fall through to REPLY_MODEL default in anthropic.ts
 
     // ── Generate AI response ──────────────────────────────────────────────
     let aiResult: Awaited<ReturnType<typeof getAIResponse>>;
