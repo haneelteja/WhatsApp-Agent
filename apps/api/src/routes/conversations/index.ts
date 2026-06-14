@@ -92,19 +92,28 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
 
     const { data: convo } = await db
       .from('conversations')
-      .select('*, contact:contacts(phone), whatsapp_number:whatsapp_numbers(config_json, provider)')
+      .select('*, contact:contacts(phone)')
       .eq('id', request.params.id)
       .eq('tenant_id', request.tenantId)
       .single();
 
     if (!convo) return reply.status(404).send({ success: false, error: 'Not found' });
 
-    const conversation = convo as Conversation & {
-      contact: { phone: string };
-      whatsapp_number: { config_json: { phone_number_id: string; access_token: string }; provider: string };
-    };
+    const conversation = convo as Conversation & { contact: { phone: string } };
 
-    const { config_json, provider } = conversation.whatsapp_number;
+    // Look up the WhatsApp number for this tenant + bot type separately
+    const { data: wn } = await db
+      .from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', request.tenantId)
+      .eq('product_slug', conversation.product_type)
+      .eq('active', true)
+      .limit(1)
+      .single();
+
+    if (!wn) return reply.status(404).send({ success: false, error: 'No active WhatsApp number found' });
+
+    const { config_json, provider } = wn as { config_json: { phone_number_id: string; access_token: string }; provider: string };
     const gateway = new WhatsAppGateway(provider as 'meta_cloud');
 
     const result = await gateway.sendMessage(
