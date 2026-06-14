@@ -24,13 +24,14 @@ export function ConversationActions({ conversationId, status }: Props) {
 
   async function apiPost(path: string, body?: object) {
     const token = await getToken();
+    const hasBody = body !== undefined;
     return fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}${path}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
         Authorization: `Bearer ${token}`,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: hasBody ? JSON.stringify(body) : undefined,
     });
   }
 
