@@ -297,7 +297,7 @@ export default async function PlatformAnalyticsPage({ searchParams }: { searchPa
           {(recentConvs ?? []).length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-10">No conversations yet.</p>
           ) : (recentConvs ?? []).map(c => {
-            const tenant = (c.tenants as { name: string } | null);
+            const tenant = (c.tenants as unknown as { name: string } | null);
             const botMeta = BOT_META[c.product_type];
             return (
               <div key={c.id} className="flex items-center gap-4 px-5 py-3.5">
