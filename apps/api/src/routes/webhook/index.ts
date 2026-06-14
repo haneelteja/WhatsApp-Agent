@@ -8,9 +8,13 @@ import { escalateConversation } from '../../services/escalation/index.js';
 import { detectAndStoreSentiment } from '../../services/sentiment/detector.js';
 
 // Default system prompts used only when no bot_config row exists yet
+const SALES_LEAD_INSTRUCTION = `
+
+SALES LEAD DETECTION: If the customer shows clear buying intent — such as requesting a quote, specifying a product + quantity + location, asking about bulk pricing, or expressing readiness to place an order — append the exact text [SALES_LEAD] on a new line at the very end of your response. Do not explain this tag; the system handles it automatically. Only append it when the intent is clear and specific (not for general enquiries).`;
+
 const DEFAULT_SYSTEM_PROMPTS: Record<ProductType, string> = {
-  support_bot: `You are a helpful customer support assistant. Answer questions accurately using the knowledge base. If you cannot confidently answer, say so and offer to escalate to a human agent. Be concise, friendly, and professional.`,
-  sales_bot: `You are a sales assistant. Understand customer needs, share relevant product information, and guide warm leads toward a purchase decision. Detect buying intent and hand off to a human when the customer is ready to buy.`,
+  support_bot: `You are a helpful customer support assistant. Answer questions accurately using the knowledge base. If you cannot confidently answer, say so and offer to escalate to a human agent. Be concise, friendly, and professional.${SALES_LEAD_INSTRUCTION}`,
+  sales_bot: `You are a sales assistant. Understand customer needs, share relevant product information, and guide warm leads toward a purchase decision. Detect buying intent and hand off to a human when the customer is ready to buy.${SALES_LEAD_INSTRUCTION}`,
   lifecycle_bot: `You are an onboarding and account management assistant. Help customers track their orders, answer invoicing questions, and collect payments. Be proactive and professional.`,
 };
 
@@ -432,10 +436,15 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       return;
     }
 
+    // ── Parse [SALES_LEAD] tag injected by AI when it detects buying intent ─
+    const rawContent = aiResult.content;
+    const isSalesLead = rawContent.includes('[SALES_LEAD]');
+    const cleanContent = rawContent.replace(/\[SALES_LEAD\]/g, '').trimEnd();
+
     // Truncate to max_response_length guardrail
-    const replyText = aiResult.content.length > effectiveMaxLength
-      ? aiResult.content.substring(0, effectiveMaxLength).trimEnd() + '…'
-      : aiResult.content;
+    const replyText = cleanContent.length > effectiveMaxLength
+      ? cleanContent.substring(0, effectiveMaxLength).trimEnd() + '…'
+      : cleanContent;
 
     // ── Store AI reply ────────────────────────────────────────────────────
     await db.from('messages').insert({
@@ -453,8 +462,13 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       token_count: aiResult.inputTokens + aiResult.outputTokens,
     });
 
+    // ── Auto-escalate on sales lead detection ────────────────────────────
+    if (isSalesLead && conversation.status === 'open') {
+      fastify.log.info({ tenantId, conversationId: conversation.id }, '[Webhook] Sales lead detected — escalating');
+      await escalateConversation(conversation, 'Sales lead detected — customer expressed buying intent');
+    }
     // ── Auto-escalate on low confidence ──────────────────────────────────
-    if (aiResult.confidenceScore < confidenceThreshold && conversation.status === 'open') {
+    else if (aiResult.confidenceScore < confidenceThreshold && conversation.status === 'open') {
       await escalateConversation(conversation, 'Low AI confidence — query unresolved');
     }
 
