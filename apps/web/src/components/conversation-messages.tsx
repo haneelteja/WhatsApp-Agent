@@ -88,7 +88,7 @@ export function ConversationMessages({
               </div>
               <div className={`flex items-center gap-1.5 mt-1 px-1 ${isBot ? 'flex-row-reverse' : ''}`}>
                 <span className="text-[10px] text-slate-400">
-                  {new Date(msg.timestamp).toLocaleTimeString([], {
+                  {new Date(msg.timestamp).toLocaleTimeString('en-IN', {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}

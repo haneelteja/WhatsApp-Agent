@@ -198,7 +198,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     Params: { id: string };
     Body: { resolutionNote?: string };
   }>('/:id/release', { preHandler: [requireAuth] }, async (request, reply) => {
-    await releaseToBot(request.params.id, request.userId, request.body.resolutionNote);
+    await releaseToBot(request.params.id, request.userId, request.body?.resolutionNote);
     return { success: true };
   });
 }
