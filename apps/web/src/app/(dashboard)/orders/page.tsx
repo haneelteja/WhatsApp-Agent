@@ -129,7 +129,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
         ) : (
           <div className="divide-y divide-slate-100">
             {orders.map(order => {
-              const contact  = order.contact as { phone: string; name: string | null } | null;
+              const contact  = order.contact as unknown as { phone: string; name: string | null } | null;
               const payment  = (order.payments as Array<{ id: string; status: string; link_url: string | null; webhook_received_at: string | null }>)?.[0];
               const items    = (order.items_json as Array<{ name: string; quantity: number; price: number }>) ?? [];
 
