@@ -1,4 +1,4 @@
-import { chatCompletion } from '../../lib/openrouter.js';
+import { chatCompletion, REPLY_MODEL } from '../../lib/anthropic.js';
 import { getServerClient } from '@alphabot/database';
 import type { ContactMemory, ContactSentiment } from '@alphabot/shared';
 
@@ -12,7 +12,7 @@ export async function detectAndStoreSentiment(
 
   try {
     const { content } = await chatCompletion({
-      model: process.env['OPENROUTER_REPLY_MODEL'] ?? 'meta-llama/llama-3.1-8b-instruct:free',
+      model: REPLY_MODEL,
       system: 'Classify the customer message sentiment. Reply with ONLY one word: positive, neutral, negative, or frustrated.',
       messages: [{ role: 'user', content: messageText.slice(0, 400) }],
       max_tokens: 5,
