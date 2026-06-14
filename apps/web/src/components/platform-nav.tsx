@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck, Box, Cpu, CreditCard } from 'lucide-react';
+import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck, Box, Cpu, CreditCard, BarChart2 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const NAV_ITEMS = [
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: '/platform/products',   label: 'Products',   icon: Box        },
   { href: '/platform/guardrails', label: 'Guardrails', icon: ShieldCheck },
   { href: '/platform/ai-models',  label: 'AI Models',  icon: Cpu        },
+  { href: '/platform/analytics',   label: 'Analytics',  icon: BarChart2  },
   { href: '/platform/billing',      label: 'Billing',      icon: CreditCard },
   { href: '/platform/notifications', label: 'Notifications', icon: Bell },
   { href: '/platform/settings',   label: 'Settings',   icon: Settings   },

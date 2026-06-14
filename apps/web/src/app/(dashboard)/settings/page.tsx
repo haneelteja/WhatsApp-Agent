@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { Building2, Phone, Bot, Link2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { WhatsAppSetupSection } from '@/components/dashboard/WhatsAppSetupSection';
 
 const PRODUCT_COLORS: Record<string, string> = {
   support_bot:   'bg-sky-50 text-sky-600',
@@ -13,7 +14,6 @@ export default async function SettingsPage() {
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
 
-  // Resolve the authenticated user's ID, then look up their tenant via admin client
   const { data: { user } } = await supabase.auth.getUser();
   const userId = user?.id ?? '';
 
@@ -25,7 +25,6 @@ export default async function SettingsPage() {
 
   const tenantId = tenantUser?.tenant_id ?? '';
 
-  // Fetch all data via admin client using the resolved tenant_id
   const [{ data: tenant }, { data: numbers }, { data: products }] =
     await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
@@ -33,10 +32,24 @@ export default async function SettingsPage() {
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
     ]);
 
-  const apiBase    = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
-  const webhookUrl = tenant?.id
-    ? `${apiBase}/api/webhook/${tenant.id}/support_bot`
-    : null;
+  const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
+
+  const activeBots = (products ?? []).filter(p => p.active);
+
+  // Build per-bot webhook info
+  const botWebhooks = activeBots.map(p => {
+    const wn = (numbers ?? []).find(n => n.product_slug === p.product_type);
+    const config = (wn?.config_json ?? {}) as Record<string, string>;
+    return {
+      productType: p.product_type,
+      webhookUrl: tenant?.id
+        ? `${apiBase}/api/webhook/${tenant.id}/${p.product_type}`
+        : '',
+      verifyToken: config['verify_token'] ?? null,
+      phoneNumber: wn?.phone_number ?? null,
+      configured: !!wn,
+    };
+  });
 
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-5">
@@ -59,15 +72,16 @@ export default async function SettingsPage() {
       {/* WhatsApp numbers */}
       <Section icon={<Phone size={16} />} title="WhatsApp Numbers">
         {!numbers?.length ? (
-          <p className="text-sm text-gray-400 px-5 py-4">No numbers configured.</p>
+          <p className="text-sm text-gray-400 px-5 py-4">No numbers configured. Contact your account manager.</p>
         ) : (
           numbers.map((num) => {
             const config = num.config_json as Record<string, string>;
             return (
               <div key={num.id} className="divide-y divide-green-50">
-                <InfoRow label="Phone Number" value={num.phone_number}                        mono />
-                <InfoRow label="Provider"     value={num.provider}                            capitalize />
-                <InfoRow label="Number ID"    value={config['phone_number_id'] ?? '—'}        mono />
+                <InfoRow label="Phone Number"   value={num.phone_number}                  mono />
+                <InfoRow label="Provider"       value={num.provider}                      capitalize />
+                <InfoRow label="Phone Number ID" value={config['phone_number_id'] ?? '—'} mono />
+                <InfoRow label="Label"          value={num.label ?? '—'} />
               </div>
             );
           })
@@ -76,11 +90,11 @@ export default async function SettingsPage() {
 
       {/* Active bots */}
       <Section icon={<Bot size={16} />} title="Active Bot Products">
-        {!products?.length ? (
+        {!activeBots.length ? (
           <p className="text-sm text-gray-400 px-5 py-4">No products activated.</p>
         ) : (
           <div className="divide-y divide-green-50">
-            {products.map((p) => (
+            {activeBots.map((p) => (
               <div
                 key={`${p.tenant_id}-${p.product_type}`}
                 className="flex items-center justify-between px-5 py-3.5"
@@ -105,22 +119,17 @@ export default async function SettingsPage() {
       <Section icon={<ShieldCheck size={16} />} title="Guardrails">
         <div className="px-5 py-4">
           <p className="text-xs text-gray-500">
-            Bot guardrails (general rules &amp; per-bot configuration) are managed in the dedicated{' '}
+            Bot guardrails are managed in the dedicated{' '}
             <Link href="/guardrails" className="text-emerald-600 font-semibold underline">Guardrails</Link> section.
           </p>
         </div>
       </Section>
 
-      {/* Webhook URL */}
-      {webhookUrl && (
-        <Section icon={<Link2 size={16} />} title="Webhook URL">
-          <div className="px-5 py-4 space-y-2">
-            <p className="text-xs text-gray-400">
-              Set this as the webhook in your WhatsApp provider settings (Twilio Sandbox → &ldquo;When a message comes in&rdquo;)
-            </p>
-            <div className="flex items-center gap-2 bg-green-50 rounded-xl border border-green-100 px-4 py-3">
-              <code className="flex-1 text-xs text-emerald-700 break-all font-mono">{webhookUrl}</code>
-            </div>
+      {/* Meta Cloud API / Webhook Setup */}
+      {activeBots.length > 0 && (
+        <Section icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup">
+          <div className="px-5 py-4">
+            <WhatsAppSetupSection bots={botWebhooks} />
           </div>
         </Section>
       )}

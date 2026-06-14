@@ -10,6 +10,7 @@ import { conversationRoutes } from './routes/conversations/index.js';
 import { kbRoutes } from './routes/kb/index.js';
 import { kbDocumentRoutes } from './routes/kb/documents.js';
 import { escalationRoutes } from './routes/escalations/index.js';
+import { orderRoutes, razorpayWebhookRoute } from './routes/orders/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { startDailyReportWorker } from './workers/daily-report.worker.js';
 import { startFollowUpWorker } from './workers/follow-up.worker.js';
@@ -52,7 +53,9 @@ await server.register(webhookRoutes, { prefix: '/api/webhook' });
 await server.register(conversationRoutes, { prefix: '/api/conversations' });
 await server.register(kbRoutes,         { prefix: '/api/kb' });
 await server.register(kbDocumentRoutes, { prefix: '/api/kb' });
-await server.register(escalationRoutes, { prefix: '/api/escalations' });
+await server.register(escalationRoutes,    { prefix: '/api/escalations' });
+await server.register(orderRoutes,          { prefix: '/api/orders' });
+await server.register(razorpayWebhookRoute, { prefix: '/api/payments' });
 
 // ─── Health check (also serves as the external keep-alive ping target) ────────
 // Point UptimeRobot / cron-job.org at GET /health every 5 minutes to keep

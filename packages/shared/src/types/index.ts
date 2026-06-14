@@ -420,7 +420,7 @@ export interface OrderItem {
 export interface Payment {
   id: string;
   order_id: string;
-  phonepe_ref: string | null;
+  payment_ref: string | null;
   link_url: string | null;
   status: PaymentStatus;
   webhook_received_at: string | null;
