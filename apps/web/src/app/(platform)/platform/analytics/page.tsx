@@ -56,7 +56,7 @@ export default async function PlatformAnalyticsPage({ searchParams }: { searchPa
     { count: pendingEscalations },
     { data: convsByBot },
     { data: recentConvs },
-    { data: contacts },
+    { count: contacts },
   ] = await Promise.all([
     admin.from('tenants').select('id, name, plan, status'),
 
