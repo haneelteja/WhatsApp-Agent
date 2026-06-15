@@ -12,9 +12,6 @@ import { kbDocumentRoutes } from './routes/kb/documents.js';
 import { escalationRoutes } from './routes/escalations/index.js';
 import { orderRoutes, razorpayWebhookRoute } from './routes/orders/index.js';
 import { startScheduler } from './jobs/scheduler.js';
-import { startDailyReportWorker } from './workers/daily-report.worker.js';
-import { startFollowUpWorker } from './workers/follow-up.worker.js';
-import { getRedis } from './lib/redis.js';
 import { getServerClient } from '@alphabot/database';
 
 const isProd = process.env['NODE_ENV'] === 'production';
@@ -27,7 +24,7 @@ const server = Fastify({
 // ─── Body parsers ─────────────────────────────────────────────────────────────
 await server.register(formbody);
 await server.register(multipart, {
-  limits: { fileSize: 50 * 1024 * 1024, files: 1 },  // 50 MB max
+  limits: { fileSize: 50 * 1024 * 1024, files: 1 },
 });
 
 // ─── Security plugins ─────────────────────────────────────────────────────────
@@ -49,17 +46,15 @@ await server.register(rateLimit, {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-await server.register(webhookRoutes, { prefix: '/api/webhook' });
-await server.register(conversationRoutes, { prefix: '/api/conversations' });
-await server.register(kbRoutes,         { prefix: '/api/kb' });
-await server.register(kbDocumentRoutes, { prefix: '/api/kb' });
-await server.register(escalationRoutes,    { prefix: '/api/escalations' });
+await server.register(webhookRoutes,        { prefix: '/api/webhook' });
+await server.register(conversationRoutes,   { prefix: '/api/conversations' });
+await server.register(kbRoutes,             { prefix: '/api/kb' });
+await server.register(kbDocumentRoutes,     { prefix: '/api/kb' });
+await server.register(escalationRoutes,     { prefix: '/api/escalations' });
 await server.register(orderRoutes,          { prefix: '/api/orders' });
 await server.register(razorpayWebhookRoute, { prefix: '/api/payments' });
 
-// ─── Health check (also serves as the external keep-alive ping target) ────────
-// Point UptimeRobot / cron-job.org at GET /health every 5 minutes to keep
-// the Render free-tier process alive, which in turn keeps Supabase + Redis alive.
+// ─── Health check ─────────────────────────────────────────────────────────────
 server.get('/health', async () => {
   const checks: Record<string, string> = { api: 'ok' };
 
@@ -70,15 +65,7 @@ server.get('/health', async () => {
     checks['database'] = 'error';
   }
 
-  try {
-    await getRedis().ping();
-    checks['redis'] = 'ok';
-  } catch {
-    checks['redis'] = 'error';
-  }
-
-  const allOk = Object.values(checks).every(v => v === 'ok');
-  return { status: allOk ? 'ok' : 'degraded', ts: new Date().toISOString(), checks };
+  return { status: checks['database'] === 'ok' ? 'ok' : 'degraded', ts: new Date().toISOString(), checks };
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
@@ -89,10 +76,7 @@ try {
   await server.listen({ port, host });
   server.log.info(`Alphabot API listening on ${host}:${port}`);
 
-  // Start background jobs after server is up
-  startDailyReportWorker();
-  startFollowUpWorker();
-  await startScheduler();
+  startScheduler();
 } catch (err) {
   server.log.error(err);
   process.exit(1);
