@@ -11,6 +11,7 @@ import { kbRoutes } from './routes/kb/index.js';
 import { kbDocumentRoutes } from './routes/kb/documents.js';
 import { escalationRoutes } from './routes/escalations/index.js';
 import { orderRoutes, razorpayWebhookRoute } from './routes/orders/index.js';
+import { settingsRoutes } from './routes/settings/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { getServerClient } from '@alphabot/database';
 
@@ -53,6 +54,7 @@ await server.register(kbDocumentRoutes,     { prefix: '/api/kb' });
 await server.register(escalationRoutes,     { prefix: '/api/escalations' });
 await server.register(orderRoutes,          { prefix: '/api/orders' });
 await server.register(razorpayWebhookRoute, { prefix: '/api/payments' });
+await server.register(settingsRoutes,       { prefix: '/api/settings' });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 server.get('/health', async () => {

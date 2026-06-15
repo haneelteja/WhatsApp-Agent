@@ -1,8 +1,9 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { Building2, Phone, Bot, Link2, ShieldCheck } from 'lucide-react';
+import { Building2, Phone, Bot, Link2, ShieldCheck, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { WhatsAppSetupSection } from '@/components/dashboard/WhatsAppSetupSection';
+import { NotificationSettings } from '@/components/dashboard/NotificationSettings';
 
 const PRODUCT_COLORS: Record<string, string> = {
   support_bot:   'bg-sky-50 text-sky-600',
@@ -25,11 +26,12 @@ export default async function SettingsPage() {
 
   const tenantId = tenantUser?.tenant_id ?? '';
 
-  const [{ data: tenant }, { data: numbers }, { data: products }] =
+  const [{ data: tenant }, { data: numbers }, { data: products }, { data: notifSettings }] =
     await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
       admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
+      admin.from('tenant_notification_settings').select('*').eq('tenant_id', tenantId).single(),
     ]);
 
   const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
@@ -133,6 +135,15 @@ export default async function SettingsPage() {
           </div>
         </Section>
       )}
+
+      {/* Escalation Notifications */}
+      <Section icon={<Bell size={16} />} title="Escalation Notifications">
+        <NotificationSettings
+          initialEmails={(notifSettings?.escalation_emails as string[] | null) ?? []}
+          initialWaNumbers={(notifSettings?.escalation_wa_numbers as string[] | null) ?? []}
+          initialCustomerMessage={notifSettings?.escalation_customer_message ?? 'Your query has been escalated to our team. A team member will get back to you shortly.'}
+        />
+      </Section>
     </div>
   );
 }
