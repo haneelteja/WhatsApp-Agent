@@ -13,8 +13,8 @@ const SALES_LEAD_INSTRUCTION = `
 SALES LEAD DETECTION: If the customer shows clear buying intent — such as requesting a quote, specifying a product + quantity + location, asking about bulk pricing, or expressing readiness to place an order — append the exact text [SALES_LEAD] on a new line at the very end of your response. Do not explain this tag; the system handles it automatically. Only append it when the intent is clear and specific (not for general enquiries).`;
 
 const DEFAULT_SYSTEM_PROMPTS: Record<ProductType, string> = {
-  support_bot: `You are a helpful customer support assistant. Answer questions accurately using the knowledge base. If you cannot confidently answer, say so and offer to escalate to a human agent. Be concise, friendly, and professional.${SALES_LEAD_INSTRUCTION}`,
-  sales_bot: `You are a sales assistant. Understand customer needs, share relevant product information, and guide warm leads toward a purchase decision. Detect buying intent and hand off to a human when the customer is ready to buy.${SALES_LEAD_INSTRUCTION}`,
+  support_bot: `You are a helpful customer support assistant. Answer questions accurately using the knowledge base. If you cannot confidently answer, say so and offer to escalate to a human agent. Be concise, friendly, and professional.`,
+  sales_bot: `You are a sales assistant. Understand customer needs, share relevant product information, and guide warm leads toward a purchase decision. Detect buying intent and hand off to a human when the customer is ready to buy.`,
   lifecycle_bot: `You are an onboarding and account management assistant. Help customers track their orders, answer invoicing questions, and collect payments. Be proactive and professional.`,
 };
 
@@ -353,7 +353,9 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const contactMemory = JSON.stringify(contactData.memory_json);
 
     // ── Build effective system prompt with guardrails injected ───────────
-    let systemPrompt = baseSystemPrompt;
+    // Always append SALES_LEAD_INSTRUCTION so it applies even when the DB
+    // has a custom system_prompt that doesn't include it.
+    let systemPrompt = baseSystemPrompt + (productType !== 'lifecycle_bot' ? SALES_LEAD_INSTRUCTION : '');
 
     if (kbOnly) {
       systemPrompt += kbResults.length > 0
