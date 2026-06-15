@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { randomUUID } from 'crypto';
 
 type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
+type WaProvider = 'meta_cloud' | 'interakt' | 'wati' | 'gupshup';
 
 async function getCallerTenant() {
   const supabase = await getSupabaseServerClient();
@@ -91,4 +93,68 @@ export async function assignNumberToBotAction(numberId: string, productSlug: Pro
 
   revalidatePath('/settings');
   return { success: true };
+}
+
+export interface AddWhatsAppNumberInput {
+  provider: WaProvider;
+  phoneNumber: string;
+  label: string;
+  productSlug: ProductType;
+  // Meta Cloud API
+  phoneNumberId?: string;
+  accessToken?: string;
+  // Twilio
+  accountSid?: string;
+  authToken?: string;
+  fromNumber?: string;
+}
+
+export async function addTenantWhatsAppNumberAction(input: AddWhatsAppNumberInput) {
+  const tu = await getCallerTenant();
+  if (!tu) return { error: 'Not authenticated' };
+  if (!['admin', 'client_manager'].includes(tu.role)) return { error: 'Admins only' };
+
+  const verifyToken = randomUUID();
+
+  let configJson: Record<string, string> = { verify_token: verifyToken };
+
+  if (input.provider === 'meta_cloud') {
+    if (!input.phoneNumberId?.trim()) return { error: 'Phone Number ID is required for Meta Cloud API' };
+    if (!input.accessToken?.trim()) return { error: 'Access Token is required for Meta Cloud API' };
+    configJson = {
+      verify_token: verifyToken,
+      phone_number_id: input.phoneNumberId.trim(),
+      access_token: input.accessToken.trim(),
+    };
+  } else if (input.provider === 'interakt' || input.provider === 'wati' || input.provider === 'gupshup') {
+    if (!input.accessToken?.trim()) return { error: 'API Key / Access Token is required' };
+    configJson = {
+      verify_token: verifyToken,
+      access_token: input.accessToken.trim(),
+      ...(input.fromNumber ? { from_number: input.fromNumber.trim() } : {}),
+    };
+  }
+
+  const admin = getSupabaseAdminClient();
+  const { data, error } = await admin
+    .from('whatsapp_numbers')
+    .upsert(
+      {
+        tenant_id: tu.tenant_id,
+        phone_number: input.phoneNumber.trim(),
+        provider: input.provider,
+        label: input.label.trim() || null,
+        product_slug: input.productSlug,
+        config_json: configJson,
+        active: true,
+      },
+      { onConflict: 'tenant_id,phone_number' }
+    )
+    .select('id')
+    .single();
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  return { success: true, numberId: data.id, verifyToken };
 }

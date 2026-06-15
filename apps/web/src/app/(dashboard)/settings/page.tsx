@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { WhatsAppSetupSection } from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings } from '@/components/dashboard/NotificationSettings';
 import { BotProductsSection } from '@/components/dashboard/BotProductsSection';
+import { WhatsAppNumbersManager } from '@/components/dashboard/WhatsAppNumbersManager';
 
 const PRODUCT_COLORS: Record<string, string> = {
   support_bot:   'bg-sky-50 text-sky-600',
@@ -74,25 +75,18 @@ export default async function SettingsPage() {
 
       {/* WhatsApp numbers */}
       <Section icon={<Phone size={16} />} title="WhatsApp Numbers">
-        {!numbers?.length ? (
-          <p className="text-sm text-gray-400 px-5 py-4">No numbers configured. Contact your account manager.</p>
-        ) : (
-          numbers.map((num) => {
-            const config = num.config_json as Record<string, string>;
-            const botLabel = num.product_slug
-              ? num.product_slug.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
-              : 'Unassigned';
-            return (
-              <div key={num.id} className="divide-y divide-green-50">
-                <InfoRow label="Phone Number"    value={num.phone_number}                  mono />
-                <InfoRow label="Provider"        value={num.provider}                      capitalize />
-                <InfoRow label="Phone Number ID" value={config['phone_number_id'] ?? '—'} mono />
-                <InfoRow label="Label"           value={num.label ?? '—'} />
-                <InfoRow label="Assigned Bot"    value={botLabel}                          capitalize />
-              </div>
-            );
-          })
-        )}
+        <WhatsAppNumbersManager
+          numbers={(numbers ?? []).map(n => ({
+            id: n.id as string,
+            phone_number: n.phone_number as string,
+            provider: n.provider as string,
+            label: (n.label ?? null) as string | null,
+            product_slug: (n.product_slug ?? null) as string | null,
+            phone_number_id: ((n.config_json as Record<string, string>)['phone_number_id'] ?? null),
+          }))}
+          activeBots={activeBots.map(p => p.product_type as 'support_bot' | 'sales_bot' | 'lifecycle_bot')}
+          webhookBase={`${apiBase}/api/webhook/${tenant?.id ?? ''}`}
+        />
       </Section>
 
       {/* Bot Products — activate / deactivate / assign numbers */}
