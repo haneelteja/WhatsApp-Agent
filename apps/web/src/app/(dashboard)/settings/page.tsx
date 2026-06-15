@@ -4,6 +4,7 @@ import { Building2, Phone, Bot, Link2, ShieldCheck, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { WhatsAppSetupSection } from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings } from '@/components/dashboard/NotificationSettings';
+import { BotProductsSection } from '@/components/dashboard/BotProductsSection';
 
 const PRODUCT_COLORS: Record<string, string> = {
   support_bot:   'bg-sky-50 text-sky-600',
@@ -78,43 +79,36 @@ export default async function SettingsPage() {
         ) : (
           numbers.map((num) => {
             const config = num.config_json as Record<string, string>;
+            const botLabel = num.product_slug
+              ? num.product_slug.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+              : 'Unassigned';
             return (
               <div key={num.id} className="divide-y divide-green-50">
-                <InfoRow label="Phone Number"   value={num.phone_number}                  mono />
-                <InfoRow label="Provider"       value={num.provider}                      capitalize />
+                <InfoRow label="Phone Number"    value={num.phone_number}                  mono />
+                <InfoRow label="Provider"        value={num.provider}                      capitalize />
                 <InfoRow label="Phone Number ID" value={config['phone_number_id'] ?? '—'} mono />
-                <InfoRow label="Label"          value={num.label ?? '—'} />
+                <InfoRow label="Label"           value={num.label ?? '—'} />
+                <InfoRow label="Assigned Bot"    value={botLabel}                          capitalize />
               </div>
             );
           })
         )}
       </Section>
 
-      {/* Active bots */}
-      <Section icon={<Bot size={16} />} title="Active Bot Products">
-        {!activeBots.length ? (
-          <p className="text-sm text-gray-400 px-5 py-4">No products activated.</p>
-        ) : (
-          <div className="divide-y divide-green-50">
-            {activeBots.map((p) => (
-              <div
-                key={`${p.tenant_id}-${p.product_type}`}
-                className="flex items-center justify-between px-5 py-3.5"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium ${PRODUCT_COLORS[p.product_type] ?? 'bg-gray-100 text-gray-500'}`}>
-                    {p.product_type.replace(/_/g, ' ')}
-                  </span>
-                  <span className="text-sm text-gray-500 capitalize">{p.tier}</span>
-                </div>
-                <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ring-1 ${p.active ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-gray-100 text-gray-500 ring-gray-200'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${p.active ? 'bg-emerald-400' : 'bg-gray-300'}`} />
-                  {p.active ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Bot Products — activate / deactivate / assign numbers */}
+      <Section icon={<Bot size={16} />} title="Bot Products">
+        <BotProductsSection
+          tenantId={tenant?.id ?? ''}
+          apiBase={apiBase}
+          tenantProducts={(products ?? []) as { product_type: string; tier: string; active: boolean }[]}
+          numbers={(numbers ?? []).map(n => ({
+            id: n.id as string,
+            phone_number: n.phone_number as string,
+            provider: n.provider as string,
+            label: (n.label ?? null) as string | null,
+            product_slug: (n.product_slug ?? null) as string | null,
+          }))}
+        />
       </Section>
 
       {/* Guardrails moved notice */}
