@@ -54,6 +54,22 @@ export default async function ConversationDetailPage({
     .eq('conversation_id', id)
     .order('timestamp', { ascending: true });
 
+  // Fetch team members for assign dropdown
+  const { data: tenantUsersData } = await admin
+    .from('tenant_users')
+    .select('user_id, role')
+    .eq('tenant_id', tenantId ?? '');
+
+  const teamMembers = await Promise.all(
+    (tenantUsersData ?? []).map(async (tu) => {
+      const { data: { user: authUser } } = await admin.auth.admin.getUserById(tu.user_id);
+      return {
+        id: tu.user_id,
+        name: (authUser?.user_metadata?.full_name as string | undefined) ?? authUser?.email ?? tu.user_id,
+      };
+    })
+  );
+
   const contact = conversation.contacts as { phone: string; name: string | null } | null;
   const displayName = contact?.name ?? contact?.phone ?? 'Unknown';
   const style = STATUS_STYLES[conversation.status] ?? STATUS_STYLES.resolved;
@@ -97,7 +113,12 @@ export default async function ConversationDetailPage({
       />
 
       {/* Actions */}
-      <ConversationActions conversationId={id} status={conversation.status} />
+      <ConversationActions
+        conversationId={id}
+        status={conversation.status}
+        teamMembers={teamMembers}
+        assignedAgentId={conversation.assigned_agent_id ?? null}
+      />
     </div>
   );
 }

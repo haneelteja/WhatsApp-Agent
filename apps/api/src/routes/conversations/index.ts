@@ -201,4 +201,36 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     await releaseToBot(request.params.id, request.userId, request.body?.resolutionNote);
     return { success: true };
   });
+
+  // ─── POST /api/conversations/:id/takeover — agent takes over open conversation ─
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/takeover',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const db = getServerClient();
+
+      const { data: convo } = await db
+        .from('conversations')
+        .select('id')
+        .eq('id', request.params.id)
+        .eq('tenant_id', request.tenantId)
+        .single();
+
+      if (!convo) return reply.status(404).send({ success: false, error: 'Not found' });
+
+      await Promise.all([
+        db.from('conversations').update({
+          status: 'bot_paused',
+          assigned_agent_id: request.userId,
+        }).eq('id', request.params.id),
+
+        db.from('agent_sessions').insert({
+          conversation_id: request.params.id,
+          agent_id: request.userId,
+        }),
+      ]);
+
+      return { success: true };
+    }
+  );
 }
