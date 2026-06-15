@@ -10,7 +10,7 @@ import { detectAndStoreSentiment } from '../../services/sentiment/detector.js';
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
 
-SALES LEAD DETECTION: If the customer shows clear buying intent — such as requesting a quote, specifying a product + quantity + location, asking about bulk pricing, or expressing readiness to place an order — append the exact text [SALES_LEAD] on a new line at the very end of your response. Do not explain this tag; the system handles it automatically. Only append it when the intent is clear and specific (not for general enquiries).`;
+SALES LEAD DETECTION: If the customer shows clear buying intent — such as requesting a quote, specifying a product + quantity + location, asking about bulk pricing, or expressing readiness to place an order — append the exact text [SALES_LEAD] on a new line at the very end of your response. IMPORTANT: Always write a full, helpful reply first, then append [SALES_LEAD] on the last line. Never respond with ONLY the tag. Do not explain the tag. Only use it when buying intent is clear and specific — never for greetings, general questions, or vague enquiries.`;
 
 const DEFAULT_SYSTEM_PROMPTS: Record<ProductType, string> = {
   support_bot: `You are a helpful customer support assistant. Answer questions accurately using the knowledge base. If you cannot confidently answer, say so and offer to escalate to a human agent. Be concise, friendly, and professional.`,
@@ -442,6 +442,15 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const rawContent = aiResult.content;
     const isSalesLead = rawContent.includes('[SALES_LEAD]');
     const cleanContent = rawContent.replace(/\[SALES_LEAD\]/g, '').trimEnd();
+
+    // Guard: if AI only emitted the tag with no actual reply content, skip reply entirely
+    if (!cleanContent.trim()) {
+      fastify.log.warn({ tenantId, conversationId: conversation.id }, '[Webhook] AI returned empty content after stripping tags — skipping reply');
+      if (isSalesLead && conversation.status === 'open') {
+        await escalateConversation(conversation, 'Sales lead detected — customer expressed buying intent');
+      }
+      return reply.status(200).send({ success: true });
+    }
 
     // Truncate to max_response_length guardrail
     const replyText = cleanContent.length > effectiveMaxLength
