@@ -26,26 +26,28 @@ export function ConversationMessages({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Poll the API every 3 seconds for new messages — reliable across all RLS/realtime configs
   useEffect(() => {
-    const channel = supabase
-      .channel(`conv-${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
-        }
-      )
-      .subscribe();
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
-    return () => {
-      void supabase.removeChannel(channel);
+    const poll = async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) return;
+
+      const res = await fetch(`${apiBase}/api/conversations/${conversationId}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+
+      const json = await res.json() as { data: Message[] };
+      if (json.data) {
+        setMessages(json.data);
+      }
     };
+
+    const interval = setInterval(() => void poll(), 3000);
+    return () => clearInterval(interval);
   }, [conversationId, supabase]);
 
   return (
@@ -87,7 +89,8 @@ export function ConversationMessages({
                 <p className="whitespace-pre-wrap">{msg.content}</p>
               </div>
               <div className={`flex items-center gap-1.5 mt-1 px-1 ${isBot ? 'flex-row-reverse' : ''}`}>
-                <span className="text-[10px] text-slate-400">
+                {/* suppressHydrationWarning: toLocaleTimeString output differs between Node and browser Intl */}
+                <span className="text-[10px] text-slate-400" suppressHydrationWarning>
                   {new Date(msg.timestamp).toLocaleTimeString('en-IN', {
                     hour: '2-digit',
                     minute: '2-digit',
