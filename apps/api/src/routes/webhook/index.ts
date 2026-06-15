@@ -338,12 +338,14 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     // ── Fetch conversation history + KB context ────────────────────────────
-    const { data: history } = await db
+    // Limit to last 15 messages to prevent old context from contaminating fresh intent detection.
+    const { data: historyDesc } = await db
       .from('messages')
       .select('*')
       .eq('conversation_id', conversation.id)
-      .order('timestamp', { ascending: true })
-      .limit(50);
+      .order('timestamp', { ascending: false })
+      .limit(15);
+    const history = (historyDesc ?? []).reverse();
 
     const contactData = contact as Contact;
     const kbResults = incoming.text
