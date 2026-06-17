@@ -36,12 +36,15 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     };
 
     // Fetch the tenant's WhatsApp config to get the verify token
+    // Only Meta Cloud uses hub.challenge GET verification; filter by provider to avoid
+    // returning a Twilio number's config when multiple numbers share the same product_slug.
     const db = getServerClient();
     const { data: wn } = await db
       .from('whatsapp_numbers')
       .select('config_json, provider')
       .eq('tenant_id', tenantId)
       .eq('product_slug', productType)
+      .eq('provider', 'meta_cloud')
       .eq('active', true)
       .limit(1)
       .single();
