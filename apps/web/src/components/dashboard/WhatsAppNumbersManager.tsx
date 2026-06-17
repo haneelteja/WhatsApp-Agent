@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 import { AddWhatsAppNumberModal } from './AddWhatsAppNumberModal';
+import { EditWhatsAppNumberModal } from './EditWhatsAppNumberModal';
 
 type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
 
@@ -23,7 +24,8 @@ interface Props {
 }
 
 export function WhatsAppNumbersManager({ numbers, activeBots, webhookBase }: Props) {
-  const [showModal, setShowModal] = useState(false);
+  const [showAddModal, setShowAddModal]   = useState(false);
+  const [editTarget, setEditTarget]       = useState<WhatsAppNumber | null>(null);
   const router = useRouter();
 
   const botLabel = (slug: string | null) => {
@@ -32,7 +34,8 @@ export function WhatsAppNumbersManager({ numbers, activeBots, webhookBase }: Pro
   };
 
   function handleClose() {
-    setShowModal(false);
+    setShowAddModal(false);
+    setEditTarget(null);
     router.refresh();
   }
 
@@ -44,7 +47,7 @@ export function WhatsAppNumbersManager({ numbers, activeBots, webhookBase }: Pro
           {activeBots.length > 0 && (
             <button
               type="button"
-              onClick={() => setShowModal(true)}
+              onClick={() => setShowAddModal(true)}
               className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold shadow-sm"
             >
               <Plus size={14} />
@@ -73,6 +76,14 @@ export function WhatsAppNumbersManager({ numbers, activeBots, webhookBase }: Pro
                   }`}>
                     {botLabel(num.product_slug)}
                   </span>
+                  <button
+                    type="button"
+                    aria-label={`Edit ${num.phone_number}`}
+                    onClick={() => setEditTarget(num)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                  >
+                    <Pencil size={13} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -80,7 +91,7 @@ export function WhatsAppNumbersManager({ numbers, activeBots, webhookBase }: Pro
           <div className="px-5 py-3 border-t border-green-50">
             <button
               type="button"
-              onClick={() => setShowModal(true)}
+              onClick={() => setShowAddModal(true)}
               className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium hover:text-emerald-700 transition-colors"
             >
               <Plus size={13} />
@@ -90,11 +101,19 @@ export function WhatsAppNumbersManager({ numbers, activeBots, webhookBase }: Pro
         </>
       )}
 
-      {showModal && (
+      {showAddModal && (
         <AddWhatsAppNumberModal
           activeBots={activeBots}
           onClose={handleClose}
           webhookBase={webhookBase}
+        />
+      )}
+
+      {editTarget && (
+        <EditWhatsAppNumberModal
+          number={editTarget}
+          activeBots={activeBots}
+          onClose={handleClose}
         />
       )}
     </>
