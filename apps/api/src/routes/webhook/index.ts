@@ -54,12 +54,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const config = wn.config_json as { verify_token: string };
-    fastify.log.info({ stored_token: config.verify_token, provided_token: request.query['hub.verify_token'] }, 'webhook verify');
     const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
     const challenge = gateway.verifyWebhook(request.query, config.verify_token);
 
     if (challenge === false) {
-      return reply.status(403).send('Verification failed');
+      return reply.status(403).send(`Verification failed. stored=${config.verify_token} provided=${request.query['hub.verify_token']}`);
     }
     return reply.status(200).send(challenge);
   });
