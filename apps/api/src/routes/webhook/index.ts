@@ -58,7 +58,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const challenge = gateway.verifyWebhook(request.query, config.verify_token);
 
     if (challenge === false) {
-      return reply.status(403).send(`Verification failed. stored=${config.verify_token} provided=${request.query['hub.verify_token']}`);
+      return reply.status(403).send('Verification failed');
     }
     return reply.status(200).send(challenge);
   });
