@@ -79,12 +79,19 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const db = getServerClient();
     fastify.log.info({ tenantId, productType }, '[Webhook] processing message');
 
+    // Infer provider from payload shape so we look up the right whatsapp_numbers row
+    // (a tenant may have both a Twilio and a Meta Cloud number under the same product_slug)
+    const body = request.body as Record<string, unknown>;
+    const inferredProvider =
+      body?.object === 'whatsapp_business_account' ? 'meta_cloud' : 'twilio';
+
     // Load all 4 guardrail layers + 4 LLM config levels in parallel with WhatsApp config + bot config
     const [wnRes, botConfigRes, platformSettingsRes, botTypeGuardrailsRes, tenantGuardrailsRes, llmConfigsRes] = await Promise.all([
       db.from('whatsapp_numbers')
         .select('config_json, provider')
         .eq('tenant_id', tenantId)
         .eq('product_slug', productType)
+        .eq('provider', inferredProvider)
         .eq('active', true)
         .limit(1)
         .single(),
