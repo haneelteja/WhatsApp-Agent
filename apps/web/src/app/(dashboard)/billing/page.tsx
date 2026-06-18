@@ -1,7 +1,7 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
-import { CreditCard, Check, Clock, MessageSquare, Bot } from 'lucide-react';
+import { CreditCard, Check, Clock, MessageSquare, Bot, AlertCircle } from 'lucide-react';
 
 const PLAN_META = {
   starter: {
@@ -113,12 +113,60 @@ export default async function BillingPage() {
 
   const now = Date.now();
 
+  const PLAN_LIMIT_NUM: Record<PlanKey, number> = { starter: 500, growth: 2000, scale: Infinity };
+  const planLimitNum  = PLAN_LIMIT_NUM[plan];
+  const usagePercent  = isFinite(planLimitNum) ? Math.round(((convThisMonth ?? 0) / planLimitNum) * 100) : 0;
+  const isOverLimit   = isFinite(planLimitNum) && (convThisMonth ?? 0) >= planLimitNum;
+  const isNearLimit   = !isOverLimit && usagePercent >= 80;
+  const isSuspended   = tenant?.status === 'suspended';
+
   return (
     <div className="p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Billing & Plan</h2>
         <p className="text-sm text-gray-500 mt-0.5">Your current subscription and usage.</p>
       </div>
+
+      {/* Suspended banner */}
+      {isSuspended && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-800">Account suspended</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Your bot has stopped replying to messages. Contact your Alphabot account manager to restore access.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Limit reached banner */}
+      {!isSuspended && isOverLimit && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-800">Monthly conversation limit reached</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Your bot has paused replies for this month ({convThisMonth ?? 0}/{planLimitNum} conversations used).
+              Contact your account manager to upgrade your plan.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Approaching limit banner */}
+      {!isSuspended && isNearLimit && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Approaching conversation limit</p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              You&apos;ve used {usagePercent}% of your monthly limit ({convThisMonth ?? 0}/{planLimitNum} conversations).
+              Contact your account manager before your bot pauses.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Active trial banner */}
       {activeTrial && (
@@ -175,6 +223,19 @@ export default async function BillingPage() {
           <p className="text-[11px] text-slate-400 mt-0.5">
             This month · limit: {meta.conversations === 'Unlimited' ? '∞' : meta.conversations}
           </p>
+          {isFinite(planLimitNum) && (
+            <div className="mt-2">
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    isOverLimit ? 'bg-red-500' : isNearLimit ? 'bg-amber-500' : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(usagePercent, 100)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">{usagePercent}% used</p>
+            </div>
+          )}
         </div>
         <div className="bg-white border border-green-100 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">

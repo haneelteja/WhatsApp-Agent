@@ -86,7 +86,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       body?.object === 'whatsapp_business_account' ? 'meta_cloud' : 'twilio';
 
     // Load all 4 guardrail layers + 4 LLM config levels in parallel with WhatsApp config + bot config
-    const [wnRes, botConfigRes, platformSettingsRes, botTypeGuardrailsRes, tenantGuardrailsRes, llmConfigsRes] = await Promise.all([
+    const [wnRes, tenantRes, botConfigRes, platformSettingsRes, botTypeGuardrailsRes, tenantGuardrailsRes, llmConfigsRes] = await Promise.all([
       db.from('whatsapp_numbers')
         .select('config_json, provider')
         .eq('tenant_id', tenantId)
@@ -94,6 +94,10 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         .eq('provider', inferredProvider)
         .eq('active', true)
         .limit(1)
+        .single(),
+      db.from('tenants')
+        .select('plan, status')
+        .eq('id', tenantId)
         .single(),
       db.from('bot_configs')
         .select('*, product:products(default_prompt, default_model)')
@@ -125,6 +129,28 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     if (!wn) {
       fastify.log.warn({ tenantId, wnError }, '[Webhook] whatsapp_numbers not found');
       return;
+    }
+
+    // ── Tenant status + plan limit enforcement ────────────────────────────
+    const tenant = tenantRes.data;
+    if (tenant?.status === 'suspended') {
+      fastify.log.info({ tenantId }, '[Webhook] tenant suspended — dropping reply');
+      return;
+    }
+
+    const PLAN_LIMITS: Record<string, number> = { starter: 500, growth: 2000, scale: Infinity };
+    const planLimit = PLAN_LIMITS[tenant?.plan ?? 'starter'] ?? 500;
+    if (isFinite(planLimit)) {
+      const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+      const { count: convCount } = await db
+        .from('conversations')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .gte('created_at', monthStart);
+      if ((convCount ?? 0) >= planLimit) {
+        fastify.log.warn({ tenantId, convCount, planLimit }, '[Webhook] plan limit reached — silently dropping reply');
+        return;
+      }
     }
 
     const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
