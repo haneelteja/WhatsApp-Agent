@@ -6,6 +6,8 @@ import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKB } from '../../services/kb/lookup.js';
 import { escalateConversation } from '../../services/escalation/index.js';
 import { detectAndStoreSentiment } from '../../services/sentiment/detector.js';
+import { checkTokenQuota } from '../../services/ai/token-quota.js';
+import { assembleHistory } from '../../services/ai/history-assembler.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -26,6 +28,60 @@ const DEFAULT_ESCALATION_TRIGGERS = [
 
 // Default confidence threshold (overridden by bot_config.confidence_threshold)
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.6;
+
+/** Returns a human-readable language name if the text contains non-Latin scripts. */
+function detectLanguageHint(text: string): string | null {
+  if (/[ऀ-ॿ]/.test(text)) return 'Hindi (Devanagari script)';
+  if (/[ఀ-౿]/.test(text)) return 'Telugu';
+  if (/[஀-௿]/.test(text)) return 'Tamil';
+  if (/[ಀ-೿]/.test(text)) return 'Kannada';
+  if (/[઀-૿]/.test(text)) return 'Gujarati';
+  if (/[਀-੿]/.test(text)) return 'Punjabi (Gurmukhi script)';
+  if (/[଀-୿]/.test(text)) return 'Odia';
+  if (/[؀-ۿ]/.test(text)) return 'Arabic';
+  if (/[一-鿿]/.test(text)) return 'Chinese';
+  return null;
+}
+
+// ─── Status ladder for delivery receipts ─────────────────────────────────────
+// Only accept updates that move the status forward (sent→delivered→read).
+// `failed` is always accepted regardless of current status.
+const STATUS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
+
+async function applyDeliveryStatusUpdates(
+  db: ReturnType<typeof import('@alphabot/database').getServerClient>,
+  updates: import('@alphabot/shared').DeliveryStatusUpdate[],
+): Promise<void> {
+  for (const update of updates) {
+    if (!update.messageId) continue;
+
+    const { data: msg } = await db
+      .from('messages')
+      .select('id, delivery_status')
+      .eq('whatsapp_msg_id', update.messageId)
+      .maybeSingle();
+
+    if (!msg) continue; // Not a message we sent
+
+    const currentRank = STATUS_RANK[(msg as { delivery_status: string | null }).delivery_status ?? ''] ?? 0;
+    const newRank     = update.status === 'failed' ? 999 : (STATUS_RANK[update.status] ?? 0);
+
+    if (newRank > currentRank) {
+      await db.from('messages')
+        .update({ delivery_status: update.status })
+        .eq('id', (msg as { id: string }).id);
+    }
+  }
+}
+
+/** Build a context suffix appended to escalation reason notes (stage + captured entities). */
+function buildEscalationContext(stage: string, aiVars: Record<string, string>): string {
+  const parts: string[] = [];
+  if (stage && stage !== 'greeting') parts.push(`stage: ${stage}`);
+  const pairs = Object.entries(aiVars);
+  if (pairs.length > 0) parts.push(pairs.map(([k, v]) => `${k}=${v}`).join(', '));
+  return parts.length > 0 ? ` [${parts.join(' | ')}]` : '';
+}
 
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
   // ─── GET: Meta webhook verification ─────────────────────────────────────
@@ -154,14 +210,23 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
-    const incoming = gateway.parseIncoming(request.body);
-    fastify.log.info({ incoming: incoming ? { type: incoming.type, from: incoming.from } : null }, '[Webhook] parsed incoming');
-    if (!incoming || incoming.type === 'unsupported') return;
-
     const config = wn.config_json as {
       phone_number_id: string;
       access_token: string;
     };
+
+    // ── Feature: Status Ladder — process delivery receipts ────────────────
+    // Meta delivers receipts (sent/delivered/read) through the same POST endpoint
+    // as inbound messages. Process them with the one-way ladder before doing
+    // anything else. If the payload was receipts-only, parseIncoming returns null.
+    const deliveryUpdates = gateway.parseDeliveryStatus(request.body);
+    if (deliveryUpdates.length > 0) {
+      await applyDeliveryStatusUpdates(db, deliveryUpdates);
+    }
+
+    const incoming = gateway.parseIncoming(request.body);
+    fastify.log.info({ incoming: incoming ? { type: incoming.type, from: incoming.from } : null }, '[Webhook] parsed incoming');
+    if (!incoming || incoming.type === 'unsupported') return;
 
     // Mark message as read (non-blocking)
     void gateway.markAsRead(config.phone_number_id, config.access_token, incoming.messageId);
@@ -182,6 +247,29 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     fastify.log.info({ contact: contact ? (contact as Contact).id : null, contactError }, '[Webhook] contact upsert');
     if (!contact) return;
+
+    // ── CSAT response detection ───────────────────────────────────────────────
+    // If we're awaiting a CSAT rating and the customer replies with 1-5, record it and exit.
+    const memJson = ((contact as Contact).memory_json ?? {}) as Record<string, unknown>;
+    if (memJson.awaiting_csat === true && incoming.text) {
+      const csatValue = incoming.text.trim();
+      if (['1', '2', '3', '4', '5'].includes(csatValue)) {
+        const updatedMem = {
+          ...memJson,
+          awaiting_csat:  false,
+          csat_score:     Number(csatValue),
+          csat_scored_at: new Date().toISOString(),
+        };
+        await db.from('contacts').update({ memory_json: updatedMem }).eq('id', (contact as Contact).id);
+        const stars = '⭐'.repeat(Number(csatValue));
+        await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'text',
+          to:   incoming.from,
+          text: `Thank you for your rating! ${stars} We appreciate your feedback.`,
+        });
+        return;
+      }
+    }
 
     // ── Upsert conversation (one open conversation per contact per product) ─
     const { data: existingConvo, error: convoLookupError } = await db
@@ -269,6 +357,24 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       product_type: productType,
       event_type: 'message_sent',
     });
+
+    // ── Feature: Optimistic Lock — prevent concurrent AI calls ────────────
+    // Meta retries webhooks on non-2xx or timeout. With LLM calls taking 1–5s,
+    // two identical webhooks can race and produce duplicate responses.
+    // Lock the conversation row for up to 30s; the loser exits cleanly.
+    const lockUntil = new Date(Date.now() + 30_000).toISOString();
+    const now       = new Date().toISOString();
+    const { data: lockData } = await db
+      .from('conversations')
+      .update({ processing_lock_expires_at: lockUntil })
+      .eq('id', conversation.id)
+      .or(`processing_lock_expires_at.is.null,processing_lock_expires_at.lt.${now}`)
+      .select('id');
+
+    if (!lockData?.length) {
+      fastify.log.warn({ conversationId: conversation.id }, '[Webhook] AI lock not acquired — concurrent processing in progress, skipping duplicate');
+      return;
+    }
 
     // Resolve bot config values (DB row takes precedence over defaults)
     const botConfig = botConfigRes.data as (BotConfig & { product: Product | null }) | null;
@@ -374,14 +480,18 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     // ── Fetch conversation history + KB context ────────────────────────────
-    // Limit to last 15 messages to prevent old context from contaminating fresh intent detection.
+    // Load up to 40 messages; the assembler splits them into recent verbatim
+    // + archived summary so the LLM always gets fresh context efficiently.
     const { data: historyDesc } = await db
       .from('messages')
       .select('*')
       .eq('conversation_id', conversation.id)
       .order('timestamp', { ascending: false })
-      .limit(15);
-    const history = (historyDesc ?? []).reverse();
+      .limit(40);
+    const allHistory = ((historyDesc ?? []) as import('@alphabot/shared').Message[]).reverse();
+
+    const { archiveBlock, recentMessages, stats: historyStats } = assembleHistory(allHistory);
+    fastify.log.info(historyStats, '[Webhook] history assembled');
 
     const contactData = contact as Contact;
     const kbResults = incoming.text
@@ -394,6 +504,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     // Always append SALES_LEAD_INSTRUCTION so it applies even when the DB
     // has a custom system_prompt that doesn't include it.
     let systemPrompt = baseSystemPrompt + (productType !== 'lifecycle_bot' ? SALES_LEAD_INSTRUCTION : '');
+
+    // Inject archive summary (Tier 3) — older turns compressed into the system prompt
+    if (archiveBlock) {
+      systemPrompt += `\n\n---\n${archiveBlock}`;
+    }
 
     if (kbOnly) {
       systemPrompt += kbResults.length > 0
@@ -422,6 +537,28 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     if (noPersonalData) {
       systemPrompt += '\nNever share or reference personally identifiable information.';
     }
+
+    // ── Language-aware reply directive ────────────────────────────────────────
+    const langHint = incoming.text ? detectLanguageHint(incoming.text) : null;
+    if (langHint) {
+      systemPrompt += `\nThe customer is writing in ${langHint}. Respond in the same language and script.`;
+    }
+
+    // ── Feature: AI Conversation State Machine ────────────────────────────
+    // Inject the current conversation stage and AI-extracted entities into the
+    // system prompt. The AI can advance the stage or capture new info by appending
+    // structured markers to the END of its response (stripped before sending).
+    const convStage  = (conversation as Conversation & { stage?: string }).stage ?? 'greeting';
+    const convAiVars = (conversation as Conversation & { ai_vars?: Record<string, string> }).ai_vars ?? {};
+    const aiVarPairs = Object.entries(convAiVars);
+
+    systemPrompt += `\n\n---\nCONVERSATION STATE:
+Stage: ${convStage} (greeting → qualifying → resolving → following_up → closing)
+${aiVarPairs.length > 0 ? `Captured info: ${aiVarPairs.map(([k, v]) => `${k}=${v}`).join(', ')}` : 'No customer info captured yet.'}
+
+To update state, append these markers at the VERY END of your response (they are stripped before reaching the customer):
+[STAGE:<new_stage>] — advance when the conversation naturally moves to a new phase
+[ENTITY:<key>=<value>] — capture extracted customer info (e.g. [ENTITY:email=alice@example.com] [ENTITY:order_id=ORD-123])`;
 
     // ── Resolve LLM config — 6-level hierarchy (most specific wins) ─────
     // 1. llm_configs Client Bot      (validated API key + model)
@@ -455,39 +592,102 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         ? { model: dbModel }   // use DB Anthropic model with platform env API key
         : undefined;           // fall through to REPLY_MODEL default in anthropic.ts
 
+    // ── Token quota check — enforce per-plan monthly limit ────────────────
+    const quota = await checkTokenQuota(tenantId, tenant?.plan ?? 'starter');
+    if (!quota.allowed) {
+      fastify.log.warn({ tenantId, used: quota.used, limit: quota.limit }, '[Webhook] token quota exceeded — dropping AI call');
+      await gateway.sendMessage(config.phone_number_id, config.access_token, {
+        type: 'text',
+        to:   incoming.from,
+        text: "Our AI assistant has reached its monthly limit. Please contact support to upgrade your plan.",
+      });
+      return;
+    }
+
     // ── Generate AI response ──────────────────────────────────────────────
     let aiResult: Awaited<ReturnType<typeof getAIResponse>>;
     try {
       aiResult = await getAIResponse(
         systemPrompt,
-        (history ?? []) as import('@alphabot/shared').Message[],
+        recentMessages,
         kbResults,
         contactMemory,
         llmOverride,
       );
     } catch (aiErr) {
       const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-      fastify.log.error({ aiErr: errMsg, tenantId, productType, resolvedLlm: resolvedLlm ? `${resolvedLlm.tenant_id ?? 'platform'}/${resolvedLlm.product_slug ?? 'generic'}` : 'env-vars' }, '[Webhook] AI generation failed');
-      await gateway.sendMessage(config.phone_number_id, config.access_token, {
-        type: 'text',
-        to: incoming.from,
-        text: "I'm having trouble responding right now. Please try again in a moment, or type 'agent' to speak with a human.",
-      });
-      return;
+
+      // If a tenant's custom API key caused an auth failure, retry with the platform key.
+      const isAuthError = /\b(401|403)\b|invalid.api.key|authentication_error|unauthorized/i.test(errMsg);
+      if (isAuthError && llmOverride?.apiKey) {
+        fastify.log.warn({ tenantId, errMsg }, '[Webhook] Custom API key auth failure — retrying with platform key');
+        try {
+          aiResult = await getAIResponse(
+            systemPrompt,
+            recentMessages,
+            kbResults,
+            contactMemory,
+            llmOverride.model ? { model: llmOverride.model } : undefined,
+          );
+        } catch (fallbackErr) {
+          fastify.log.error({ fallbackErr: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr), tenantId }, '[Webhook] Platform key fallback also failed');
+          await gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text',
+            to: incoming.from,
+            text: "I'm having trouble responding right now. Please try again in a moment, or type 'agent' to speak with a human.",
+          });
+          void db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id);
+          return;
+        }
+      } else {
+        fastify.log.error({ aiErr: errMsg, tenantId, productType, resolvedLlm: resolvedLlm ? `${resolvedLlm.tenant_id ?? 'platform'}/${resolvedLlm.product_slug ?? 'generic'}` : 'env-vars' }, '[Webhook] AI generation failed');
+        await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'text',
+          to: incoming.from,
+          text: "I'm having trouble responding right now. Please try again in a moment, or type 'agent' to speak with a human.",
+        });
+        void db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id);
+        return;
+      }
     }
 
-    // ── Parse [SALES_LEAD] tag injected by AI when it detects buying intent ─
-    const rawContent = aiResult.content;
+    // ── Parse AI response markers ─────────────────────────────────────────
+    const rawContent  = aiResult.content;
     const isSalesLead = rawContent.includes('[SALES_LEAD]');
-    const cleanContent = rawContent.replace(/\[SALES_LEAD\]/g, '').trimEnd();
 
-    // Guard: if AI only emitted the tag with no actual reply content, skip reply entirely
+    // Feature: State Machine — extract [STAGE:x] and [ENTITY:key=value] markers
+    const stageMatch    = rawContent.match(/\[STAGE:(\w+)\]/);
+    const entityMatches = [...rawContent.matchAll(/\[ENTITY:(\w+)=([^\]]+)\]/g)];
+
+    // Strip all control markers before sending to customer
+    const cleanContent = rawContent
+      .replace(/\[SALES_LEAD\]/g, '')
+      .replace(/\[STAGE:\w+\]/g, '')
+      .replace(/\[ENTITY:[^\]]+\]/g, '')
+      .trimEnd();
+
+    // Persist stage/entity updates non-blocking (after lock, before reply send)
+    if (stageMatch || entityMatches.length > 0) {
+      const stateUpdate: Record<string, unknown> = {};
+      if (stageMatch) stateUpdate['stage'] = stageMatch[1];
+      if (entityMatches.length > 0) {
+        const updatedVars = { ...convAiVars };
+        for (const match of entityMatches) {
+          updatedVars[match[1]!] = match[2]!;
+        }
+        stateUpdate['ai_vars'] = updatedVars;
+      }
+      void db.from('conversations').update(stateUpdate).eq('id', conversation.id);
+    }
+
+    // Guard: if AI only emitted markers with no actual reply content, skip reply entirely
     if (!cleanContent.trim()) {
       fastify.log.warn({ tenantId, conversationId: conversation.id }, '[Webhook] AI returned empty content after stripping tags — skipping reply');
       if (isSalesLead && conversation.status === 'open') {
-        await escalateConversation(conversation, 'Sales lead detected — customer expressed buying intent');
+        await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
       }
-      return reply.status(200).send({ success: true });
+      void db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id);
+      return;
     }
 
     // Truncate to max_response_length guardrail
@@ -495,13 +695,13 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       ? cleanContent.substring(0, effectiveMaxLength).trimEnd() + '…'
       : cleanContent;
 
-    // ── Store AI reply ────────────────────────────────────────────────────
-    await db.from('messages').insert({
+    // ── Store AI reply (capture ID for delivery status update) ────────────
+    const { data: storedMsg } = await db.from('messages').insert({
       conversation_id: conversation.id,
       role: 'assistant',
       content: replyText,
       confidence_score: aiResult.confidenceScore,
-    });
+    }).select('id').single();
 
     // Track token usage
     void db.from('usage_events').insert({
@@ -514,11 +714,40 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     // ── Auto-escalate on sales lead detection ────────────────────────────
     if (isSalesLead && conversation.status === 'open') {
       fastify.log.info({ tenantId, conversationId: conversation.id }, '[Webhook] Sales lead detected — escalating');
-      await escalateConversation(conversation, 'Sales lead detected — customer expressed buying intent');
+      await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
     }
-    // ── Auto-escalate on low confidence ──────────────────────────────────
-    else if (aiResult.confidenceScore < confidenceThreshold && conversation.status === 'open') {
-      await escalateConversation(conversation, 'Low AI confidence — query unresolved');
+    // ── Feature: Escalation Policy — confidence-based reprompt ladder ──────
+    // Replaces the old single-threshold hardcut with configurable per-bot policy:
+    // low confidence increments a counter; on exhaust the policy triggers escalation.
+    // A confident reply resets the counter so transient uncertainty doesn't escalate.
+    else if (conversation.status === 'open') {
+      const policy      = botConfig?.escalation_policy ?? null;
+      const threshold   = policy?.confidence_threshold    ?? confidenceThreshold;
+      const maxReprompts = policy?.max_low_confidence_reprompts ?? 2;
+      const onExhaust   = policy?.on_exhaust ?? 'escalate';
+
+      if (aiResult.confidenceScore < threshold) {
+        const currentCount = (conversation as Conversation & { low_confidence_count?: number }).low_confidence_count ?? 0;
+        const newCount     = currentCount + 1;
+        await db.from('conversations').update({ low_confidence_count: newCount }).eq('id', conversation.id);
+
+        fastify.log.info({ tenantId, conversationId: conversation.id, newCount, maxReprompts, threshold }, '[Webhook] Low-confidence turn');
+
+        if (newCount >= maxReprompts && onExhaust === 'escalate') {
+          const ctx = buildEscalationContext(convStage, convAiVars);
+          await escalateConversation(conversation, `AI confidence below ${threshold} for ${newCount} consecutive turns${ctx}`);
+        } else if (policy?.reprompt_message && newCount < maxReprompts) {
+          // Send configured reprompt message before escalating on next low-confidence turn
+          await gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text',
+            to:   incoming.from,
+            text: policy.reprompt_message,
+          });
+        }
+      } else if ((conversation as Conversation & { low_confidence_count?: number }).low_confidence_count ?? 0 > 0) {
+        // Confident reply — reset counter non-blocking
+        void db.from('conversations').update({ low_confidence_count: 0 }).eq('id', conversation.id);
+      }
     }
 
     // ── Send reply to WhatsApp ────────────────────────────────────────────
@@ -528,6 +757,18 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       text: replyText,
     });
     fastify.log.info({ sendResult }, '[Webhook] sendMessage result');
+
+    // Feature: Status Ladder — mark outbound message as 'sent' and store Meta msg ID
+    if (storedMsg && sendResult.messageId) {
+      void db.from('messages')
+        .update({ delivery_status: 'sent', whatsapp_msg_id: sendResult.messageId })
+        .eq('id', (storedMsg as { id: string }).id);
+    }
+
+    // ── Release optimistic lock ───────────────────────────────────────────
+    void db.from('conversations')
+      .update({ processing_lock_expires_at: null })
+      .eq('id', conversation.id);
 
     // ── Update conversation timestamp ─────────────────────────────────────
     await db.from('conversations').update({ updated_at: new Date().toISOString() })

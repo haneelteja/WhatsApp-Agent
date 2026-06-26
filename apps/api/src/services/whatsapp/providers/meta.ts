@@ -1,7 +1,9 @@
 import type {
+  DeliveryStatusUpdate,
   IWhatsAppProvider,
   IncomingWhatsAppMessage,
   MetaMessage,
+  MetaStatus,
   MetaWebhookPayload,
   OutgoingInteractiveMessage,
   OutgoingMediaMessage,
@@ -10,6 +12,7 @@ import type {
   OutgoingTextMessage,
   SendMessageResult,
 } from '@alphabot/shared';
+import { META_RECIPIENT_NOT_ALLOWED, phoneVariants } from '../../../lib/phone.js';
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v22.0';
 
@@ -27,7 +30,7 @@ export class MetaCloudProvider implements IWhatsAppProvider {
     return false;
   }
 
-  // ─── Parse incoming webhook payload ─────────────────────────────────────
+  // ─── Parse incoming message from webhook payload ─────────────────────────
   parseIncoming(payload: unknown): IncomingWhatsAppMessage | null {
     try {
       const p = payload as MetaWebhookPayload;
@@ -50,6 +53,44 @@ export class MetaCloudProvider implements IWhatsAppProvider {
       // malformed payload — return null
     }
     return null;
+  }
+
+  // ─── Parse delivery status updates from webhook payload ──────────────────
+  parseDeliveryStatus(payload: unknown): DeliveryStatusUpdate[] {
+    const updates: DeliveryStatusUpdate[] = [];
+    try {
+      const p = payload as MetaWebhookPayload;
+      if (p.object !== 'whatsapp_business_account') return updates;
+
+      for (const entry of p.entry ?? []) {
+        for (const change of entry.changes ?? []) {
+          const value = change.value;
+          if (!value?.statuses?.length) continue;
+
+          const phoneNumberId = value.metadata.phone_number_id;
+
+          for (const s of value.statuses as MetaStatus[]) {
+            if (!s.id || !s.status) continue;
+            const raw = s as unknown as {
+              errors?: Array<{ code: number; title: string }>;
+            };
+            updates.push({
+              provider:       'meta_cloud',
+              phoneNumberId,
+              messageId:      s.id,
+              status:         s.status as DeliveryStatusUpdate['status'],
+              recipientPhone: s.recipient_id,
+              timestamp:      Number(s.timestamp) * 1000,
+              errorCode:      raw.errors?.[0]?.code,
+              errorMessage:   raw.errors?.[0]?.title,
+            });
+          }
+        }
+      }
+    } catch {
+      // malformed payload — return empty
+    }
+    return updates;
   }
 
   private normaliseMessage(
@@ -85,8 +126,37 @@ export class MetaCloudProvider implements IWhatsAppProvider {
     return { ...base, type: 'unsupported' };
   }
 
-  // ─── Send message ────────────────────────────────────────────────────────
+  // ─── Send message (with phone variant retry on error 131030) ────────────
   async sendMessage(
+    phoneNumberId: string,
+    accessToken: string,
+    message: OutgoingMessage
+  ): Promise<SendMessageResult> {
+    const result = await this.sendOnce(phoneNumberId, accessToken, message);
+
+    // 131030 = recipient phone number not in allowed list.
+    // Retry with systematic trunk-prefix variants until one succeeds.
+    if (result.status === 'failed') {
+      const metaError = this.parseMetaError(result.error ?? '');
+      if (metaError?.code === META_RECIPIENT_NOT_ALLOWED) {
+        const variants = phoneVariants(message.to);
+        for (const variant of variants) {
+          const retry = await this.sendOnce(phoneNumberId, accessToken, {
+            ...message,
+            to: variant,
+          });
+          if (retry.status === 'sent') {
+            console.info(`[Meta] send succeeded with phone variant ${variant} (original: ${message.to})`);
+            return retry;
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  private async sendOnce(
     phoneNumberId: string,
     accessToken: string,
     message: OutgoingMessage
@@ -111,6 +181,17 @@ export class MetaCloudProvider implements IWhatsAppProvider {
     const data = (await response.json()) as { messages: Array<{ id: string }> };
     const messageId = data.messages?.[0]?.id ?? '';
     return { messageId, status: 'sent' };
+  }
+
+  /** Extract Meta error object from a JSON error response string. */
+  private parseMetaError(errText: string): { code: number } | null {
+    try {
+      const parsed = JSON.parse(errText) as { error?: { code?: number } };
+      const code = parsed?.error?.code;
+      return code ? { code } : null;
+    } catch {
+      return null;
+    }
   }
 
   // ─── Mark as read ────────────────────────────────────────────────────────

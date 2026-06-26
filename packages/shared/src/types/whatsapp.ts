@@ -3,6 +3,19 @@ import type { WhatsAppProvider } from './index.js';
 // ─── WhatsApp Gateway Interface ───────────────────────────────────────────────
 // All providers normalise to these shapes. Add BSP providers in Phase 2.
 
+/** Normalised delivery receipt from any provider (Meta statuses[], Twilio MessageStatus callback). */
+export interface DeliveryStatusUpdate {
+  provider: WhatsAppProvider;
+  phoneNumberId: string;
+  /** Meta message ID (wamid) or Twilio MessageSid. */
+  messageId: string;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  recipientPhone: string;
+  timestamp: number;
+  errorCode?: number;
+  errorMessage?: string;
+}
+
 export interface IncomingWhatsAppMessage {
   provider: WhatsAppProvider;
   phoneNumberId: string;
@@ -68,6 +81,8 @@ export interface IWhatsAppProvider {
   provider: WhatsAppProvider;
   verifyWebhook(query: Record<string, string>, verifyToken: string): string | false;
   parseIncoming(payload: unknown): IncomingWhatsAppMessage | null;
+  /** Extract delivery receipt status updates from a webhook payload. Returns empty array if none found. */
+  parseDeliveryStatus(payload: unknown): DeliveryStatusUpdate[];
   sendMessage(
     phoneNumberId: string,
     accessToken: string,

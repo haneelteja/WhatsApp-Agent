@@ -92,6 +92,60 @@ export async function releaseToBot(
       .eq('agent_id', agentId)
       .is('ended_at', null),
   ]);
+
+  // Non-blocking: send CSAT survey to the customer
+  void sendCsatSurvey(conversationId);
+}
+
+// ─── CSAT survey dispatcher ───────────────────────────────────────────────────
+
+async function sendCsatSurvey(conversationId: string): Promise<void> {
+  const db = getServerClient();
+
+  const { data: conv } = await db
+    .from('conversations')
+    .select('tenant_id, contact_id, product_type')
+    .eq('id', conversationId)
+    .single();
+
+  if (!conv) return;
+
+  const [contactRes, wnRes] = await Promise.all([
+    db.from('contacts')
+      .select('id, phone, memory_json')
+      .eq('id', conv.contact_id)
+      .single(),
+    db.from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', conv.tenant_id)
+      .eq('product_slug', conv.product_type)
+      .eq('active', true)
+      .limit(1)
+      .single(),
+  ]);
+
+  const contact = contactRes.data;
+  const wn      = wnRes.data;
+
+  if (!contact?.phone || !wn) return;
+
+  const wnConfig = wn.config_json as { phone_number_id: string; access_token: string };
+  const gateway  = new WhatsAppGateway(wn.provider as WhatsAppProvider);
+
+  try {
+    await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+      type: 'text',
+      to:   contact.phone,
+      text: 'How was your experience with our support today? Reply with a number from 1 (poor) to 5 (excellent) ⭐',
+    });
+
+    const currentMemory = (contact.memory_json ?? {}) as Record<string, unknown>;
+    await db.from('contacts').update({
+      memory_json: { ...currentMemory, awaiting_csat: true },
+    }).eq('id', contact.id);
+  } catch (err) {
+    console.error('[CSAT] Failed to send survey:', err);
+  }
 }
 
 // ─── Internal notification dispatcher ────────────────────────────────────────

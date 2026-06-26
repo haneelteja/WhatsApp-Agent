@@ -7,6 +7,10 @@ export type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';  // leg
 export type ProductSlug = 'support_bot' | 'sales_bot' | 'lifecycle_bot';  // matches products.slug
 export type ProductTier = 'base' | 'advanced';
 export type ConversationStatus = 'open' | 'escalated' | 'resolved' | 'bot_paused';
+/** Tracks which phase of the AI conversation the customer is in (state machine). */
+export type ConversationStage = 'greeting' | 'qualifying' | 'resolving' | 'following_up' | 'closing';
+/** WhatsApp delivery receipt ladder for outbound messages (one-way: sent → delivered → read). */
+export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read' | 'failed';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type EscalationStatus = 'pending' | 'assigned' | 'resolved';
 export type KnowledgeBaseStatus = 'draft' | 'review' | 'live' | 'archived';
@@ -86,6 +90,22 @@ export interface GuardrailsConfig {
   custom_blocked_message?: string;
 }
 
+// ─── Escalation Policy ───────────────────────────────────────────────────────
+// Controls how the AI handles low-confidence turns before handing off to a human.
+
+export interface EscalationPolicy {
+  /** Minimum confidence score to reply without tracking a low-confidence turn. Default 0.6. */
+  confidence_threshold: number;
+  /** How many consecutive low-confidence turns before forcing escalation. Default 2. */
+  max_low_confidence_reprompts: number;
+  /** Action when reprompt budget is exhausted. Default 'escalate'. */
+  on_exhaust: 'escalate' | 'silent';
+  /** Optional message to send on low-confidence turns before escalating. null = no reprompt. */
+  reprompt_message: string | null;
+  /** Auto-escalate if conversation stays open this many hours with no resolution. null = off. */
+  auto_escalate_after_hours: number | null;
+}
+
 // ─── Bot Config ───────────────────────────────────────────────────────────────
 
 export interface BotConfig {
@@ -98,6 +118,8 @@ export interface BotConfig {
   escalation_triggers: string[];
   guardrails_json: GuardrailsConfig;
   kb_only_mode: boolean;
+  /** Per-bot escalation policy; null = use platform defaults. */
+  escalation_policy: EscalationPolicy | null;
   updated_at: string;
   updated_by: string | null;
 }
@@ -346,6 +368,14 @@ export interface Conversation {
   product_type: ProductSlug;
   status: ConversationStatus;
   assigned_agent_id: string | null;
+  /** Optimistic lock — set before AI call, cleared after. Prevents duplicate AI responses on retry webhooks. */
+  processing_lock_expires_at: string | null;
+  /** Counts consecutive turns where AI confidence was below threshold. Resets to 0 on a confident reply. */
+  low_confidence_count: number;
+  /** Current phase of the AI-driven conversation state machine. */
+  stage: ConversationStage;
+  /** AI-extracted entities (name, email, issue_type, etc.) captured across turns. */
+  ai_vars: Record<string, string>;
   created_at: string;
   updated_at: string;
 }
@@ -359,6 +389,8 @@ export interface Message {
   media_type: 'image' | 'audio' | 'document' | 'video' | null;
   whatsapp_msg_id: string | null;
   confidence_score: number | null;
+  /** Delivery receipt status for outbound (assistant) messages. Null for inbound (user) messages. */
+  delivery_status: MessageDeliveryStatus | null;
   timestamp: string;
 }
 

@@ -1,4 +1,5 @@
 import type {
+  DeliveryStatusUpdate,
   IWhatsAppProvider,
   IncomingWhatsAppMessage,
   OutgoingMessage,
@@ -12,6 +13,12 @@ export class TwilioProvider implements IWhatsAppProvider {
     // Twilio uses HMAC signature validation — not a hub.challenge flow.
     // GET verification is never called for Twilio webhooks.
     return false;
+  }
+
+  // Twilio sends status updates via a separate callback URL, not through
+  // the inbound message webhook. Return empty array — no-op for this provider.
+  parseDeliveryStatus(_payload: unknown): DeliveryStatusUpdate[] {
+    return [];
   }
 
   parseIncoming(payload: unknown): IncomingWhatsAppMessage | null {

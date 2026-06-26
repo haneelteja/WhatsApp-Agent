@@ -37,8 +37,15 @@ export async function chatCompletion(params: {
     },
     body: JSON.stringify({
       model:      params.model,
-      max_tokens: params.max_tokens ?? 1024,
-      ...(params.system ? { system: params.system } : {}),
+      max_tokens: params.max_tokens ?? 512,
+      // Cache stable system prompts — saves up to 90% on repeated calls
+      ...(params.system ? {
+        system: [{
+          type: 'text',
+          text: params.system,
+          cache_control: { type: 'ephemeral' },
+        }],
+      } : {}),
       messages:   params.messages,
     }),
   });

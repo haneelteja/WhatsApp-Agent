@@ -1,7 +1,10 @@
 import type { Message, KnowledgeBase } from '@alphabot/shared';
 import { chatCompletion, REPLY_MODEL } from '../../lib/anthropic.js';
+import { heuristicConfidence, scoreResponseConfidence } from './confidence.js';
 
 const MAX_CONTEXT_MESSAGES = 50;
+const MAX_KB_ENTRIES = 3;
+const MAX_KB_ANSWER_CHARS = 500;
 
 export interface AIResponseResult {
   content:         string;
@@ -32,7 +35,8 @@ export async function getAIResponse(
 
   if (kbContext.length > 0) {
     const kbText = kbContext
-      .map(e => `Q: ${e.question}\nA: ${e.answer}`)
+      .slice(0, MAX_KB_ENTRIES)
+      .map(e => `Q: ${e.question}\nA: ${e.answer.slice(0, MAX_KB_ANSWER_CHARS)}`)
       .join('\n\n');
     fullSystemPrompt += `\n\n---\nKNOWLEDGE BASE (use to answer queries accurately):\n${kbText}`;
   }
@@ -48,11 +52,21 @@ export async function getAIResponse(
     model,
     system:     fullSystemPrompt,
     messages,
-    max_tokens: 1024,
+    max_tokens: 512,
     apiKey:     llmOverride?.apiKey,
   });
 
-  const confidenceScore = content.length > 20 ? 0.9 : 0.5;
+  // Score confidence: heuristic first (free), API call only if no clear signal
+  const heuristic = heuristicConfidence(content);
+  const confidenceScore = heuristic !== null
+    ? heuristic
+    : await scoreResponseConfidence(
+        // Last user message is the most recent question being answered
+        history.filter(m => m.role === 'user').at(-1)?.content ?? '',
+        content,
+        llmOverride?.apiKey,
+        model,
+      );
 
   return { content, confidenceScore, inputTokens, outputTokens };
 }

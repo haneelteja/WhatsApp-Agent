@@ -1,4 +1,5 @@
 import type {
+  DeliveryStatusUpdate,
   IWhatsAppProvider,
   IncomingWhatsAppMessage,
   OutgoingMessage,
@@ -7,6 +8,7 @@ import type {
 } from '@alphabot/shared';
 import { MetaCloudProvider } from './providers/meta.js';
 import { TwilioProvider } from './providers/twilio.js';
+import { withRetry } from '../../lib/retry.js';
 
 // ─── Gateway: single entry-point for all WhatsApp operations ─────────────────
 // Phase 1: MetaCloud + Twilio (sandbox) registered.
@@ -34,12 +36,25 @@ export class WhatsAppGateway {
     return this.provider.parseIncoming(payload);
   }
 
+  parseDeliveryStatus(payload: unknown): DeliveryStatusUpdate[] {
+    return this.provider.parseDeliveryStatus(payload);
+  }
+
   async sendMessage(
     phoneNumberId: string,
     accessToken: string,
-    message: OutgoingMessage
+    message: OutgoingMessage,
   ): Promise<SendMessageResult> {
-    return this.provider.sendMessage(phoneNumberId, accessToken, message);
+    return withRetry(
+      () => this.provider.sendMessage(phoneNumberId, accessToken, message),
+      (result) => result.status === 'failed',
+      {
+        maxAttempts: 3,
+        baseDelayMs: 1000,
+        onRetry: (attempt, error) =>
+          console.warn(`[WhatsApp] sendMessage attempt ${attempt} failed: ${error} — retrying`),
+      },
+    );
   }
 
   async markAsRead(
