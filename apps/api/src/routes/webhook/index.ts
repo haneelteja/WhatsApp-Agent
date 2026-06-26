@@ -250,7 +250,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     // ── CSAT response detection ───────────────────────────────────────────────
     // If we're awaiting a CSAT rating and the customer replies with 1-5, record it and exit.
-    const memJson = ((contact as Contact).memory_json ?? {}) as Record<string, unknown>;
+    const memJson = ((contact as Contact).memory_json ?? {}) as unknown as Record<string, unknown>;
     if (memJson.awaiting_csat === true && incoming.text) {
       const csatValue = incoming.text.trim();
       if (['1', '2', '3', '4', '5'].includes(csatValue)) {
