@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -14,10 +14,14 @@ import { orderRoutes, razorpayWebhookRoute, phonePeWebhookRoute } from './routes
 import { settingsRoutes } from './routes/settings/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { getServerClient } from '@alphabot/database';
-import { getRedis } from './lib/redis.js';
+import { connectRedis, getRedis } from './lib/redis.js';
 import { initSentry, captureException } from './lib/sentry.js';
 
 initSentry();
+
+// Connect Redis before registering plugins so the rate-limit store is ready.
+// connectRedis() is a no-op if REDIS_URL is not set.
+await connectRedis();
 
 const isProd = process.env['NODE_ENV'] === 'production';
 const server = Fastify({
@@ -45,29 +49,27 @@ await server.register(cors, {
   },
   credentials: true,
 });
+
+const redisClient = getRedis();
 await server.register(rateLimit, {
   max: 200,
   timeWindow: '1 minute',
-  // Back rate-limit state with Redis when available so limits survive across instances.
-  // Falls back to in-memory when REDIS_URL is not configured.
-  ...(process.env['REDIS_URL'] ? { redis: getRedis() } : {}),
+  // Use Redis store when available so limits survive across multiple instances.
+  ...(redisClient ? { redis: redisClient as Parameters<typeof rateLimit>[1] extends { redis?: infer R } ? R : never } : {}),
   keyGenerator(request) {
-    // Webhook routes: isolate by tenantId so one noisy tenant can't starve others
     const params = request.params as Record<string, string> | undefined;
     if (params?.['tenantId']) return `rl:tenant:${params['tenantId']}`;
-    // Authenticated dashboard routes: isolate by JWT tenant
     const req = request as typeof request & { tenantId?: string };
     if (req.tenantId) return `rl:tenant:${req.tenantId}`;
-    // Fallback: IP-based bucket
     return `rl:ip:${request.ip}`;
   },
 });
 
 // ─── Global error handler ─────────────────────────────────────────────────────
-server.setErrorHandler((error, _request, reply) => {
-  captureException(error, { url: _request.url, method: _request.method });
+server.setErrorHandler((error: FastifyError, _request, reply) => {
   const statusCode = error.statusCode ?? 500;
-  reply.status(statusCode).send({ error: statusCode >= 500 ? 'Internal server error' : error.message });
+  captureException(error, { url: _request.url, method: _request.method, statusCode });
+  void reply.status(statusCode).send({ error: statusCode >= 500 ? 'Internal server error' : error.message });
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -85,16 +87,18 @@ await server.register(settingsRoutes,       { prefix: '/api/settings' });
 server.get('/health', async () => {
   const checks: Record<string, string> = { api: 'ok' };
 
-  await Promise.all([
-    getServerClient().from('tenants').select('id').limit(1)
-      .then(() => { checks['database'] = 'ok'; })
-      .catch(() => { checks['database'] = 'error'; }),
-    process.env['REDIS_URL']
-      ? getRedis().ping()
-          .then(() => { checks['redis'] = 'ok'; })
-          .catch(() => { checks['redis'] = 'error'; })
-      : Promise.resolve().then(() => { checks['redis'] = 'not_configured'; }),
-  ]);
+  const dbCheck = getServerClient().from('tenants').select('id').limit(1)
+    .then(() => { checks['database'] = 'ok'; })
+    .catch(() => { checks['database'] = 'error'; });
+
+  const redis = getRedis();
+  const redisCheck = redis
+    ? Promise.resolve(redis.ping())
+        .then(() => { checks['redis'] = 'ok'; })
+        .catch(() => { checks['redis'] = 'error'; })
+    : Promise.resolve().then(() => { checks['redis'] = 'not_configured'; });
+
+  await Promise.all([dbCheck, redisCheck]);
 
   const healthy = checks['database'] === 'ok';
   return { status: healthy ? 'ok' : 'degraded', ts: new Date().toISOString(), checks };
