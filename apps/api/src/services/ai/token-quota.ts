@@ -73,9 +73,9 @@ export async function incrementTokenCounter(tenantId: string, tokens: number): P
   const month = new Date().toISOString().slice(0, 7);
   const cacheKey = `token_quota:${tenantId}:${month}`;
   try {
-    await import('../../lib/redis.js').then(({ getRedis }) =>
-      getRedis().incrby(cacheKey, tokens)
-    );
+    const { getRedis } = await import('../../lib/redis.js');
+    const redis = getRedis();
+    if (redis) await redis.incrby(cacheKey, tokens);
   } catch {
     // Non-fatal — DB trigger is the source of truth
   }

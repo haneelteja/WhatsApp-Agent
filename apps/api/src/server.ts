@@ -87,7 +87,7 @@ await server.register(settingsRoutes,       { prefix: '/api/settings' });
 server.get('/health', async () => {
   const checks: Record<string, string> = { api: 'ok' };
 
-  const dbCheck = getServerClient().from('tenants').select('id').limit(1)
+  const dbCheck = Promise.resolve(getServerClient().from('tenants').select('id').limit(1))
     .then(() => { checks['database'] = 'ok'; })
     .catch(() => { checks['database'] = 'error'; });
 
