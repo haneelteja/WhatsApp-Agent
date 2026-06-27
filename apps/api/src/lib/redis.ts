@@ -1,14 +1,15 @@
-import { createClient } from 'redis';
+import Redis from 'ioredis';
 
-type RedisClient = ReturnType<typeof createClient>;
+let _redis: Redis | null = null;
 
-let _redis: RedisClient | null = null;
-
-export function getRedis(): RedisClient {
+export function getRedis(): Redis {
   if (_redis) return _redis;
-  _redis = createClient({ url: process.env['REDIS_URL'] ?? 'redis://localhost:6379' });
+  _redis = new Redis(process.env['REDIS_URL'] ?? 'redis://localhost:6379', {
+    maxRetriesPerRequest: 1,       // fail fast if Redis is down — don't block requests
+    enableOfflineQueue: false,     // reject commands when disconnected instead of queuing
+    lazyConnect: false,
+  });
   _redis.on('error', (err: Error) => console.error('[Redis] client error:', err.message));
-  void _redis.connect();
   return _redis;
 }
 
@@ -23,7 +24,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 
 export async function cacheSet(key: string, value: unknown, ttlSeconds: number): Promise<void> {
   try {
-    await getRedis().set(key, JSON.stringify(value), { EX: ttlSeconds });
+    await getRedis().set(key, JSON.stringify(value), 'EX', ttlSeconds);
   } catch {
     // Cache failures are non-fatal — fall through to DB
   }
@@ -37,14 +38,29 @@ export async function cacheDel(key: string): Promise<void> {
   }
 }
 
-/** Scan-based pattern delete — use instead of KEYS in production. */
+/** Scan-based pattern delete — avoids KEYS in production. */
 export async function cacheDelPattern(pattern: string): Promise<void> {
-  try {
-    const redis = getRedis();
-    for await (const key of redis.scanIterator({ MATCH: pattern, COUNT: 100 })) {
-      await redis.del(key);
-    }
-  } catch {
-    // Non-fatal
-  }
+  const redis = getRedis();
+  return new Promise((resolve) => {
+    const stream = redis.scanStream({ match: pattern, count: 100 });
+    const pipeline = redis.pipeline();
+    let hasKeys = false;
+
+    stream.on('data', (keys: string[]) => {
+      if (keys.length) {
+        hasKeys = true;
+        keys.forEach((k) => pipeline.del(k));
+      }
+    });
+
+    stream.on('end', () => {
+      if (hasKeys) {
+        pipeline.exec().then(() => resolve()).catch(() => resolve());
+      } else {
+        resolve();
+      }
+    });
+
+    stream.on('error', () => resolve()); // Non-fatal
+  });
 }

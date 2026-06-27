@@ -48,7 +48,9 @@ await server.register(cors, {
 await server.register(rateLimit, {
   max: 200,
   timeWindow: '1 minute',
-  redis: getRedis(),
+  // Back rate-limit state with Redis when available so limits survive across instances.
+  // Falls back to in-memory when REDIS_URL is not configured.
+  ...(process.env['REDIS_URL'] ? { redis: getRedis() } : {}),
   keyGenerator(request) {
     // Webhook routes: isolate by tenantId so one noisy tenant can't starve others
     const params = request.params as Record<string, string> | undefined;
@@ -87,9 +89,11 @@ server.get('/health', async () => {
     getServerClient().from('tenants').select('id').limit(1)
       .then(() => { checks['database'] = 'ok'; })
       .catch(() => { checks['database'] = 'error'; }),
-    getRedis().ping()
-      .then(() => { checks['redis'] = 'ok'; })
-      .catch(() => { checks['redis'] = 'error'; }),
+    process.env['REDIS_URL']
+      ? getRedis().ping()
+          .then(() => { checks['redis'] = 'ok'; })
+          .catch(() => { checks['redis'] = 'error'; })
+      : Promise.resolve().then(() => { checks['redis'] = 'not_configured'; }),
   ]);
 
   const healthy = checks['database'] === 'ok';
