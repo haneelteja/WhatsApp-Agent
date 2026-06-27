@@ -1,7 +1,7 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
-import { CreditCard, Check, Clock, MessageSquare, Bot, AlertCircle } from 'lucide-react';
+import { CreditCard, Check, Clock, MessageSquare, Bot, AlertCircle, Zap } from 'lucide-react';
 
 const PLAN_META = {
   starter: {
@@ -66,6 +66,19 @@ const PLAN_META = {
 
 type PlanKey = keyof typeof PLAN_META;
 
+const PLAN_TOKEN_LIMITS: Record<PlanKey, number> = {
+  starter:  2_000_000,
+  growth:  10_000_000,
+  scale:   Infinity,
+};
+
+function formatTokens(n: number): string {
+  if (!isFinite(n)) return '∞';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
+
 const BOT_META: Record<string, { name: string; color: string; bg: string; border: string }> = {
   support_bot:   { name: 'Support Bot',   color: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200'    },
   sales_bot:     { name: 'Sales Bot',     color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
@@ -87,19 +100,24 @@ export default async function BillingPage() {
 
   const tenantId = tenantUser?.tenant_id ?? '';
 
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const monthDate  = monthStart.toISOString().slice(0, 7) + '-01'; // e.g. "2026-06-01"
+
   const [
     { data: tenant },
     { data: products },
     { data: subs },
     { data: trials },
     { count: convThisMonth },
+    { data: tokenRow },
   ] = await Promise.all([
     admin.from('tenants').select('name, plan, status').eq('id', tenantId).single(),
     admin.from('tenant_products').select('product_type, active').eq('tenant_id', tenantId).eq('active', true),
     admin.from('subscriptions').select('product_type, tier, billing_cycle, next_billing_date').eq('tenant_id', tenantId),
     admin.from('free_trials').select('product_slug, ends_at, status, allowed_model').eq('tenant_id', tenantId).eq('status', 'active'),
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-      .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
+      .gte('created_at', monthStart.toISOString()),
+    admin.from('tenant_token_usage_monthly').select('tokens_used').eq('tenant_id', tenantId).eq('month', monthDate).maybeSingle(),
   ]);
 
   const plan = (tenant?.plan as PlanKey) ?? 'starter';
@@ -119,6 +137,12 @@ export default async function BillingPage() {
   const isOverLimit   = isFinite(planLimitNum) && (convThisMonth ?? 0) >= planLimitNum;
   const isNearLimit   = !isOverLimit && usagePercent >= 80;
   const isSuspended   = tenant?.status === 'suspended';
+
+  const tokensUsed     = tokenRow?.tokens_used ?? 0;
+  const planTokenLimit = PLAN_TOKEN_LIMITS[plan];
+  const tokenPercent   = isFinite(planTokenLimit) ? Math.round((tokensUsed / planTokenLimit) * 100) : 0;
+  const tokenOverLimit = isFinite(planTokenLimit) && tokensUsed >= planTokenLimit;
+  const tokenNearLimit = !tokenOverLimit && tokenPercent >= 80;
 
   return (
     <div className="p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
@@ -213,7 +237,8 @@ export default async function BillingPage() {
       </div>
 
       {/* Usage this month */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Conversations */}
         <div className="bg-white border border-green-100 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
             <MessageSquare size={14} className="text-emerald-500" />
@@ -237,6 +262,33 @@ export default async function BillingPage() {
             </div>
           )}
         </div>
+
+        {/* AI Tokens */}
+        <div className="bg-white border border-green-100 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Zap size={14} className="text-emerald-500" />
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">AI Tokens</p>
+          </div>
+          <p className="text-2xl font-bold text-slate-800 tabular-nums">{formatTokens(tokensUsed)}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            This month · limit: {formatTokens(planTokenLimit)}
+          </p>
+          {isFinite(planTokenLimit) && (
+            <div className="mt-2">
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    tokenOverLimit ? 'bg-red-500' : tokenNearLimit ? 'bg-amber-500' : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(tokenPercent, 100)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">{tokenPercent}% used</p>
+            </div>
+          )}
+        </div>
+
+        {/* Active Bots */}
         <div className="bg-white border border-green-100 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
             <Bot size={14} className="text-emerald-500" />

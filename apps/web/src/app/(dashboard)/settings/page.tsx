@@ -1,6 +1,6 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { Building2, Phone, Bot, Link2, ShieldCheck, Bell } from 'lucide-react';
+import { Building2, Phone, Bot, Link2, ShieldCheck, Bell, CreditCard, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { WhatsAppSetupSection } from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings } from '@/components/dashboard/NotificationSettings';
@@ -65,11 +65,30 @@ export default async function SettingsPage() {
       {/* Workspace */}
       <Section icon={<Building2 size={16} />} title="Workspace">
         <div className="divide-y divide-green-50">
-          <InfoRow label="Name"      value={tenant?.name ?? '—'} />
-          <InfoRow label="Plan"      value={tenant?.plan ?? '—'}      capitalize />
-          <InfoRow label="Status"    value={tenant?.status ?? '—'}    capitalize />
-          <InfoRow label="Provider"  value={tenant?.provider ?? '—'}  capitalize />
-          <InfoRow label="Tenant ID" value={tenant?.id ?? '—'}        mono />
+          <InfoRow label="Name"     value={tenant?.name ?? '—'} />
+          <InfoRow label="Provider" value={tenant?.provider ?? '—'} capitalize />
+          <InfoRow label="Tenant ID" value={tenant?.id ?? '—'} mono />
+
+          {/* Plan badge row */}
+          <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+            <span className="text-sm text-gray-400 shrink-0">Plan</span>
+            <PlanBadge plan={tenant?.plan ?? 'starter'} />
+          </div>
+
+          {/* Status badge row */}
+          <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+            <span className="text-sm text-gray-400 shrink-0">Status</span>
+            <StatusBadge status={tenant?.status ?? 'active'} />
+          </div>
+
+          {/* Billing shortcut */}
+          <Link href="/billing" className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-green-50 transition-colors group">
+            <div className="flex items-center gap-2">
+              <CreditCard size={14} className="text-emerald-500" />
+              <span className="text-sm text-gray-700 font-medium">Billing &amp; Usage</span>
+            </div>
+            <ChevronRight size={14} className="text-gray-400 group-hover:text-emerald-500 transition-colors" />
+          </Link>
         </div>
       </Section>
 
@@ -178,5 +197,36 @@ function InfoRow({
         {value}
       </span>
     </div>
+  );
+}
+
+const PLAN_BADGE: Record<string, { label: string; bg: string; text: string }> = {
+  starter: { label: 'Starter', bg: 'bg-slate-100',  text: 'text-slate-700'  },
+  growth:  { label: 'Growth',  bg: 'bg-violet-100', text: 'text-violet-700' },
+  scale:   { label: 'Scale',   bg: 'bg-emerald-100',text: 'text-emerald-700'},
+};
+
+function PlanBadge({ plan }: { plan: string }) {
+  const b = PLAN_BADGE[plan] ?? PLAN_BADGE.starter;
+  return (
+    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${b.bg} ${b.text}`}>
+      {b.label}
+    </span>
+  );
+}
+
+const STATUS_BADGE: Record<string, { bg: string; text: string; dot: string }> = {
+  active:    { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  trial:     { bg: 'bg-sky-50',     text: 'text-sky-700',     dot: 'bg-sky-500'     },
+  suspended: { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500'     },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_BADGE[status] ?? STATUS_BADGE.active;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${s.bg} ${s.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+      {status}
+    </span>
   );
 }
