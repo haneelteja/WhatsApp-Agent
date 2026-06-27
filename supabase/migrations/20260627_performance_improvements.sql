@@ -17,10 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_tenant_type_created
   ON usage_events (tenant_id, event_type, created_at DESC)
   WHERE event_type = 'ai_token_used';
 
--- Escalation queue: open/assigned escalations per tenant
-CREATE INDEX IF NOT EXISTS idx_escalations_tenant_status
-  ON escalations (tenant_id, status)
-  WHERE status IN ('open', 'assigned');
+-- escalations has no tenant_id column (linked via conversation_id) — index skipped
 
 -- Contact upsert / lookup on incoming message
 CREATE INDEX IF NOT EXISTS idx_contacts_tenant_phone
