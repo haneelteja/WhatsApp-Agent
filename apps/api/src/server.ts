@@ -14,6 +14,10 @@ import { orderRoutes, razorpayWebhookRoute, phonePeWebhookRoute } from './routes
 import { settingsRoutes } from './routes/settings/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { getServerClient } from '@alphabot/database';
+import { getRedis } from './lib/redis.js';
+import { initSentry, captureException } from './lib/sentry.js';
+
+initSentry();
 
 const isProd = process.env['NODE_ENV'] === 'production';
 const server = Fastify({
@@ -44,6 +48,24 @@ await server.register(cors, {
 await server.register(rateLimit, {
   max: 200,
   timeWindow: '1 minute',
+  redis: getRedis(),
+  keyGenerator(request) {
+    // Webhook routes: isolate by tenantId so one noisy tenant can't starve others
+    const params = request.params as Record<string, string> | undefined;
+    if (params?.['tenantId']) return `rl:tenant:${params['tenantId']}`;
+    // Authenticated dashboard routes: isolate by JWT tenant
+    const req = request as typeof request & { tenantId?: string };
+    if (req.tenantId) return `rl:tenant:${req.tenantId}`;
+    // Fallback: IP-based bucket
+    return `rl:ip:${request.ip}`;
+  },
+});
+
+// ─── Global error handler ─────────────────────────────────────────────────────
+server.setErrorHandler((error, _request, reply) => {
+  captureException(error, { url: _request.url, method: _request.method });
+  const statusCode = error.statusCode ?? 500;
+  reply.status(statusCode).send({ error: statusCode >= 500 ? 'Internal server error' : error.message });
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -61,14 +83,17 @@ await server.register(settingsRoutes,       { prefix: '/api/settings' });
 server.get('/health', async () => {
   const checks: Record<string, string> = { api: 'ok' };
 
-  try {
-    await getServerClient().from('tenants').select('id').limit(1);
-    checks['database'] = 'ok';
-  } catch {
-    checks['database'] = 'error';
-  }
+  await Promise.all([
+    getServerClient().from('tenants').select('id').limit(1)
+      .then(() => { checks['database'] = 'ok'; })
+      .catch(() => { checks['database'] = 'error'; }),
+    getRedis().ping()
+      .then(() => { checks['redis'] = 'ok'; })
+      .catch(() => { checks['redis'] = 'error'; }),
+  ]);
 
-  return { status: checks['database'] === 'ok' ? 'ok' : 'degraded', ts: new Date().toISOString(), checks };
+  const healthy = checks['database'] === 'ok';
+  return { status: healthy ? 'ok' : 'degraded', ts: new Date().toISOString(), checks };
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

@@ -2,7 +2,16 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import { MessageSquare, Zap, TrendingUp, AlertCircle } from 'lucide-react';
-import { AnalyticsCharts } from '@/components/dashboard/AnalyticsCharts';
+import dynamic from 'next/dynamic';
+
+// Lazy-load Recharts (~200 KB) — not needed for initial paint
+const AnalyticsCharts = dynamic(
+  () => import('@/components/dashboard/AnalyticsCharts').then((m) => ({ default: m.AnalyticsCharts })),
+  {
+    loading: () => <div className="h-72 animate-pulse rounded-2xl bg-gray-100" />,
+    ssr: false,
+  },
+);
 
 export default async function AnalyticsPage() {
   const supabase = await getSupabaseServerClient();

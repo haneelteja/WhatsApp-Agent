@@ -54,8 +54,12 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
   });
 
   // ─── GET /api/conversations/:id/messages ──────────────────────────────────
+  // Supports cursor-based pagination: ?before=<message_id>&limit=<n>
+  // Returns messages in ascending order; hasMore=true means older pages exist.
   fastify.get<{ Params: { id: string } }>('/:id/messages', { preHandler: [requireAuth] }, async (request, reply) => {
     const db = getServerClient();
+    const { before, limit = '50' } = request.query as { before?: string; limit?: string };
+    const pageSize = Math.min(Number(limit), 100);
 
     // Verify conversation belongs to this tenant
     const { data: convo } = await db
@@ -67,15 +71,35 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
 
     if (!convo) return reply.status(404).send({ success: false, error: 'Not found' });
 
-    const { data: messages, error } = await db
+    let query = db
       .from('messages')
       .select('*')
       .eq('conversation_id', request.params.id)
-      .order('timestamp', { ascending: true });
+      .order('timestamp', { ascending: false })
+      .limit(pageSize);
 
+    if (before) {
+      // Fetch the cursor message's timestamp, then filter
+      const { data: cursor } = await db
+        .from('messages')
+        .select('timestamp')
+        .eq('id', before)
+        .single();
+      if (cursor) {
+        query = query.lt('timestamp', (cursor as { timestamp: string }).timestamp);
+      }
+    }
+
+    const { data: messages, error } = await query;
     if (error) return reply.status(500).send({ success: false, error: error.message });
 
-    return { success: true, data: messages };
+    // Return in ascending order for display; indicate whether older pages exist
+    const ordered = ((messages ?? []) as Array<{ timestamp: string }>).reverse();
+    return {
+      success: true,
+      data:    ordered,
+      hasMore: (messages?.length ?? 0) === pageSize,
+    };
   });
 
   // ─── POST /api/conversations/:id/send — manual agent send ────────────────

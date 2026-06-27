@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getServerClient } from '@alphabot/database';
 import { requireAuth } from '../../middleware/auth.js';
 import { generateEmbedding, generateEmbeddingsBatch } from '../../services/kb/embedding.js';
+import { invalidateKBCache } from '../../services/kb/lookup.js';
 
 // All routes require tenant context from auth middleware.
 // The middleware decorates the request with: tenantId, userId, userRole.
@@ -234,6 +235,7 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
       .single();
 
     if (error) return reply.status(500).send({ error: error.message });
+    void invalidateKBCache(tenantId);
     return reply.status(201).send({ data });
   });
 
@@ -343,6 +345,7 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
       .eq('tenant_id', tenantId);
 
     if (error) return reply.status(500).send({ error: error.message });
+    void invalidateKBCache(tenantId);
     return reply.status(204).send();
   });
 }

@@ -6,8 +6,10 @@ import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKB } from '../../services/kb/lookup.js';
 import { escalateConversation } from '../../services/escalation/index.js';
 import { detectAndStoreSentiment } from '../../services/sentiment/detector.js';
-import { checkTokenQuota } from '../../services/ai/token-quota.js';
+import { checkTokenQuota, incrementTokenCounter } from '../../services/ai/token-quota.js';
 import { assembleHistory } from '../../services/ai/history-assembler.js';
+import { fireForget } from '../../lib/fire-forget.js';
+import { getBotContext } from '../../services/bot-context.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -141,54 +143,17 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const inferredProvider =
       body?.object === 'whatsapp_business_account' ? 'meta_cloud' : 'twilio';
 
-    // Load all 4 guardrail layers + 4 LLM config levels in parallel with WhatsApp config + bot config
-    const [wnRes, tenantRes, botConfigRes, platformSettingsRes, botTypeGuardrailsRes, tenantGuardrailsRes, llmConfigsRes] = await Promise.all([
-      db.from('whatsapp_numbers')
-        .select('config_json, provider')
-        .eq('tenant_id', tenantId)
-        .eq('product_slug', productType)
-        .eq('provider', inferredProvider)
-        .eq('active', true)
-        .limit(1)
-        .single(),
-      db.from('tenants')
-        .select('plan, status')
-        .eq('id', tenantId)
-        .single(),
-      db.from('bot_configs')
-        .select('*, product:products(default_prompt, default_model)')
-        .eq('tenant_id', tenantId)
-        .eq('product_slug', productType)
-        .maybeSingle(),
-      db.from('platform_settings')
-        .select('value')
-        .eq('key', 'guardrails')
-        .maybeSingle(),
-      // Guardrail Layer 2: platform-set defaults per bot type
-      db.from('bot_type_guardrails')
-        .select('guardrails_json')
-        .eq('product_slug', productType)
-        .maybeSingle(),
-      // Guardrail Layer 3: per-client rules across all their bots
-      db.from('tenant_guardrails')
-        .select('guardrails_json')
-        .eq('tenant_id', tenantId)
-        .maybeSingle(),
-      // LLM config: all 4 levels — platform-generic, platform-bot, client-generic, client-bot
-      db.from('llm_configs')
-        .select('tenant_id, product_slug, api_key, model, base_url, validation_status')
-        .or(`and(tenant_id.is.null,product_slug.is.null),and(tenant_id.is.null,product_slug.eq.${productType}),and(tenant_id.eq.${tenantId},product_slug.is.null),and(tenant_id.eq.${tenantId},product_slug.eq.${productType})`),
-    ]);
+    // Single RPC call replaces 7 parallel Supabase queries (cache-backed, 60 s TTL)
+    const botCtx = await getBotContext(tenantId, productType, inferredProvider);
 
-    const { data: wn, error: wnError } = wnRes;
-
+    const wn = botCtx.whatsapp_number;
     if (!wn) {
-      fastify.log.warn({ tenantId, wnError }, '[Webhook] whatsapp_numbers not found');
+      fastify.log.warn({ tenantId }, '[Webhook] whatsapp_numbers not found');
       return;
     }
 
     // ── Tenant status + plan limit enforcement ────────────────────────────
-    const tenant = tenantRes.data;
+    const tenant = botCtx.tenant;
     if (tenant?.status === 'suspended') {
       fastify.log.info({ tenantId }, '[Webhook] tenant suspended — dropping reply');
       return;
@@ -303,11 +268,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       conversation = newConvo as Conversation;
 
       // Track usage event
-      void db.from('usage_events').insert({
-        tenant_id: tenantId,
-        product_type: productType,
-        event_type: 'conversation_started',
-      });
+      fireForget(
+        db.from('usage_events').insert({ tenant_id: tenantId, product_type: productType, event_type: 'conversation_started' }),
+        'track-conversation-started',
+        fastify.log,
+      );
     }
 
     if (!conversation) return;
@@ -349,14 +314,18 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     // Non-blocking: classify customer sentiment and persist to contact memory
     if (incoming.text) {
-      void detectAndStoreSentiment((contact as Contact).id, incoming.text);
+      fireForget(
+        detectAndStoreSentiment((contact as Contact).id, incoming.text),
+        'detect-sentiment',
+        fastify.log,
+      );
     }
 
-    void db.from('usage_events').insert({
-      tenant_id: tenantId,
-      product_type: productType,
-      event_type: 'message_sent',
-    });
+    fireForget(
+      db.from('usage_events').insert({ tenant_id: tenantId, product_type: productType, event_type: 'message_sent' }),
+      'track-message-sent',
+      fastify.log,
+    );
 
     // ── Feature: Optimistic Lock — prevent concurrent AI calls ────────────
     // Meta retries webhooks on non-2xx or timeout. With LLM calls taking 1–5s,
@@ -377,15 +346,15 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     // Resolve bot config values (DB row takes precedence over defaults)
-    const botConfig = botConfigRes.data as (BotConfig & { product: Product | null }) | null;
+    const botConfig = botCtx.bot_config as (BotConfig & { product: Product | null }) | null;
 
     // ── 4-layer guardrails ────────────────────────────────────────────────────
     // Layer 1: global (platform_settings)
-    const globalG   = (platformSettingsRes.data?.value ?? null) as PlatformGuardrails | null;
+    const globalG   = (botCtx.platform_guardrails ?? null) as PlatformGuardrails | null;
     // Layer 2: per-bot-type (bot_type_guardrails)
-    const botTypeG  = (botTypeGuardrailsRes.data?.guardrails_json ?? null) as LayeredGuardrailsConfig | null;
+    const botTypeG  = (botCtx.bot_type_guardrails ?? null) as LayeredGuardrailsConfig | null;
     // Layer 3: per-client across all bots (tenant_guardrails)
-    const tenantG   = (tenantGuardrailsRes.data?.guardrails_json   ?? null) as LayeredGuardrailsConfig | null;
+    const tenantG   = (botCtx.tenant_guardrails ?? null) as LayeredGuardrailsConfig | null;
     // Layer 4: per-client per-bot (bot_configs.guardrails_json)
     const clientBotG = botConfig?.guardrails_json ?? null;
 
@@ -569,7 +538,7 @@ To update state, append these markers at the VERY END of your response (they are
     // 6. products.default_model      (model only, uses env API key)
     // 7. OPENROUTER_REPLY_MODEL env  (ultimate fallback in claude.ts)
     type LlmRow = { tenant_id: string | null; product_slug: string | null; api_key: string; model: string; base_url: string | null; validation_status: string };
-    const llmRows = (llmConfigsRes.data ?? []) as LlmRow[];
+    const llmRows = (botCtx.llm_configs ?? []) as LlmRow[];
 
     const resolvedLlm = (
       llmRows.find(r => r.tenant_id === tenantId  && r.product_slug === productType) ??
@@ -636,7 +605,7 @@ To update state, append these markers at the VERY END of your response (they are
             to: incoming.from,
             text: "I'm having trouble responding right now. Please try again in a moment, or type 'agent' to speak with a human.",
           });
-          void db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id);
+          fireForget(db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id), 'release-ai-lock-fallback-fail', fastify.log);
           return;
         }
       } else {
@@ -646,7 +615,7 @@ To update state, append these markers at the VERY END of your response (they are
           to: incoming.from,
           text: "I'm having trouble responding right now. Please try again in a moment, or type 'agent' to speak with a human.",
         });
-        void db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id);
+        fireForget(db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id), 'release-ai-lock-ai-fail', fastify.log);
         return;
       }
     }
@@ -677,7 +646,11 @@ To update state, append these markers at the VERY END of your response (they are
         }
         stateUpdate['ai_vars'] = updatedVars;
       }
-      void db.from('conversations').update(stateUpdate).eq('id', conversation.id);
+      fireForget(
+        db.from('conversations').update(stateUpdate).eq('id', conversation.id),
+        'update-conversation-state',
+        fastify.log,
+      );
     }
 
     // Guard: if AI only emitted markers with no actual reply content, skip reply entirely
@@ -686,7 +659,7 @@ To update state, append these markers at the VERY END of your response (they are
       if (isSalesLead && conversation.status === 'open') {
         await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
       }
-      void db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id);
+      fireForget(db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id), 'release-ai-lock-empty', fastify.log);
       return;
     }
 
@@ -703,13 +676,20 @@ To update state, append these markers at the VERY END of your response (they are
       confidence_score: aiResult.confidenceScore,
     }).select('id').single();
 
-    // Track token usage
-    void db.from('usage_events').insert({
-      tenant_id: tenantId,
-      product_type: productType,
-      event_type: 'ai_token_used',
-      token_count: aiResult.inputTokens + aiResult.outputTokens,
-    });
+    // Track token usage (DB insert triggers aggregate table update via trigger)
+    const totalTokens = aiResult.inputTokens + aiResult.outputTokens;
+    fireForget(
+      db.from('usage_events').insert({
+        tenant_id: tenantId,
+        product_type: productType,
+        event_type: 'ai_token_used',
+        token_count: totalTokens,
+      }),
+      'track-token-usage',
+      fastify.log,
+    );
+    // Optimistically increment Redis counter so the next quota check is accurate
+    fireForget(incrementTokenCounter(tenantId, totalTokens), 'increment-token-counter', fastify.log);
 
     // ── Auto-escalate on sales lead detection ────────────────────────────
     if (isSalesLead && conversation.status === 'open') {
@@ -746,7 +726,11 @@ To update state, append these markers at the VERY END of your response (they are
         }
       } else if ((conversation as Conversation & { low_confidence_count?: number }).low_confidence_count ?? 0 > 0) {
         // Confident reply — reset counter non-blocking
-        void db.from('conversations').update({ low_confidence_count: 0 }).eq('id', conversation.id);
+        fireForget(
+          db.from('conversations').update({ low_confidence_count: 0 }).eq('id', conversation.id),
+          'reset-low-confidence-count',
+          fastify.log,
+        );
       }
     }
 
@@ -760,15 +744,21 @@ To update state, append these markers at the VERY END of your response (they are
 
     // Feature: Status Ladder — mark outbound message as 'sent' and store Meta msg ID
     if (storedMsg && sendResult.messageId) {
-      void db.from('messages')
-        .update({ delivery_status: 'sent', whatsapp_msg_id: sendResult.messageId })
-        .eq('id', (storedMsg as { id: string }).id);
+      fireForget(
+        db.from('messages')
+          .update({ delivery_status: 'sent', whatsapp_msg_id: sendResult.messageId })
+          .eq('id', (storedMsg as { id: string }).id),
+        'update-delivery-status-sent',
+        fastify.log,
+      );
     }
 
     // ── Release optimistic lock ───────────────────────────────────────────
-    void db.from('conversations')
-      .update({ processing_lock_expires_at: null })
-      .eq('id', conversation.id);
+    fireForget(
+      db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id),
+      'release-ai-lock',
+      fastify.log,
+    );
 
     // ── Update conversation timestamp ─────────────────────────────────────
     await db.from('conversations').update({ updated_at: new Date().toISOString() })

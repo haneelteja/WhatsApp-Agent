@@ -1,15 +1,20 @@
 import { getServerClient } from '@alphabot/database';
 import type { KnowledgeBase, ProductSlug, RAGResult } from '@alphabot/shared';
 import { generateEmbedding } from './embedding.js';
+import { cacheGet, cacheSet, cacheDelPattern } from '../../lib/redis.js';
+import { createHash } from 'crypto';
+
+const KB_CACHE_TTL = 300; // 5 minutes — KB content changes infrequently
 
 /**
  * Full RAG lookup for an incoming user query.
  *
  * Strategy (in order):
- *  1. Find all KB collections assigned to this tenant+product
- *  2. If VOYAGE_API_KEY is set: generate query embedding → vector similarity search
- *  3. Fallback: keyword ILIKE search across the same collections
- *  4. Final fallback: legacy product_type-scoped entries (no collection)
+ *  1. Redis cache — keyed by tenantId + productSlug + query hash
+ *  2. Find all KB collections assigned to this tenant+product
+ *  3. If VOYAGE_API_KEY is set: generate query embedding → vector similarity search
+ *  4. Fallback: keyword ILIKE search across the same collections
+ *  5. Final fallback: legacy product_type-scoped entries (no collection)
  *
  * Returns the top K most relevant KB entries.
  */
@@ -18,6 +23,31 @@ export async function lookupKB(
   productSlug: ProductSlug,
   query: string,
   limit = 5
+): Promise<KnowledgeBase[]> {
+  const queryHash = createHash('sha256')
+    .update(`${tenantId}:${productSlug}:${query}`)
+    .digest('hex')
+    .slice(0, 16);
+  const cacheKey = `kb:${tenantId}:${queryHash}`;
+
+  const cached = await cacheGet<KnowledgeBase[]>(cacheKey);
+  if (cached) return cached;
+
+  const results = await _lookupKBFromDb(tenantId, productSlug, query, limit);
+  await cacheSet(cacheKey, results, KB_CACHE_TTL);
+  return results;
+}
+
+/** Invalidate all KB cache entries for a tenant (call on KB create/update/delete). */
+export async function invalidateKBCache(tenantId: string): Promise<void> {
+  await cacheDelPattern(`kb:${tenantId}:*`);
+}
+
+async function _lookupKBFromDb(
+  tenantId: string,
+  productSlug: ProductSlug,
+  query: string,
+  limit: number,
 ): Promise<KnowledgeBase[]> {
   const db = getServerClient();
 
@@ -79,13 +109,11 @@ export async function lookupKBByCollections(
       });
 
       if (!error && semanticResults && (semanticResults as RAGResult[]).length > 0) {
-        // Map RPC result shape to KnowledgeBase shape
         return (semanticResults as RAGResult[]).map(r => ({
           id: r.id,
           question: r.question,
           answer: r.answer,
           category: r.category,
-          // Populate required KnowledgeBase fields with safe defaults
           tenant_id: '',
           product_type: 'support_bot' as ProductSlug,
           collection_id: collectionIds[0] ?? null,

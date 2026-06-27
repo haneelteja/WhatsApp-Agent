@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 interface Message {
@@ -22,43 +22,57 @@ export function ConversationMessages({
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = getSupabaseBrowserClient();
 
+  // Auto-scroll to bottom whenever messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Poll the API every 3 seconds for new messages — reliable across all RLS/realtime configs
+  // Supabase Realtime — replaces 3 s polling
   useEffect(() => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+    const channel = supabase
+      .channel(`conversation:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          setMessages((prev) => {
+            // Avoid duplicates from initial server render
+            if (prev.some((m) => m.id === (payload.new as Message).id)) return prev;
+            return [...prev, payload.new as Message];
+          });
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === (payload.new as Message).id ? (payload.new as Message) : m,
+            ),
+          );
+        },
+      )
+      .subscribe();
 
-    const poll = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) return;
-
-      const res = await fetch(`${apiBase}/api/conversations/${conversationId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-
-      const json = await res.json() as { data: Message[] };
-      if (json.data) {
-        setMessages(json.data);
-      }
+    return () => {
+      void supabase.removeChannel(channel);
     };
-
-    const interval = setInterval(() => void poll(), 3000);
-    return () => clearInterval(interval);
   }, [conversationId, supabase]);
 
-  return (
-    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-slate-50">
-      {messages.length === 0 && (
-        <p className="text-sm text-slate-400 text-center mt-12">
-          No messages yet in this conversation.
-        </p>
-      )}
-
-      {messages.map((msg) => {
+  const renderedMessages = useMemo(
+    () =>
+      messages.map((msg) => {
         if (msg.role === 'system') {
           return (
             <div key={msg.id} className="flex justify-center">
@@ -110,7 +124,19 @@ export function ConversationMessages({
             )}
           </div>
         );
-      })}
+      }),
+    [messages],
+  );
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-slate-50">
+      {messages.length === 0 && (
+        <p className="text-sm text-slate-400 text-center mt-12">
+          No messages yet in this conversation.
+        </p>
+      )}
+
+      {renderedMessages}
 
       <div ref={bottomRef} />
     </div>
