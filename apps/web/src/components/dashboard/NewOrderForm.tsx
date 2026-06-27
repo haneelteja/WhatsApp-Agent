@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Check, Send } from 'lucide-react';
 import { createOrderAction, type OrderItem } from '@/app/actions/orders';
 
+type Provider = 'phonepe' | 'razorpay';
+
 interface Contact      { id: string; phone: string; name: string | null }
 interface Conversation { id: string; contact_id: string; product_type: string; created_at: string }
 
@@ -26,6 +28,7 @@ export function NewOrderForm({ tenantId, contacts, conversations }: Props) {
   const [conversationId, setConversationId] = useState('');
   const [items,          setItems]          = useState<OrderItem[]>([emptyItem()]);
   const [sendLink,       setSendLink]       = useState(true);
+  const [provider,       setProvider]       = useState<Provider>('phonepe');
 
   const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
 
@@ -46,7 +49,7 @@ export function NewOrderForm({ tenantId, contacts, conversations }: Props) {
     if (items.some(i => !i.name || i.price <= 0)) { setError('Fill in all item names and prices'); return; }
 
     startTransition(async () => {
-      const res = await createOrderAction(tenantId, contactId, conversationId, items, total, sendLink);
+      const res = await createOrderAction(tenantId, contactId, conversationId, items, total, sendLink, provider);
       if ('error' in res) {
         setError(res.error);
       } else {
@@ -167,12 +170,35 @@ export function NewOrderForm({ tenantId, contacts, conversations }: Props) {
         <p className="text-xl font-bold text-slate-800 tabular-nums">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
       </div>
 
-      {/* Send link toggle */}
-      <label className="flex items-center gap-3 cursor-pointer">
-        <input type="checkbox" checked={sendLink} onChange={e => setSendLink(e.target.checked)}
-          className="w-4 h-4 accent-emerald-600" />
-        <span className="text-sm text-slate-600">Send PhonePe payment link via WhatsApp</span>
-      </label>
+      {/* Send payment link */}
+      <div className="space-y-3 pt-1 border-t border-slate-100">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={sendLink} onChange={e => setSendLink(e.target.checked)}
+            className="w-4 h-4 accent-emerald-600" />
+          <span className="text-sm text-slate-600 font-medium">Send payment link via WhatsApp</span>
+        </label>
+
+        {sendLink && (
+          <div className="flex gap-2 ml-7">
+            {(['phonepe', 'razorpay'] as Provider[]).map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setProvider(p)}
+                className={`flex-1 text-xs font-semibold py-2 px-3 rounded-lg border transition-colors ${
+                  provider === p
+                    ? p === 'phonepe'
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                {p === 'phonepe' ? '⚡ PhonePe' : '🔵 Razorpay'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
 

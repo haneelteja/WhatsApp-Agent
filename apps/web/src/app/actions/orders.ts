@@ -19,6 +19,7 @@ export async function createOrderAction(
   items: OrderItem[],
   total: number,
   sendLink: boolean,
+  provider: 'razorpay' | 'phonepe' = 'phonepe',
 ): Promise<{ ok: true; orderId: string; linkUrl: string | null } | { error: string }> {
   const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
   if (!apiBase) return { error: 'API URL not configured' };
@@ -27,7 +28,7 @@ export async function createOrderAction(
     const res = await fetch(`${apiBase}/api/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenantId, contactId, conversationId, items, total, sendLink }),
+      body: JSON.stringify({ tenantId, contactId, conversationId, items, total, sendLink, provider }),
     });
 
     const data = await res.json() as { order?: { id: string }; linkUrl?: string | null; error?: string };
