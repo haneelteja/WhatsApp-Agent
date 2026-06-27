@@ -122,7 +122,7 @@ export function TenantGuardrailsForm({
       {/* Blocked topics */}
       <div className="space-y-1.5">
         <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">Blocked Topics</label>
-        <p className="text-xs text-gray-400">Applied across all this client's bots — none of them will discuss these topics.</p>
+        <p className="text-xs text-gray-400">Applied across all this client&apos;s bots — none of them will discuss these topics.</p>
         <TagInput value={blockedTopics} onChange={setBlockedTopics} placeholder="e.g. refund policy" />
       </div>
 

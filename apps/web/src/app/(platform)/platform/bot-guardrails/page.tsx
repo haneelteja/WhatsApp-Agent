@@ -68,7 +68,7 @@ export default async function BotGuardrailsPage() {
           <li><span className="font-medium">Global</span> — Platform Settings → applies to every bot on the whole platform</li>
           <li><span className="font-medium">Bot-type</span> — this page → applies to all clients using that bot type <span className="italic">(you are here)</span></li>
           <li><span className="font-medium">Client-wide</span> — Client detail page → applies across all bots for one client</li>
-          <li><span className="font-medium">Client-bot</span> — Client's Settings → per-bot fine-tuning</li>
+          <li><span className="font-medium">Client-bot</span> — Client&apos;s Settings → per-bot fine-tuning</li>
         </ol>
         <p className="text-indigo-500 mt-1">Blocked topics & keywords are <span className="font-medium">unioned</span> across all layers. Max length takes the <span className="font-medium">minimum</span>. KB-only is an <span className="font-medium">OR</span> (any layer can enable it).</p>
       </div>

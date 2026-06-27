@@ -101,7 +101,7 @@ export default async function GuardrailsPage() {
           <li><span className="font-semibold">Per-bot rules</span> — fine-tune each bot individually <span className="italic">(below)</span></li>
         </ol>
         <p className="text-emerald-500 mt-1">
-          Your rules add to platform rules — they don't replace them. Keywords stack; max length takes the minimum.
+          Your rules add to platform rules — they don&apos;t replace them. Keywords stack; max length takes the minimum.
         </p>
       </div>
 
