@@ -8,8 +8,9 @@ CREATE INDEX IF NOT EXISTS idx_conversations_tenant_updated
   ON conversations (tenant_id, updated_at DESC);
 
 -- Webhook: history fetch — last N messages per conversation
+-- messages table uses "timestamp" (not created_at) for its time column
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
-  ON messages (conversation_id, created_at DESC);
+  ON messages (conversation_id, timestamp DESC);
 
 -- Token quota: range scan on ai_token_used events per tenant/month
 CREATE INDEX IF NOT EXISTS idx_usage_events_tenant_type_created
