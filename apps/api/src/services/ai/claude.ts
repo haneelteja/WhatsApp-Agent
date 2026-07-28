@@ -75,11 +75,13 @@ export async function getAIResponse(
  * Falls back to heuristic analysis, then 0.85 (never blocks a valid reply).
  */
 function extractConfidence(raw: string): { cleanContent: string; confidenceScore: number } {
-  const match = raw.match(/\nCONFIDENCE:(0\.\d{1,2}|1\.0+|0)\s*$/);
+  // Match CONFIDENCE marker with optional preceding whitespace/newline, at end of string
+  const match = raw.match(/[\r\n\s]*CONFIDENCE:(0\.\d{1,2}|1\.0+|0)\s*$/);
 
   if (match) {
     const score = Math.min(1, Math.max(0, parseFloat(match[1]!)));
-    const cleanContent = raw.slice(0, raw.lastIndexOf('\nCONFIDENCE:')).trimEnd();
+    const markerIdx = raw.lastIndexOf('CONFIDENCE:');
+    const cleanContent = raw.slice(0, markerIdx).trimEnd();
     return { cleanContent, confidenceScore: score };
   }
 
