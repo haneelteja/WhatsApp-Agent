@@ -76,7 +76,7 @@ export default async function VoiceProvidersPage() {
           <li>Enter credentials for your Telephony provider (Exotel or Twilio) → Enable it → Set as Default</li>
           <li>Enter credentials for your STT provider (Sarvam or Deepgram) → Enable it → Set as Default</li>
           <li>TTS is free with ExotelSay — just enable it and set as Default</li>
-          <li>Enable Voice in each bot's Guardrails settings, set a greeting and language</li>
+          <li>Enable Voice in each bot&apos;s Guardrails settings, set a greeting and language</li>
         </ol>
       </div>
 
