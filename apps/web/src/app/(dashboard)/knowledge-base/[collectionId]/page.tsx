@@ -453,7 +453,7 @@ export default function CollectionDetailPage() {
                     <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{entry.answer}</p>
                   </div>
                   {!entry.source_document_id && (
-                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button type="button" onClick={() => openEdit(entry)} aria-label="Edit"
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors">
                         <Pencil size={13} />
