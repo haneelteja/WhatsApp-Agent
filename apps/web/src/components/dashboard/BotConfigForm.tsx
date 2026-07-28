@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Bot, ChevronDown, ChevronUp, Save } from 'lucide-react';
+import { Bot, ChevronDown, ChevronUp, Save, Phone } from 'lucide-react';
 import { saveBotConfigAction } from '@/app/actions/bot-config';
-import type { BotConfig, GuardrailsConfig, Product } from '@alphabot/shared';
+import type { BotConfig, GuardrailsConfig, BotVoiceConfig, Product } from '@alphabot/shared';
 
 type ResolvedConfig = BotConfig & { product: Product | null };
 
@@ -81,8 +81,35 @@ function TagInput({
   );
 }
 
+const LANGUAGE_OPTIONS = [
+  { value: 'en-IN', label: 'English (India)' },
+  { value: 'hi-IN', label: 'Hindi' },
+  { value: 'ta-IN', label: 'Tamil' },
+  { value: 'te-IN', label: 'Telugu' },
+  { value: 'kn-IN', label: 'Kannada' },
+  { value: 'mr-IN', label: 'Marathi' },
+  { value: 'gu-IN', label: 'Gujarati' },
+  { value: 'ml-IN', label: 'Malayalam' },
+  { value: 'en-US', label: 'English (US)' },
+];
+
+function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={`${label}: ${value ? 'on' : 'off'}`}
+      title={label}
+      onClick={() => onChange(!value)}
+      className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${value ? 'bg-emerald-500' : 'bg-gray-200'}`}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${value ? 'translate-x-5' : ''}`} />
+    </button>
+  );
+}
+
 function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPrompt: string }) {
-  const g = config.guardrails_json as GuardrailsConfig;
+  const g  = config.guardrails_json as GuardrailsConfig;
+  const vc = (config.voice_config ?? {}) as Partial<BotVoiceConfig>;
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -102,6 +129,13 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
   const [noPhoneNumbers,       setNoPhoneNumbers]       = useState(g?.content_filters?.no_phone_numbers_in_response ?? false);
   const [onBlocked,            setOnBlocked]            = useState<GuardrailsConfig['on_blocked_topic']>(g?.on_blocked_topic ?? 'escalate');
   const [customBlockedMessage, setCustomBlockedMessage] = useState(g?.custom_blocked_message ?? '');
+  // Voice config state
+  const [voiceEnabled,         setVoiceEnabled]         = useState(vc.enabled ?? false);
+  const [voiceLanguage,        setVoiceLanguage]        = useState(vc.language ?? 'hi-IN');
+  const [voiceGreeting,        setVoiceGreeting]        = useState(vc.greeting_message ?? '');
+  const [voiceVoicemail,       setVoiceVoicemail]       = useState(vc.voicemail_message ?? 'We missed your call. Our AI assistant will call you back shortly.');
+  const [autoDispatch,         setAutoDispatch]         = useState(vc.auto_dispatch_on_escalation ?? false);
+  const [dispatchDelay,        setDispatchDelay]        = useState(vc.escalation_voice_delay_seconds ?? 0);
 
   function handleSave() {
     setError(null);
@@ -121,6 +155,12 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
         noPhoneNumbers,
         onBlockedTopic:       onBlocked,
         customBlockedMessage,
+        voiceEnabled,
+        voiceLanguage,
+        voiceGreeting,
+        voiceVoicemail,
+        autoDispatchOnEscalation: autoDispatch,
+        escalationVoiceDelaySeconds: dispatchDelay,
       });
       if (result.error) {
         setError(result.error);
@@ -186,6 +226,8 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
             </div>
             <button
               type="button"
+              aria-label={`Knowledge Base Only Mode: ${kbOnly ? 'on' : 'off'}`}
+              title="Toggle Knowledge Base Only Mode"
               onClick={() => setKbOnly((v) => !v)}
               className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${kbOnly ? 'bg-amber-500' : 'bg-gray-200'}`}
             >
@@ -196,8 +238,9 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
           {/* Tone + Confidence */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">Tone</label>
+              <label htmlFor={`tone-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">Tone</label>
               <select
+                id={`tone-${config.product_slug}`}
                 value={tone}
                 onChange={(e) => setTone(e.target.value as GuardrailsConfig['tone'])}
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
@@ -209,11 +252,12 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <label htmlFor={`confidence-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
                 Confidence Threshold
               </label>
               <div className="flex items-center gap-3">
                 <input
+                  id={`confidence-${config.product_slug}`}
                   type="range"
                   min="0"
                   max="1"
@@ -230,10 +274,11 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
 
           {/* Max response length */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            <label htmlFor={`maxlength-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
               Max Response Length (characters)
             </label>
             <input
+              id={`maxlength-${config.product_slug}`}
               type="number"
               min={100}
               max={4000}
@@ -265,10 +310,11 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
 
           {/* On blocked topic */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            <label htmlFor={`onblocked-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
               When Blocked Keyword Detected
             </label>
             <select
+              id={`onblocked-${config.product_slug}`}
               value={onBlocked}
               onChange={(e) => setOnBlocked(e.target.value as GuardrailsConfig['on_blocked_topic'])}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
@@ -314,6 +360,108 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
                 <span className="text-sm text-gray-700">{label}</span>
               </label>
             ))}
+          </div>
+
+          {/* ── Voice Config ───────────────────────────────────────────────── */}
+          <div className="rounded-xl border border-sky-100 bg-sky-50/50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-sky-100">
+              <div className="flex items-center gap-2">
+                <Phone size={14} className="text-sky-600" />
+                <span className="text-xs font-semibold text-sky-800 uppercase tracking-wide">Voice Call Config</span>
+              </div>
+              <Toggle
+                value={voiceEnabled}
+                onChange={setVoiceEnabled}
+                label="Enable Voice Calls for this bot"
+              />
+            </div>
+
+            {voiceEnabled && (
+              <div className="px-4 py-4 space-y-4">
+                {/* Language */}
+                <div className="space-y-1.5">
+                  <label htmlFor={`voice-lang-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Call Language
+                  </label>
+                  <select
+                    id={`voice-lang-${config.product_slug}`}
+                    value={voiceLanguage}
+                    onChange={(e) => setVoiceLanguage(e.target.value)}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  >
+                    {LANGUAGE_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400">Language used for STT transcription and TTS speech synthesis.</p>
+                </div>
+
+                {/* Greeting */}
+                <div className="space-y-1.5">
+                  <label htmlFor={`voice-greeting-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Opening Greeting
+                  </label>
+                  <textarea
+                    id={`voice-greeting-${config.product_slug}`}
+                    value={voiceGreeting}
+                    onChange={(e) => setVoiceGreeting(e.target.value)}
+                    rows={2}
+                    placeholder="Hello! I'm your support assistant. How can I help you today?"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none"
+                  />
+                  <p className="text-xs text-gray-400">First sentence spoken when the customer answers. Leave empty for the system default.</p>
+                </div>
+
+                {/* Voicemail */}
+                <div className="space-y-1.5">
+                  <label htmlFor={`voice-voicemail-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Voicemail / No-Answer Message
+                  </label>
+                  <textarea
+                    id={`voice-voicemail-${config.product_slug}`}
+                    value={voiceVoicemail}
+                    onChange={(e) => setVoiceVoicemail(e.target.value)}
+                    rows={2}
+                    placeholder="We missed your call. Our AI assistant will call you back shortly."
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none"
+                  />
+                  <p className="text-xs text-gray-400">Played when the call is not answered (if voicemail is enabled by the provider).</p>
+                </div>
+
+                {/* Auto-dispatch on escalation */}
+                <div className="flex items-start justify-between gap-4 p-3 bg-white rounded-xl border border-sky-100">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700">Auto-call on WhatsApp Escalation</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      When a WhatsApp conversation is escalated, immediately dispatch an AI voice callback to the customer.
+                    </p>
+                  </div>
+                  <Toggle
+                    value={autoDispatch}
+                    onChange={setAutoDispatch}
+                    label="Auto-dispatch voice call on escalation"
+                  />
+                </div>
+
+                {autoDispatch && (
+                  <div className="space-y-1.5">
+                    <label htmlFor={`voice-delay-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Call Delay After Escalation (seconds)
+                    </label>
+                    <input
+                      id={`voice-delay-${config.product_slug}`}
+                      type="number"
+                      min={0}
+                      max={300}
+                      value={dispatchDelay}
+                      onChange={(e) => setDispatchDelay(parseInt(e.target.value, 10) || 0)}
+                      className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                    />
+                    <p className="text-xs text-gray-400">0 = call immediately. Use a delay (e.g. 30s) to let the WhatsApp acknowledgment arrive first.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Save */}

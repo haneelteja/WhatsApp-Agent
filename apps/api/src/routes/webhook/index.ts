@@ -144,7 +144,13 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       body?.object === 'whatsapp_business_account' ? 'meta_cloud' : 'twilio';
 
     // Single RPC call replaces 7 parallel Supabase queries (cache-backed, 60 s TTL)
-    const botCtx = await getBotContext(tenantId, productType, inferredProvider);
+    let botCtx = await getBotContext(tenantId, productType, inferredProvider);
+
+    // If provider inference was wrong (e.g. body shape didn't match), try the other provider
+    if (!botCtx.whatsapp_number) {
+      const fallbackProvider = inferredProvider === 'meta_cloud' ? 'twilio' : 'meta_cloud';
+      botCtx = await getBotContext(tenantId, productType, fallbackProvider);
+    }
 
     const wn = botCtx.whatsapp_number;
     if (!wn) {
@@ -197,20 +203,32 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     void gateway.markAsRead(config.phone_number_id, config.access_token, incoming.messageId);
 
     // ── Upsert contact ──────────────────────────────────────────────────────
-    const { data: contact, error: contactError } = await db
-      .from('contacts')
-      .upsert(
-        {
-          tenant_id: tenantId,
-          phone: incoming.from,
-          name: incoming.contactName ?? null,
-        },
-        { onConflict: 'tenant_id,phone', ignoreDuplicates: false }
-      )
-      .select()
-      .single();
+    // When a user has a WhatsApp username, Meta sends a BSUID (opaque ID)
+    // in `from` instead of a phone number. Phone numbers are all-digit E.164;
+    // BSUIDs contain non-digit characters.
+    const isBsuid = !/^\d{7,15}$/.test(incoming.from);
 
-    fastify.log.info({ contact: contact ? (contact as Contact).id : null, contactError }, '[Webhook] contact upsert');
+    const contactUpsertResult = isBsuid
+      ? await db
+          .from('contacts')
+          .upsert(
+            { tenant_id: tenantId, bsuid: incoming.from, name: incoming.contactName ?? null },
+            { onConflict: 'tenant_id,bsuid', ignoreDuplicates: false }
+          )
+          .select()
+          .single()
+      : await db
+          .from('contacts')
+          .upsert(
+            { tenant_id: tenantId, phone: incoming.from, name: incoming.contactName ?? null },
+            { onConflict: 'tenant_id,phone', ignoreDuplicates: false }
+          )
+          .select()
+          .single();
+
+    const { data: contact, error: contactError } = contactUpsertResult;
+
+    fastify.log.info({ contact: contact ? (contact as Contact).id : null, contactError, isBsuid }, '[Webhook] contact upsert');
     if (!contact) return;
 
     // ── CSAT response detection ───────────────────────────────────────────────

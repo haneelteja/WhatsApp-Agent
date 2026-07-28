@@ -120,6 +120,8 @@ export interface BotConfig {
   kb_only_mode: boolean;
   /** Per-bot escalation policy; null = use platform defaults. */
   escalation_policy: EscalationPolicy | null;
+  /** Per-bot voice configuration (JSONB). null = voice disabled. */
+  voice_config: import('./voice.js').BotVoiceConfig | null;
   updated_at: string;
   updated_by: string | null;
 }
@@ -343,7 +345,8 @@ export interface TwilioConfig {
 export interface Contact {
   id: string;
   tenant_id: string;
-  phone: string;
+  phone: string | null;
+  bsuid: string | null;
   name: string | null;
   memory_json: ContactMemory;
   created_at: string;

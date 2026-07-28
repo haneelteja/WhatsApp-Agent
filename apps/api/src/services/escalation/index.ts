@@ -36,10 +36,65 @@ export async function escalateConversation(
   // 3. Fire all notifications non-blocking
   void sendEscalationNotifications(conversation, triggerReason);
 
+  // 4. Auto-dispatch voice call if bot voice config has auto_dispatch_on_escalation=true
+  void maybeDispatchEscalationVoiceCall(conversation);
+
   return {
     escalationId: (data as { id: string }).id,
     conversationId: conversation.id,
   };
+}
+
+/**
+ * If the bot's voice_config.auto_dispatch_on_escalation is true, dispatch
+ * an outbound voice callback to the customer immediately after escalation.
+ * This replaces "a human will call you back" with an instant AI voice call.
+ */
+async function maybeDispatchEscalationVoiceCall(conversation: Conversation): Promise<void> {
+  try {
+    const db = getServerClient();
+
+    // Load bot config to check voice settings
+    const { data: botConfig } = await db
+      .from('bot_configs')
+      .select('voice_config')
+      .eq('tenant_id', conversation.tenant_id)
+      .eq('product_slug', conversation.product_type)
+      .single();
+
+    const voiceCfg = (botConfig as { voice_config?: { enabled?: boolean; auto_dispatch_on_escalation?: boolean; escalation_voice_delay_seconds?: number } } | null)?.voice_config;
+    if (!voiceCfg?.enabled || !voiceCfg?.auto_dispatch_on_escalation) return;
+
+    // Fetch customer phone number
+    const { data: contact } = await db
+      .from('contacts')
+      .select('phone, name')
+      .eq('id', conversation.contact_id)
+      .single();
+
+    if (!contact?.phone) return;
+
+    const delayMs = ((voiceCfg.escalation_voice_delay_seconds ?? 0)) * 1000;
+    if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+
+    // Lazy import to avoid circular dependencies
+    const { dispatchCall } = await import('../voice/call-manager.js');
+    await dispatchCall({
+      tenant_id:       conversation.tenant_id,
+      product_slug:    conversation.product_type,
+      to_number:       (contact as { phone: string }).phone,
+      conversation_id: conversation.id,
+      triggered_by:    'escalation',
+      call_context: {
+        customer_name:    (contact as { name: string | null }).name ?? '',
+        escalation_reason: 'WhatsApp conversation escalated — calling to assist',
+        greeting_override: `Hello${(contact as { name: string | null }).name ? ` ${(contact as { name: string | null }).name}` : ''}! I am calling regarding your recent support request. How can I help you further?`,
+      },
+    });
+  } catch (err) {
+    console.error('[Escalation] Voice auto-dispatch failed:', err instanceof Error ? err.message : err);
+    // Non-fatal — escalation already happened, notifications already sent
+  }
 }
 
 export async function claimEscalation(

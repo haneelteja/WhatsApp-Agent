@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { getServerClient } from '@alphabot/database';
 import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
+import { dispatchPendingVoiceCalls } from '../services/campaign/index.js';
 import type { WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -133,5 +134,12 @@ export function startScheduler(): void {
     );
   });
 
-  console.log('[Scheduler] Daily report (08:00 UTC) and follow-up (hourly) scheduled');
+  // 'Both' campaigns — dispatch voice calls for contacts that had WA sent N hours ago with no reply
+  cron.schedule('*/15 * * * *', () => {
+    void dispatchPendingVoiceCalls().catch(err =>
+      console.error('[Scheduler] Campaign voice dispatch failed:', (err as Error).message)
+    );
+  });
+
+  console.log('[Scheduler] Daily report (08:00 UTC), follow-up (hourly), and campaign voice dispatch (every 15 min) scheduled');
 }

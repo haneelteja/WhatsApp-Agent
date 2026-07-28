@@ -17,6 +17,8 @@ import {
   CreditCard,
   ShoppingCart,
   Users,
+  Phone,
+  Megaphone,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -31,6 +33,8 @@ const navItems = [
   { href: '/ai-models',      label: 'AI Models',      icon: Cpu             },
   { href: '/orders',         label: 'Orders',         icon: ShoppingCart    },
   { href: '/follow-ups',     label: 'Follow-ups',     icon: RefreshCw       },
+  { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
+  { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/billing',        label: 'Billing',        icon: CreditCard      },
   { href: '/settings',       label: 'Settings',       icon: Settings        },

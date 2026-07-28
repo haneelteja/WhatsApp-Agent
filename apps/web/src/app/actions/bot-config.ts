@@ -20,6 +20,13 @@ export interface SaveBotConfigInput {
   noPhoneNumbers:       boolean;
   onBlockedTopic:       GuardrailsConfig['on_blocked_topic'];
   customBlockedMessage: string;
+  // Voice config
+  voiceEnabled:                  boolean;
+  voiceLanguage:                 string;
+  voiceGreeting:                 string;
+  voiceVoicemail:                string;
+  autoDispatchOnEscalation:      boolean;
+  escalationVoiceDelaySeconds:   number;
 }
 
 export async function saveBotConfigAction(input: SaveBotConfigInput) {
@@ -53,6 +60,23 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
     custom_blocked_message: input.customBlockedMessage || undefined,
   };
 
+  const voice_config = {
+    enabled:                        input.voiceEnabled,
+    telephony_provider:             null,
+    stt_provider:                   null,
+    tts_provider:                   null,
+    language:                       input.voiceLanguage,
+    tts_voice:                      null,
+    voicemail_enabled:              true,
+    voicemail_message:              input.voiceVoicemail,
+    greeting_message:               input.voiceGreeting.trim() || null,
+    max_call_duration_seconds:      300,
+    max_turns:                      20,
+    silence_timeout_seconds:        10,
+    auto_dispatch_on_escalation:    input.autoDispatchOnEscalation,
+    escalation_voice_delay_seconds: input.escalationVoiceDelaySeconds,
+  };
+
   const { error } = await admin
     .from('bot_configs')
     .update({
@@ -61,6 +85,7 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
       confidence_threshold: input.confidenceThreshold,
       escalation_triggers:  input.escalationTriggers,
       guardrails_json,
+      voice_config,
       updated_by:           user.id,
     })
     .eq('tenant_id', tenantUser.tenant_id)
