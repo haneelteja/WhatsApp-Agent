@@ -3,6 +3,7 @@ import { getServerClient } from '@alphabot/database';
 import { requireAuth } from '../../middleware/auth.js';
 import { generateEmbedding, generateEmbeddingsBatch } from '../../services/kb/embedding.js';
 import { invalidateKBCache } from '../../services/kb/lookup.js';
+import { chatCompletion, REPLY_MODEL } from '../../lib/anthropic.js';
 
 // All routes require tenant context from auth middleware.
 // The middleware decorates the request with: tenantId, userId, userRole.
@@ -347,5 +348,120 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
     if (error) return reply.status(500).send({ error: error.message });
     void invalidateKBCache(tenantId);
     return reply.status(204).send();
+  });
+
+  // ── AI KB Generator ────────────────────────────────────────────────────────
+
+  // POST /api/kb/generate — use Claude to generate KB entries from business info
+  fastify.post<{
+    Body: {
+      businessOverview: string;
+      industry:         string;
+      customerType:     string;
+      products:         Array<{ name: string; description: string; price: string }>;
+      policies: {
+        returns:      string;
+        shipping:     string;
+        payment:      string;
+        supportHours: string;
+        warranty:     string;
+      };
+      faqSeeds: string[];
+    };
+  }>('/generate', { preHandler: [requireAuth] }, async (request, reply) => {
+    const tenantId = (request as { tenantId?: string }).tenantId;
+    if (!tenantId) return reply.status(401).send({ error: 'Unauthorized' });
+
+    const { businessOverview, industry, customerType, products, policies, faqSeeds } = request.body;
+
+    if (!businessOverview?.trim()) {
+      return reply.status(400).send({ error: 'businessOverview is required' });
+    }
+
+    // Build structured input for Claude
+    const productLines = (products ?? [])
+      .filter(p => p.name?.trim())
+      .map(p => `- ${p.name}${p.description ? `: ${p.description}` : ''}${p.price ? ` (${p.price})` : ''}`)
+      .join('\n');
+
+    const policyLines = [
+      policies?.returns      && `Returns/Refunds: ${policies.returns}`,
+      policies?.shipping     && `Delivery/Shipping: ${policies.shipping}`,
+      policies?.payment      && `Payment Methods: ${policies.payment}`,
+      policies?.supportHours && `Support Hours & Channels: ${policies.supportHours}`,
+      policies?.warranty     && `Warranty/Guarantee: ${policies.warranty}`,
+    ].filter(Boolean).join('\n');
+
+    const faqLines = (faqSeeds ?? [])
+      .filter(q => q?.trim())
+      .map((q, i) => `${i + 1}. ${q.trim()}`)
+      .join('\n');
+
+    const userMessage = [
+      `BUSINESS OVERVIEW:\n${businessOverview.trim()}`,
+      `Industry: ${industry || 'Not specified'}`,
+      `Customer Type: ${customerType || 'Not specified'}`,
+      productLines  && `\nPRODUCTS & SERVICES:\n${productLines}`,
+      policyLines   && `\nPOLICIES & OPERATIONS:\n${policyLines}`,
+      faqLines      && `\nCUSTOMER FAQ SEEDS (use these as primary entries and expand):\n${faqLines}`,
+    ].filter(Boolean).join('\n');
+
+    const systemPrompt = `You are a Knowledge Base builder for a WhatsApp AI customer support bot.
+Given business information, generate comprehensive Q&A pairs a bot can use to answer customer questions accurately.
+
+Generate 30-50 entries covering all relevant aspects of the business.
+Use ONLY these categories: Products, Pricing, Ordering, Delivery, Returns, Support, Company, General
+
+Rules:
+- Questions must be phrased exactly as a customer would ask them via WhatsApp (conversational, natural)
+- Answers must be 1-4 sentences, accurate to the provided information, friendly and helpful in tone
+- If FAQ seeds are provided, use each as a primary question (answer it based on the business info) then add related questions
+- Cover all products, all policies, common customer concerns, and company/trust questions
+- Do NOT invent information not provided — use "Contact us for details" for genuinely unknown info
+- Return ONLY valid JSON with no explanation, no markdown fences, no preamble
+
+Output format (strict, no other text):
+{"entries":[{"question":"...","answer":"...","category":"..."}]}`;
+
+    try {
+      const { content } = await chatCompletion({
+        model:      REPLY_MODEL,
+        system:     systemPrompt,
+        messages:   [{ role: 'user', content: userMessage }],
+        max_tokens: 4096,
+      });
+
+      // Extract JSON — handle both bare JSON and ```json fenced blocks
+      let raw = content.trim();
+      const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenced) raw = fenced[1]!.trim();
+
+      let parsed: { entries: Array<{ question: string; answer: string; category: string }> };
+      try {
+        parsed = JSON.parse(raw) as typeof parsed;
+      } catch {
+        // Try to extract JSON object if there's surrounding text
+        const objMatch = raw.match(/\{[\s\S]*\}/);
+        if (!objMatch) {
+          fastify.log.error('[KB Generate] Could not parse Claude response as JSON');
+          return reply.status(502).send({ error: 'Generation failed — please try again' });
+        }
+        parsed = JSON.parse(objMatch[0]) as typeof parsed;
+      }
+
+      if (!Array.isArray(parsed?.entries)) {
+        return reply.status(502).send({ error: 'Generation failed — unexpected response format' });
+      }
+
+      // Filter empty, dedupe, cap at 100
+      const entries = parsed.entries
+        .filter(e => e.question?.trim() && e.answer?.trim())
+        .slice(0, 100);
+
+      return reply.send({ entries });
+    } catch (err) {
+      fastify.log.error({ err }, '[KB Generate] Claude call failed');
+      return reply.status(502).send({ error: 'Generation failed — please try again' });
+    }
   });
 }
