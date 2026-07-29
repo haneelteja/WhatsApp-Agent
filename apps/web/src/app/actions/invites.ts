@@ -24,6 +24,20 @@ export async function sendInviteAction(tenantId: string, email: string, role: st
   const { data: tenant } = await admin.from('tenants').select('name').eq('id', tenantId).single();
   if (!tenant) return { error: 'Tenant not found' };
 
+  // Block if the invited email already belongs to a platform user
+  const { data: { users: allUsers } } = await admin.auth.admin.listUsers();
+  const matchedUser = allUsers.find(u => u.email?.toLowerCase() === email.toLowerCase().trim());
+  if (matchedUser) {
+    const { data: isPlatformUser } = await admin
+      .from('platform_users')
+      .select('id')
+      .eq('user_id', matchedUser.id)
+      .maybeSingle();
+    if (isPlatformUser) {
+      return { error: 'This email belongs to a platform team member and cannot be invited as a client.' };
+    }
+  }
+
   // Create invite record
   const { data: invite, error: inviteError } = await admin
     .from('client_invites')
@@ -118,6 +132,18 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
   // Check if user already exists
   const { data: { users: existingUsers } } = await admin.auth.admin.listUsers();
   const existingUser = existingUsers.find(u => u.email === invite.email);
+
+  // Hard block: reject if this email is already a platform team member
+  if (existingUser) {
+    const { data: isPlatformUser } = await admin
+      .from('platform_users')
+      .select('id')
+      .eq('user_id', existingUser.id)
+      .maybeSingle();
+    if (isPlatformUser) {
+      return { error: 'This email is registered as a platform team member and cannot be used for a client account. Please contact support.' };
+    }
+  }
 
   let userId: string;
 
