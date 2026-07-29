@@ -7,17 +7,19 @@ export async function createTenantAction(formData: FormData) {
   const supabase = getSupabaseAdminClient();
 
   const name = (formData.get('name') as string | null)?.trim();
+  const contactEmail = (formData.get('contactEmail') as string | null)?.trim();
   const plan = (formData.get('plan') as string) || 'starter';
   const trialDays = parseInt((formData.get('trialDays') as string) || '0', 10);
   const products = formData.getAll('products') as string[];
 
-  if (!name || products.length === 0) return;
+  if (!name || !contactEmail || products.length === 0) return;
 
   // 1. Create tenant
   const { data: tenant, error } = await supabase
     .from('tenants')
     .insert({
       name,
+      contact_email: contactEmail,
       plan,
       status: trialDays > 0 ? 'trial' : 'active',
       provider: 'meta_cloud',

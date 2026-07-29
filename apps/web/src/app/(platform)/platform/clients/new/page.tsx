@@ -63,6 +63,19 @@ export default function NewClientPage() {
           </div>
 
           <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Contact Email <span className="text-red-400">*</span>
+            </label>
+            <input
+              name="contactEmail"
+              type="email"
+              required
+              placeholder="e.g. admin@acmecorp.com"
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-300"
+            />
+          </div>
+
+          <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan</label>
             <select
               name="plan"

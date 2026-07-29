@@ -28,12 +28,16 @@ CREATE TABLE IF NOT EXISTS voice_provider_configs (
   UNIQUE (component, provider_name)
 );
 
-CREATE TRIGGER voice_provider_configs_updated_at
-  BEFORE UPDATE ON voice_provider_configs
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'voice_provider_configs_updated_at') THEN
+    CREATE TRIGGER voice_provider_configs_updated_at
+      BEFORE UPDATE ON voice_provider_configs
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
 
 -- Only one default per component
-CREATE UNIQUE INDEX idx_voice_provider_default
+CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_provider_default
   ON voice_provider_configs (component)
   WHERE is_default = true;
 
@@ -138,9 +142,13 @@ CREATE TABLE IF NOT EXISTS voice_calls (
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER voice_calls_updated_at
-  BEFORE UPDATE ON voice_calls
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'voice_calls_updated_at') THEN
+    CREATE TRIGGER voice_calls_updated_at
+      BEFORE UPDATE ON voice_calls
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_voice_calls_tenant       ON voice_calls(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_voice_calls_conversation  ON voice_calls(conversation_id) WHERE conversation_id IS NOT NULL;
@@ -223,37 +231,44 @@ ALTER TABLE voice_provider_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE voice_calls            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_contacts      ENABLE ROW LEVEL SECURITY;
 
--- voice_provider_configs: only platform can manage; authenticated can read (for dropdown lists)
-CREATE POLICY "voice_provider_configs: authenticated read"
-  ON voice_provider_configs FOR SELECT
-  USING (auth.role() = 'authenticated');
-
-CREATE POLICY "voice_provider_configs: platform manager write"
-  ON voice_provider_configs FOR ALL
-  USING (get_platform_role() = 'manager');
-
--- voice_calls: tenants see own; platform reads all
-CREATE POLICY "voice_calls: tenant reads own"
-  ON voice_calls FOR SELECT
-  USING (tenant_id IN (
-    SELECT tenant_id FROM tenant_users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "voice_calls: platform reads all"
-  ON voice_calls FOR SELECT
-  USING (is_platform_user());
-
-CREATE POLICY "voice_calls: service role all"
-  ON voice_calls FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
-
--- campaign_contacts
-CREATE POLICY "campaign_contacts: tenant reads own"
-  ON campaign_contacts FOR SELECT
-  USING (tenant_id IN (
-    SELECT tenant_id FROM tenant_users WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "campaign_contacts: service role all"
-  ON campaign_contacts FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'voice_provider_configs: authenticated read') THEN
+    CREATE POLICY "voice_provider_configs: authenticated read"
+      ON voice_provider_configs FOR SELECT
+      USING (auth.role() = 'authenticated');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'voice_provider_configs: platform manager write') THEN
+    CREATE POLICY "voice_provider_configs: platform manager write"
+      ON voice_provider_configs FOR ALL
+      USING (get_platform_role() = 'manager');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'voice_calls: tenant reads own') THEN
+    CREATE POLICY "voice_calls: tenant reads own"
+      ON voice_calls FOR SELECT
+      USING (tenant_id IN (
+        SELECT tenant_id FROM tenant_users WHERE user_id = auth.uid()
+      ));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'voice_calls: platform reads all') THEN
+    CREATE POLICY "voice_calls: platform reads all"
+      ON voice_calls FOR SELECT
+      USING (is_platform_user());
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'voice_calls: service role all') THEN
+    CREATE POLICY "voice_calls: service role all"
+      ON voice_calls FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'campaign_contacts: tenant reads own') THEN
+    CREATE POLICY "campaign_contacts: tenant reads own"
+      ON campaign_contacts FOR SELECT
+      USING (tenant_id IN (
+        SELECT tenant_id FROM tenant_users WHERE user_id = auth.uid()
+      ));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'campaign_contacts: service role all') THEN
+    CREATE POLICY "campaign_contacts: service role all"
+      ON campaign_contacts FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+  END IF;
+END $$;

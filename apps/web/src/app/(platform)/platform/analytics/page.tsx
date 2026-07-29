@@ -78,6 +78,9 @@ export default async function PlatformAnalyticsPage({ searchParams }: { searchPa
     { count: contacts },
     { data: voiceCalls },
     { data: campaigns },
+    { count: newTenants },
+    { data: llmConfigs },
+    { count: kbDocs },
   ] = await Promise.all([
     admin.from('tenants').select('id, name, plan, status'),
 
@@ -122,6 +125,16 @@ export default async function PlatformAnalyticsPage({ searchParams }: { searchPa
     admin.from('campaigns')
       .select('status, channel, contact_count, stats')
       .gte('created_at', since),
+
+    admin.from('tenants').select('*', { count: 'exact', head: true })
+      .gte('created_at', since),
+
+    admin.from('llm_configs')
+      .select('provider, model, tenant_id')
+      .eq('validation_status', 'valid'),
+
+    admin.from('kb_documents').select('*', { count: 'exact', head: true })
+      .eq('status', 'active'),
   ]);
 
   // ── WhatsApp aggregates ───────────────────────────────────────────────────
@@ -173,6 +186,15 @@ export default async function PlatformAnalyticsPage({ searchParams }: { searchPa
   const totalWaReplied    = camps.reduce((s, c) => s + (c.stats?.wa_replied ?? 0), 0);
   const totalCallsMade    = camps.reduce((s, c) => s + (c.stats?.calls_made ?? 0), 0);
   const totalCallsAnswered = camps.reduce((s, c) => s + (c.stats?.calls_answered ?? 0), 0);
+
+  // ── LLM provider distribution ─────────────────────────────────────────────
+  const llmProviderCounts: Record<string, number> = {};
+  for (const cfg of (llmConfigs ?? []) as Array<{ provider: string; model: string; tenant_id: string | null }>) {
+    llmProviderCounts[cfg.provider] = (llmProviderCounts[cfg.provider] ?? 0) + 1;
+  }
+  const tenantsWithCustomLlm = new Set(
+    (llmConfigs ?? []).filter((c: { tenant_id: string | null }) => c.tenant_id !== null).map((c: { tenant_id: string | null }) => c.tenant_id)
+  ).size;
 
   // ── Tenant plan distribution ──────────────────────────────────────────────
   const planCounts: Record<string, number> = { starter: 0, growth: 0, scale: 0 };
@@ -540,6 +562,36 @@ export default async function PlatformAnalyticsPage({ searchParams }: { searchPa
               ))}
             </div>
           </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Growth & AI</p>
+            <div className="space-y-1.5">
+              {[
+                { label: `New clients (period)`, value: newTenants ?? 0, color: 'text-indigo-700' },
+                { label: 'Custom LLM clients',   value: tenantsWithCustomLlm,  color: 'text-violet-700' },
+                { label: 'Active KB docs',        value: kbDocs ?? 0,           color: 'text-emerald-700' },
+              ].map(r => (
+                <div key={r.label} className="flex justify-between items-center">
+                  <p className="text-xs text-slate-500">{r.label}</p>
+                  <p className={`text-xs font-bold tabular-nums ${r.color}`}>{fmtNum(r.value)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {Object.keys(llmProviderCounts).length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">LLM Providers</p>
+              <div className="space-y-1.5">
+                {Object.entries(llmProviderCounts).map(([provider, count]) => (
+                  <div key={provider} className="flex justify-between items-center">
+                    <p className="text-xs text-slate-500 capitalize">{provider}</p>
+                    <p className="text-xs font-bold tabular-nums text-slate-700">{count} config{count !== 1 ? 's' : ''}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
