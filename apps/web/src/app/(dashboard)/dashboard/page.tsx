@@ -169,16 +169,16 @@ export default async function DashboardPage() {
     configMap.set(cfg.product_slug, cfg);
   }
 
-  // Sort by priority ascending (lower number = higher priority) before grouping
-  const collectionsMap = new Map<string, KbCollection[]>();
+  // KB is tenant-wide (shared across all bots) — collect unique active collections sorted by priority
+  const seenCollectionIds = new Set<string>();
+  const tenantCollections: KbCollection[] = [];
   const sortedRows = [...((collectionBots ?? []) as unknown as CollectionRow[])]
     .sort((a, b) => a.priority - b.priority);
   for (const row of sortedRows) {
     const col = row.kb_collections;
-    if (!col || !col.active) continue;
-    const list = collectionsMap.get(row.product_slug) ?? [];
-    list.push(col);
-    collectionsMap.set(row.product_slug, list);
+    if (!col || !col.active || seenCollectionIds.has(col.id)) continue;
+    seenCollectionIds.add(col.id);
+    tenantCollections.push(col);
   }
 
   const tenantG      = (tenantGuardrailsRow?.guardrails_json ?? {}) as TenantGuardrailsJson;
@@ -239,8 +239,8 @@ export default async function DashboardPage() {
               const meta = BOT_META[slug];
               if (!meta) return null;
 
-              const cfg         = configMap.get(slug);
-              const collections = collectionsMap.get(slug) ?? [];
+              const cfg          = configMap.get(slug);
+              const collections  = tenantCollections;
               const totalEntries = collections.reduce((sum, c) => sum + c.entry_count, 0);
 
               const triggers       = cfg?.escalation_triggers ?? [];

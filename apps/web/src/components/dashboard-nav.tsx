@@ -6,7 +6,6 @@ import {
   MessageSquare,
   LayoutDashboard,
   BookOpen,
-  AlertCircle,
   Settings,
   LogOut,
   Bot,
@@ -26,7 +25,6 @@ import { useRouter } from 'next/navigation';
 const navItems = [
   { href: '/dashboard',      label: 'Overview',       icon: LayoutDashboard },
   { href: '/conversations',  label: 'Conversations',  icon: MessageSquare   },
-  { href: '/escalations',    label: 'Escalations',    icon: AlertCircle     },
   { href: '/team',           label: 'Team',           icon: Users           },
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },

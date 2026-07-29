@@ -10,8 +10,8 @@ const KB_CACHE_TTL = 300; // 5 minutes — KB content changes infrequently
  * Full RAG lookup for an incoming user query.
  *
  * Strategy (in order):
- *  1. Redis cache — keyed by tenantId + productSlug + query hash
- *  2. Find all KB collections assigned to this tenant+product
+ *  1. Redis cache — keyed by tenantId + query hash (tenant-wide, shared across all bots)
+ *  2. Find all KB collections for this tenant (KB is shared across all bots)
  *  3. If VOYAGE_API_KEY is set: generate query embedding → vector similarity search
  *  4. Fallback: keyword ILIKE search across the same collections
  *  5. Final fallback: legacy product_type-scoped entries (no collection)
@@ -25,7 +25,7 @@ export async function lookupKB(
   limit = 5
 ): Promise<KnowledgeBase[]> {
   const queryHash = createHash('sha256')
-    .update(`${tenantId}:${productSlug}:${query}`)
+    .update(`${tenantId}:${query}`)
     .digest('hex')
     .slice(0, 16);
   const cacheKey = `kb:${tenantId}:${queryHash}`;
@@ -51,12 +51,11 @@ async function _lookupKBFromDb(
 ): Promise<KnowledgeBase[]> {
   const db = getServerClient();
 
-  // 1. Find collection IDs assigned to this bot
+  // 1. Find all KB collection IDs for this tenant (KB is shared across all bots)
   const { data: assignments } = await db
     .from('kb_collection_bots')
     .select('collection_id')
     .eq('tenant_id', tenantId)
-    .eq('product_slug', productSlug)
     .order('priority', { ascending: true });
 
   const collectionIds = (assignments ?? []).map((a: { collection_id: string }) => a.collection_id);
