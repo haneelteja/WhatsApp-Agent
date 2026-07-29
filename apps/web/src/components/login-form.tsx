@@ -27,7 +27,7 @@ export default function LoginForm() {
     setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) { setError(error.message); setLoading(false); return; }
-    router.push('/dashboard');
+    router.push('/');
   }
 
   return (
@@ -105,7 +105,12 @@ export default function LoginForm() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700">Password</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700">Password</label>
+                <Link href="/forgot-password" className="text-xs text-emerald-600 hover:text-emerald-700 transition-colors">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <input
                   type={showPw ? 'text' : 'password'}
