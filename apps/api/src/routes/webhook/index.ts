@@ -555,7 +555,7 @@ To update state, append these markers at the VERY END of your response (they are
     // 5. bot_configs.ai_model        (model only, uses env API key)
     // 6. products.default_model      (model only, uses env API key)
     // 7. OPENROUTER_REPLY_MODEL env  (ultimate fallback in claude.ts)
-    type LlmRow = { tenant_id: string | null; product_slug: string | null; api_key: string; model: string; base_url: string | null; validation_status: string };
+    type LlmRow = { tenant_id: string | null; product_slug: string | null; provider: string; api_key: string; model: string; base_url: string | null; validation_status: string };
     const llmRows = (botCtx.llm_configs ?? []) as LlmRow[];
 
     const resolvedLlm = (
@@ -574,10 +574,10 @@ To update state, append these markers at the VERY END of your response (they are
     const dbModel = rawDbModel?.startsWith('claude-') ? rawDbModel : null;
 
     const llmOverride = (resolvedLlm?.validation_status === 'valid')
-      ? { apiKey: resolvedLlm.api_key, model: resolvedLlm.model }
+      ? { provider: resolvedLlm.provider, apiKey: resolvedLlm.api_key, model: resolvedLlm.model, baseUrl: resolvedLlm.base_url ?? undefined }
       : dbModel
-        ? { model: dbModel }   // use DB Anthropic model with platform env API key
-        : undefined;           // fall through to REPLY_MODEL default in anthropic.ts
+        ? { provider: 'anthropic', model: dbModel }
+        : undefined;
 
     // ── Token quota check — enforce per-plan monthly limit ────────────────
     const quota = await checkTokenQuota(tenantId, tenant?.plan ?? 'starter');

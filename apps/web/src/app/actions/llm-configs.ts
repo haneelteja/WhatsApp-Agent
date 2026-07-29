@@ -77,7 +77,7 @@ export async function saveLlmConfigAction(
   return { ok: true };
 }
 
-// ── Validate (test the stored API key against the provider) ──────────────────
+// ── Validate (test the stored API key against the provider's native API) ─────
 
 export async function validateLlmConfigAction(
   tenantId:    string | null,
@@ -93,34 +93,67 @@ export async function validateLlmConfigAction(
   const customUrl = config['base_url'] as string | null;
   const configId  = String(config['id']);
 
-  const baseUrl  = customUrl?.replace(/\/$/, '') ?? 'https://openrouter.ai/api/v1';
-  const chatUrl  = `${baseUrl}/chat/completions`;
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
 
+  type CreditInfo = { usage: number | null; limit: number | null; is_free_tier: boolean };
   let statusCode: number | undefined;
+  let res: Response;
 
   try {
-    const headers: Record<string, string> = {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    };
-    if (provider === 'openrouter') {
-      headers['HTTP-Referer'] = 'https://whats-app-agent-web.vercel.app';
-      headers['X-Title']      = 'Alphabot';
+    // ── Route to the correct provider API format ──────────────────────────
+    if (provider === 'anthropic') {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type':      'application/json',
+          'x-api-key':         apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          max_tokens: 5,
+          messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
+        }),
+      });
+    } else if (provider === 'gemini') {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'Reply with the single word: ok' }] }],
+            generationConfig: { maxOutputTokens: 5 },
+          }),
+        },
+      );
+    } else {
+      // openai / openrouter / custom — all use OpenAI-compatible format
+      const baseUrl = customUrl?.replace(/\/$/, '') ?? (
+        provider === 'openrouter' ? 'https://openrouter.ai/api/v1' : 'https://api.openai.com/v1'
+      );
+      const headers: Record<string, string> = {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      };
+      if (provider === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://whats-app-agent-web.vercel.app';
+        headers['X-Title']      = 'Alphabot';
+      }
+      res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
+          max_tokens: 5,
+        }),
+      });
     }
-
-    const res = await fetch(chatUrl, {
-      method: 'POST',
-      headers,
-      signal: controller.signal,
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
-        max_tokens: 5,
-      }),
-    });
 
     clearTimeout(timer);
     statusCode = res.status;
@@ -144,10 +177,8 @@ export async function validateLlmConfigAction(
       return { ok: false, error: errMsg, statusCode };
     }
 
-    // ── Valid! Fetch credit info for OpenRouter ───────────────────────────
-    type CreditInfo = { usage: number | null; limit: number | null; is_free_tier: boolean };
+    // ── Valid — fetch credit info for OpenRouter ──────────────────────────
     let creditInfo: CreditInfo | undefined = undefined;
-
     if (provider === 'openrouter') {
       try {
         const keyRes = await fetch('https://openrouter.ai/api/v1/auth/key', {
@@ -191,6 +222,21 @@ export async function validateLlmConfigAction(
     buildRevalidate(tenantId);
     return { ok: false, error: errMsg };
   }
+}
+
+// ── Get available models for a provider (populated by weekly cron) ────────────
+
+export async function getProviderModelsAction(
+  provider: string,
+): Promise<Array<{ model_id: string; display_name: string | null; context_window: number | null }>> {
+  const admin = getSupabaseAdminClient();
+  const { data } = await admin
+    .from('llm_provider_models')
+    .select('model_id, display_name, context_window')
+    .eq('provider', provider)
+    .eq('is_active', true)
+    .order('display_name');
+  return (data ?? []) as Array<{ model_id: string; display_name: string | null; context_window: number | null }>;
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────────

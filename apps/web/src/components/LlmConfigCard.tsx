@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Trash2, RefreshCw, Key, Save, AlertCircle } from 'lucide-react';
-import { saveLlmConfigAction, validateLlmConfigAction, deleteLlmConfigAction } from '@/app/actions/llm-configs';
+import { saveLlmConfigAction, validateLlmConfigAction, deleteLlmConfigAction, getProviderModelsAction } from '@/app/actions/llm-configs';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,40 +26,63 @@ interface ConfigState {
 }
 
 export interface LlmConfigCardProps {
-  label:       string;
+  label:        string;
   description?: string;
-  tenantId:    string | null;
-  productSlug: string | null;
-  initial:     ConfigState | null;
-  accent?:     'indigo' | 'emerald';
+  tenantId:     string | null;
+  productSlug:  string | null;
+  initial:      ConfigState | null;
+  accent?:      'indigo' | 'emerald';
 }
+
+type ProviderModel = { model_id: string; display_name: string | null; context_window: number | null };
 
 // ── Provider / model constants ────────────────────────────────────────────────
 
 const PROVIDERS = [
-  { value: 'openrouter', label: 'OpenRouter',  hint: 'Recommended — access 300+ models with one key' },
-  { value: 'openai',     label: 'OpenAI',      hint: 'Direct OpenAI API (GPT-4o, etc.)'              },
-  { value: 'custom',     label: 'Custom',       hint: 'Any OpenAI-compatible endpoint (self-hosted)'  },
+  { value: 'anthropic',  label: 'Anthropic',     hint: 'Claude models — direct Anthropic API (claude-haiku, claude-sonnet, claude-opus)' },
+  { value: 'openai',     label: 'OpenAI',         hint: 'GPT-4o, o1, o3-mini and other OpenAI models' },
+  { value: 'gemini',     label: 'Google Gemini',  hint: 'Gemini 2.0 Flash, 1.5 Pro, and more' },
+  { value: 'openrouter', label: 'OpenRouter',     hint: 'Access 300+ models from all providers with one API key' },
+  { value: 'custom',     label: 'Custom',         hint: 'Any OpenAI-compatible endpoint (self-hosted, LiteLLM proxy, etc.)' },
 ];
 
-const MODEL_SUGGESTIONS: Record<string, string[]> = {
-  openrouter: [
-    'anthropic/claude-3.5-haiku',
-    'anthropic/claude-sonnet-4-5',
-    'anthropic/claude-opus-4',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4o',
-    'google/gemini-flash-1.5',
-    'meta-llama/llama-3.1-8b-instruct:free',
+// Fallback model lists used before the DB cron has run
+const FALLBACK_MODELS: Record<string, ProviderModel[]> = {
+  anthropic: [
+    { model_id: 'claude-opus-4-7',            display_name: 'Claude Opus 4.7',           context_window: 200000 },
+    { model_id: 'claude-sonnet-4-6',          display_name: 'Claude Sonnet 4.6',         context_window: 200000 },
+    { model_id: 'claude-haiku-4-5-20251001',  display_name: 'Claude Haiku 4.5',          context_window: 200000 },
+    { model_id: 'claude-3-5-sonnet-20241022', display_name: 'Claude 3.5 Sonnet',         context_window: 200000 },
+    { model_id: 'claude-3-5-haiku-20241022',  display_name: 'Claude 3.5 Haiku',          context_window: 200000 },
+    { model_id: 'claude-3-haiku-20240307',    display_name: 'Claude 3 Haiku',            context_window: 200000 },
   ],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-  custom: [],
+  openai: [
+    { model_id: 'gpt-4o',        display_name: 'GPT-4o',        context_window: 128000 },
+    { model_id: 'gpt-4o-mini',   display_name: 'GPT-4o Mini',   context_window: 128000 },
+    { model_id: 'gpt-4-turbo',   display_name: 'GPT-4 Turbo',   context_window: 128000 },
+    { model_id: 'o1',            display_name: 'o1',             context_window: 200000 },
+    { model_id: 'o1-mini',       display_name: 'o1 Mini',        context_window: 128000 },
+    { model_id: 'o3-mini',       display_name: 'o3 Mini',        context_window: 200000 },
+    { model_id: 'gpt-3.5-turbo', display_name: 'GPT-3.5 Turbo', context_window: 16385 },
+  ],
+  gemini: [
+    { model_id: 'gemini-2.0-flash',      display_name: 'Gemini 2.0 Flash',      context_window: 1000000 },
+    { model_id: 'gemini-2.0-flash-lite', display_name: 'Gemini 2.0 Flash Lite', context_window: 1000000 },
+    { model_id: 'gemini-1.5-pro',        display_name: 'Gemini 1.5 Pro',        context_window: 2000000 },
+    { model_id: 'gemini-1.5-flash',      display_name: 'Gemini 1.5 Flash',      context_window: 1000000 },
+    { model_id: 'gemini-1.5-flash-8b',   display_name: 'Gemini 1.5 Flash 8B',  context_window: 1000000 },
+  ],
 };
 
-const PROVIDER_LINKS: Record<string, string> = {
-  openrouter: 'https://openrouter.ai/keys',
+const PROVIDER_KEY_LINKS: Record<string, string> = {
+  anthropic:  'https://console.anthropic.com/settings/keys',
   openai:     'https://platform.openai.com/api-keys',
+  gemini:     'https://aistudio.google.com/app/apikey',
+  openrouter: 'https://openrouter.ai/keys',
 };
+
+const PROVIDERS_WITH_MODEL_DROPDOWN = ['anthropic', 'openai', 'gemini'];
+const OTHER_MODEL_SENTINEL = '__other__';
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -75,40 +98,91 @@ export function LlmConfigCard({
   const [editing,   setEditing]   = useState(false);
   const [toast,     setToast]     = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
 
-  const [provider,  setProvider]  = useState(initial?.provider ?? 'openrouter');
-  const [apiKey,    setApiKey]    = useState('');
-  const [model,     setModel]     = useState(initial?.model ?? '');
-  const [baseUrl,   setBaseUrl]   = useState(initial?.base_url ?? '');
+  // Form state
+  const [provider,      setProvider]      = useState(initial?.provider ?? 'anthropic');
+  const [apiKey,        setApiKey]        = useState('');
+  const [model,         setModel]         = useState(initial?.model ?? '');
+  const [selectModel,   setSelectModel]   = useState(initial?.model ?? '');
+  const [customModelId, setCustomModelId] = useState('');
+  const [baseUrl,       setBaseUrl]       = useState(initial?.base_url ?? '');
 
-  const [isSaving,    startSave]     = useTransition();
+  // Model list from DB (loaded on provider change)
+  const [providerModels,  setProviderModels]  = useState<ProviderModel[]>(FALLBACK_MODELS[initial?.provider ?? 'anthropic'] ?? []);
+  const [loadingModels,   setLoadingModels]   = useState(false);
+
+  const [isSaving,     startSave]     = useTransition();
   const [isValidating, startValidate] = useTransition();
-  const [isDeleting,  startDelete]   = useTransition();
+  const [isDeleting,   startDelete]   = useTransition();
 
-  const ring  = accent === 'emerald' ? 'focus:ring-2 focus:ring-emerald-300' : 'focus:ring-2 focus:ring-indigo-300';
-  const btnBg = accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700';
+  const ring       = accent === 'emerald' ? 'focus:ring-2 focus:ring-emerald-300' : 'focus:ring-2 focus:ring-indigo-300';
+  const btnBg      = accent === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700';
   const accentText = accent === 'emerald' ? 'text-emerald-600' : 'text-indigo-600';
+
+  const useDropdown = PROVIDERS_WITH_MODEL_DROPDOWN.includes(provider);
+
+  // Load models from DB when provider changes in edit mode
+  useEffect(() => {
+    if (!editing) return;
+    if (!PROVIDERS_WITH_MODEL_DROPDOWN.includes(provider)) {
+      setProviderModels([]);
+      return;
+    }
+    setLoadingModels(true);
+    getProviderModelsAction(provider)
+      .then(dbModels => {
+        setProviderModels(dbModels.length ? dbModels : (FALLBACK_MODELS[provider] ?? []));
+      })
+      .catch(() => setProviderModels(FALLBACK_MODELS[provider] ?? []))
+      .finally(() => setLoadingModels(false));
+  }, [provider, editing]);
 
   function flash(type: 'ok' | 'err', msg: string) {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 5000);
   }
 
+  function resolveModel(): string {
+    if (useDropdown) {
+      return selectModel === OTHER_MODEL_SENTINEL ? customModelId.trim() : selectModel;
+    }
+    return model.trim();
+  }
+
   function openEdit() {
-    setProvider(config?.provider ?? 'openrouter');
-    setModel(config?.model ?? '');
+    const p = config?.provider ?? 'anthropic';
+    const m = config?.model ?? '';
+    setProvider(p);
     setBaseUrl(config?.base_url ?? '');
     setApiKey('');
+    setModel(m);
+
+    // For dropdown providers, check if saved model is in the known list
+    if (PROVIDERS_WITH_MODEL_DROPDOWN.includes(p)) {
+      const knownModels = FALLBACK_MODELS[p] ?? [];
+      const isKnown = knownModels.some(km => km.model_id === m);
+      setSelectModel(isKnown ? m : (m ? OTHER_MODEL_SENTINEL : ''));
+      setCustomModelId(isKnown ? '' : m);
+    }
     setEditing(true);
   }
 
-  function cancelEdit() {
-    setEditing(false);
+  function cancelEdit() { setEditing(false); }
+
+  function handleProviderChange(newProvider: string) {
+    setProvider(newProvider);
+    setModel('');
+    setSelectModel('');
+    setCustomModelId('');
+    setBaseUrl('');
   }
 
   function handleSave() {
+    const finalModel = resolveModel();
+    if (!finalModel) { flash('err', 'Please select or enter a model.'); return; }
+
     startSave(async () => {
       const result = await saveLlmConfigAction(
-        tenantId, productSlug, provider, apiKey, model,
+        tenantId, productSlug, provider, apiKey, finalModel,
         provider === 'custom' ? baseUrl : undefined,
       );
       if (!result.ok) { flash('err', result.error); return; }
@@ -116,7 +190,7 @@ export function LlmConfigCard({
       setConfig(prev => ({
         ...(prev ?? { id: undefined, api_key_masked: apiKey ? `••••${apiKey.slice(-4)}` : '••••', created_at: new Date().toISOString() }),
         provider,
-        model,
+        model: finalModel,
         base_url: provider === 'custom' ? baseUrl || null : null,
         api_key_masked: apiKey ? `••••${apiKey.slice(-4)}` : (prev?.api_key_masked ?? '••••'),
         validation_status: 'pending',
@@ -127,7 +201,6 @@ export function LlmConfigCard({
       setEditing(false);
       setApiKey('');
 
-      // Auto-validate immediately after save
       startValidate(async () => {
         const vr = await validateLlmConfigAction(tenantId, productSlug);
         if (vr.ok) {
@@ -160,15 +233,15 @@ export function LlmConfigCard({
       const result = await deleteLlmConfigAction(tenantId, productSlug);
       if (!result.ok) { flash('err', result.error); return; }
       setConfig(null);
-      setProvider('openrouter');
+      setProvider('anthropic');
       setModel('');
+      setSelectModel('');
       setApiKey('');
       flash('ok', 'Configuration removed.');
     });
   }
 
-  const status = config?.validation_status;
-  const suggestions = MODEL_SUGGESTIONS[provider] ?? [];
+  const providerLabel = PROVIDERS.find(p => p.value === (config?.provider ?? provider))?.label ?? config?.provider;
 
   return (
     <div className={`rounded-xl border ${accent === 'emerald' ? 'border-emerald-100' : 'border-slate-200'} bg-white overflow-hidden`}>
@@ -193,31 +266,20 @@ export function LlmConfigCard({
           <div className="flex items-center gap-2 shrink-0">
             {config && (
               <>
-                <button
-                  type="button"
-                  onClick={handleValidate}
-                  disabled={isValidating || isSaving}
+                <button type="button" onClick={handleValidate} disabled={isValidating || isSaving}
                   title="Re-validate API key"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors"
-                >
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
                   <RefreshCw size={13} className={isValidating ? 'animate-spin' : ''} />
                 </button>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={isDeleting}
+                <button type="button" onClick={handleDelete} disabled={isDeleting}
                   title="Remove configuration"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                >
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors">
                   <Trash2 size={13} />
                 </button>
               </>
             )}
-            <button
-              type="button"
-              onClick={openEdit}
-              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${accent === 'emerald' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
-            >
+            <button type="button" onClick={openEdit}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${accent === 'emerald' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}>
               {editing ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
               {config ? 'Edit' : 'Configure'}
             </button>
@@ -228,34 +290,20 @@ export function LlmConfigCard({
       {/* Config summary (view mode) */}
       {!editing && config && (
         <div className="px-4 py-3 space-y-1.5">
-          <Row label="Provider" value={PROVIDERS.find(p => p.value === config.provider)?.label ?? config.provider} />
+          <Row label="Provider" value={providerLabel ?? config.provider} />
           <Row label="Model"    value={config.model} mono />
           <Row label="API Key"  value={config.api_key_masked} mono />
           {config.base_url && <Row label="Base URL" value={config.base_url} mono />}
           {config.validated_at && (
-            <Row
-              label="Validated"
+            <Row label="Validated"
               value={new Date(config.validated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             />
           )}
           {config.credit_info && (
             <>
-              <Row
-                label="Type"
-                value={config.credit_info.is_free_tier ? 'Free tier' : 'Paid'}
-              />
-              {config.credit_info.usage !== null && (
-                <Row
-                  label="Spent"
-                  value={`$${config.credit_info.usage.toFixed(4)}`}
-                />
-              )}
-              {config.credit_info.limit !== null && (
-                <Row
-                  label="Credit limit"
-                  value={`$${config.credit_info.limit.toFixed(2)}`}
-                />
-              )}
+              <Row label="Type"  value={config.credit_info.is_free_tier ? 'Free tier' : 'Paid'} />
+              {config.credit_info.usage !== null && <Row label="Spent" value={`$${config.credit_info.usage.toFixed(4)}`} />}
+              {config.credit_info.limit !== null && <Row label="Credit limit" value={`$${config.credit_info.limit.toFixed(2)}`} />}
             </>
           )}
           {config.validation_status === 'invalid' && config.validation_error && (
@@ -271,7 +319,7 @@ export function LlmConfigCard({
       {editing && (
         <div className="px-4 py-4 space-y-4">
           <p className="text-[11px] text-gray-400 leading-relaxed">
-            This configuration is <span className="font-semibold">optional</span> — if left unconfigured, the system falls back to the next level in the hierarchy. You can use this to override the model or API key for a specific scope.
+            This configuration is <span className="font-semibold">optional</span> — if left unconfigured, the system falls back to the next level in the hierarchy.
           </p>
 
           {/* Provider */}
@@ -279,7 +327,7 @@ export function LlmConfigCard({
             <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">Provider</label>
             <select
               value={provider}
-              onChange={e => setProvider(e.target.value)}
+              onChange={e => handleProviderChange(e.target.value)}
               className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none ${ring} bg-white`}
             >
               {PROVIDERS.map(p => (
@@ -298,43 +346,84 @@ export function LlmConfigCard({
               type="password"
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-              placeholder={config ? 'Leave blank to keep existing key' : 'sk-or-…'}
+              placeholder={config ? 'Leave blank to keep existing key' : 'Paste your API key…'}
               autoComplete="off"
               className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none ${ring} font-mono`}
             />
-            {PROVIDER_LINKS[provider] && (
+            {PROVIDER_KEY_LINKS[provider] && (
               <p className="text-[11px] text-gray-400">
                 Get your key at{' '}
-                <a href={PROVIDER_LINKS[provider]} target="_blank" rel="noopener noreferrer" className={`${accentText} underline`}>
-                  {PROVIDER_LINKS[provider]}
+                <a href={PROVIDER_KEY_LINKS[provider]} target="_blank" rel="noopener noreferrer" className={`${accentText} underline`}>
+                  {PROVIDER_KEY_LINKS[provider]}
                 </a>
               </p>
             )}
           </div>
 
-          {/* Model */}
+          {/* Model — dropdown for known providers, text input for openrouter/custom */}
           <div className="space-y-1">
-            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">Model</label>
-            <input
-              list={`model-list-${tenantId}-${productSlug}`}
-              value={model}
-              onChange={e => setModel(e.target.value)}
-              placeholder={provider === 'openrouter' ? 'anthropic/claude-3.5-haiku' : 'gpt-4o-mini'}
-              className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none ${ring} font-mono`}
-            />
-            {suggestions.length > 0 && (
-              <datalist id={`model-list-${tenantId}-${productSlug}`}>
-                {suggestions.map(m => <option key={m} value={m} />)}
-              </datalist>
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Model {loadingModels && <span className="font-normal text-gray-400 ml-1">Loading…</span>}
+            </label>
+
+            {useDropdown ? (
+              <>
+                <select
+                  value={selectModel}
+                  onChange={e => setSelectModel(e.target.value)}
+                  disabled={loadingModels}
+                  className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none ${ring} bg-white disabled:opacity-50`}
+                >
+                  <option value="">— Select a model —</option>
+                  {providerModels.map(m => (
+                    <option key={m.model_id} value={m.model_id}>
+                      {m.display_name ?? m.model_id}
+                      {m.context_window ? ` (${(m.context_window / 1000).toFixed(0)}k ctx)` : ''}
+                    </option>
+                  ))}
+                  <option value={OTHER_MODEL_SENTINEL}>Custom model ID…</option>
+                </select>
+                {selectModel === OTHER_MODEL_SENTINEL && (
+                  <input
+                    type="text"
+                    value={customModelId}
+                    onChange={e => setCustomModelId(e.target.value)}
+                    placeholder="e.g. claude-3-opus-20240229"
+                    className={`w-full mt-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none ${ring} font-mono`}
+                  />
+                )}
+                <p className="text-[11px] text-gray-400">
+                  Models updated weekly. Select &quot;Custom model ID&quot; if yours isn&apos;t listed.
+                </p>
+              </>
+            ) : (
+              <>
+                <input
+                  list={`model-list-${tenantId}-${productSlug}`}
+                  value={model}
+                  onChange={e => setModel(e.target.value)}
+                  placeholder={provider === 'openrouter' ? 'anthropic/claude-3.5-haiku' : 'Enter model identifier'}
+                  className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none ${ring} font-mono`}
+                />
+                {provider === 'openrouter' && (
+                  <datalist id={`model-list-${tenantId}-${productSlug}`}>
+                    <option value="anthropic/claude-3.5-haiku" />
+                    <option value="anthropic/claude-sonnet-4-5" />
+                    <option value="openai/gpt-4o-mini" />
+                    <option value="openai/gpt-4o" />
+                    <option value="google/gemini-flash-1.5" />
+                  </datalist>
+                )}
+                <p className="text-[11px] text-gray-400">
+                  {provider === 'openrouter'
+                    ? 'Format: provider/model-name. Browse at openrouter.ai/models'
+                    : 'Enter the exact model identifier from your provider.'}
+                </p>
+              </>
             )}
-            <p className="text-[11px] text-gray-400">
-              {provider === 'openrouter'
-                ? 'Format: provider/model-name. Browse at openrouter.ai/models'
-                : 'Enter the exact model identifier from your provider.'}
-            </p>
           </div>
 
-          {/* Base URL (custom only) */}
+          {/* Base URL — Custom provider only */}
           {provider === 'custom' && (
             <div className="space-y-1">
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">Base URL</label>
@@ -342,10 +431,13 @@ export function LlmConfigCard({
                 type="url"
                 value={baseUrl}
                 onChange={e => setBaseUrl(e.target.value)}
-                placeholder="https://api.example.com/v1"
+                placeholder="https://your-server.com/v1"
                 className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none ${ring} font-mono`}
               />
-              <p className="text-[11px] text-gray-400">Must expose a /chat/completions endpoint compatible with the OpenAI API.</p>
+              <p className="text-[11px] text-gray-400">
+                Must expose a <code>/chat/completions</code> endpoint compatible with the OpenAI API.
+                Use this for self-hosted models (Ollama, LiteLLM, etc.).
+              </p>
             </div>
           )}
 

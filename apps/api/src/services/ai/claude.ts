@@ -1,5 +1,6 @@
 import type { Message, KnowledgeBase } from '@alphabot/shared';
-import { chatCompletion, REPLY_MODEL } from '../../lib/anthropic.js';
+import { REPLY_MODEL } from '../../lib/anthropic.js';
+import { routedChatCompletion } from '../../lib/llm-router.js';
 import { heuristicConfidence } from './confidence.js';
 
 const MAX_CONTEXT_MESSAGES = 50;
@@ -31,7 +32,7 @@ export async function getAIResponse(
   history:        Message[],
   kbContext:      KnowledgeBase[],
   contactMemory?: string,
-  llmOverride?:   { apiKey?: string; model?: string },
+  llmOverride?:   { apiKey?: string; model?: string; provider?: string; baseUrl?: string },
 ): Promise<AIResponseResult> {
   const contextWindow = history.slice(-MAX_CONTEXT_MESSAGES);
 
@@ -54,14 +55,16 @@ export async function getAIResponse(
     content: m.content,
   }));
 
-  const model = llmOverride?.model ?? REPLY_MODEL;
-
-  const { content, inputTokens, outputTokens } = await chatCompletion({
-    model,
-    system:     fullSystemPrompt,
+  const { content, inputTokens, outputTokens } = await routedChatCompletion({
     messages,
-    max_tokens: 560, // +48 tokens to accommodate the CONFIDENCE line
-    apiKey:     llmOverride?.apiKey,
+    system:     fullSystemPrompt,
+    max_tokens: 560,
+    override: {
+      provider: llmOverride?.provider,
+      model:    llmOverride?.model ?? REPLY_MODEL,
+      apiKey:   llmOverride?.apiKey,
+      baseUrl:  llmOverride?.baseUrl,
+    },
   });
 
   // Extract and strip the CONFIDENCE marker from the response
