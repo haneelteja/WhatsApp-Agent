@@ -519,7 +519,7 @@ export default function KnowledgeBasePage() {
             <div className="max-w-2xl">
               <StepIndicator current={3} />
               <h3 className="text-base font-bold text-gray-900 mb-1">Policies &amp; Operations</h3>
-              <p className="text-sm text-gray-500 mb-6">Fill in what you know — skip fields that don't apply.</p>
+              <p className="text-sm text-gray-500 mb-6">Fill in what you know — skip fields that don&apos;t apply.</p>
 
               <div className="space-y-4">
                 {[
