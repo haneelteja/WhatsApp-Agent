@@ -3,6 +3,8 @@ import { getServerClient } from '@alphabot/database';
 import { requireAuth, requireRole } from '../../middleware/auth.js';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { claimEscalation, releaseToBot } from '../../services/escalation/index.js';
+import { summariseAndStoreConversation } from '../../services/contact/memory.js';
+import { fireForget } from '../../lib/fire-forget.js';
 import type { Conversation } from '@alphabot/shared';
 
 export async function conversationRoutes(fastify: FastifyInstance): Promise<void> {
@@ -191,6 +193,16 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       .single();
 
     if (error) return reply.status(500).send({ success: false, error: error.message });
+
+    // When a conversation is resolved, summarise it and store in contact memory
+    // so the bot can greet returning customers with context from prior sessions.
+    if (request.body.status === 'resolved') {
+      fireForget(
+        summariseAndStoreConversation(request.params.id),
+        'summarise-resolved-conversation',
+        fastify.log,
+      );
+    }
 
     return { success: true, data };
   });

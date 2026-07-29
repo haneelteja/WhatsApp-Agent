@@ -10,6 +10,7 @@ import { checkTokenQuota, incrementTokenCounter } from '../../services/ai/token-
 import { assembleHistory } from '../../services/ai/history-assembler.js';
 import { fireForget } from '../../lib/fire-forget.js';
 import { getBotContext } from '../../services/bot-context.js';
+import { formatContactMemory } from '../../services/contact/memory.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -485,7 +486,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       ? await lookupKB(tenantId, productType, incoming.text)
       : [];
 
-    const contactMemory = JSON.stringify(contactData.memory_json);
+    const contactMemory = formatContactMemory(contactData.memory_json as unknown as Record<string, unknown> | null);
 
     // ── Build effective system prompt with guardrails injected ───────────
     // Always append SALES_LEAD_INSTRUCTION so it applies even when the DB
