@@ -40,7 +40,7 @@ function ConvRow({ conv }: { conv: RecentConv }) {
   const colorIdx  = conv.displayName.charCodeAt(0) % AVATAR_COLORS.length;
 
   return (
-    <div className="divide-y divide-gray-50">
+    <div>
       {/* Header row */}
       <button
         type="button"

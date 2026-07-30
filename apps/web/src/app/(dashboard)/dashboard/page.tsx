@@ -158,7 +158,6 @@ export default async function DashboardPage() {
         .select('id, conversation_id, role, content, timestamp')
         .in('conversation_id', recentConvIds)
         .order('timestamp', { ascending: false })
-        .limit(25)
     : { data: [] };
 
   const msgMap = new Map<string, { id: string; role: string; content: string; timestamp: string }[]>();
