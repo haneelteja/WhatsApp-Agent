@@ -1,11 +1,24 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useFormState, useFormStatus } from 'react-dom';
 import { sendTeamInviteAction } from '@/app/actions/tenant-team';
 import { UserPlus } from 'lucide-react';
 
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+    >
+      {pending ? 'Sending…' : 'Send invite'}
+    </button>
+  );
+}
+
 export function TeamInviteForm() {
-  const [state, formAction, pending] = useActionState(sendTeamInviteAction, null);
+  const [state, formAction] = useFormState(sendTeamInviteAction, null);
 
   return (
     <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5">
@@ -30,13 +43,7 @@ export function TeamInviteForm() {
           <option value="supervisor">Supervisor</option>
           <option value="admin">Admin</option>
         </select>
-        <button
-          type="submit"
-          disabled={pending}
-          className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-        >
-          {pending ? 'Sending…' : 'Send invite'}
-        </button>
+        <SubmitButton />
       </form>
       {state?.error && (
         <p className="text-xs text-red-500 mt-2">{state.error}</p>
