@@ -68,6 +68,7 @@ export async function chatCompletion(params: {
       model:      params.model,
       messages,
       max_tokens: params.max_tokens ?? 1024,
+      usage:      { include: true },
     }),
   });
 
