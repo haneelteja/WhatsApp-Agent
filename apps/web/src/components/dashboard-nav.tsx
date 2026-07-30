@@ -19,28 +19,50 @@ import {
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
+// Always-visible nav items (all bot types)
 const BASE_NAV = [
   { href: '/dashboard',      label: 'Overview',       icon: LayoutDashboard },
   { href: '/conversations',  label: 'Conversations',  icon: MessageSquare   },
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
+  // slot: Orders (lifecycle_bot only)
   { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
-  { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
+  // slot: Campaigns (sales_bot only)
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/billing',        label: 'Billing',        icon: CreditCard      },
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
 
-const ORDERS_ITEM = { href: '/orders', label: 'Orders', icon: ShoppingCart };
+const ORDERS_ITEM    = { href: '/orders',    label: 'Orders',    icon: ShoppingCart };
+const CAMPAIGNS_ITEM = { href: '/campaigns', label: 'Campaigns', icon: Megaphone    };
 
-export function DashboardNav({ tenantName, userRole, hasLifecycleBot }: { tenantName: string; userRole: string; hasLifecycleBot: boolean }) {
+export function DashboardNav({
+  tenantName,
+  userRole,
+  hasLifecycleBot,
+  hasSalesBot,
+}: {
+  tenantName: string;
+  userRole: string;
+  hasLifecycleBot: boolean;
+  hasSalesBot: boolean;
+}) {
   const pathname = usePathname();
   const router   = useRouter();
   const supabase = getSupabaseBrowserClient();
 
-  const navItems = hasLifecycleBot
-    ? [...BASE_NAV.slice(0, 4), ORDERS_ITEM, ...BASE_NAV.slice(4)]
-    : BASE_NAV;
+  // Build nav dynamically — insert gated items at their correct positions
+  const navItems = (() => {
+    const items = [...BASE_NAV];
+    // Orders goes after Guardrails (index 3)
+    if (hasLifecycleBot) items.splice(4, 0, ORDERS_ITEM);
+    // Campaigns goes after Voice Calls
+    if (hasSalesBot) {
+      const voiceIdx = items.findIndex(i => i.href === '/voice');
+      items.splice(voiceIdx + 1, 0, CAMPAIGNS_ITEM);
+    }
+    return items;
+  })();
 
   async function handleSignOut() {
     await supabase.auth.signOut();
