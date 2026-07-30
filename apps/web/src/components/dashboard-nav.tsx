@@ -19,12 +19,11 @@ import {
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
-const navItems = [
+const BASE_NAV = [
   { href: '/dashboard',      label: 'Overview',       icon: LayoutDashboard },
   { href: '/conversations',  label: 'Conversations',  icon: MessageSquare   },
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
-  { href: '/orders',         label: 'Orders',         icon: ShoppingCart    },
   { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
   { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
@@ -32,10 +31,16 @@ const navItems = [
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
 
-export function DashboardNav({ tenantName, userRole }: { tenantName: string; userRole: string }) {
+const ORDERS_ITEM = { href: '/orders', label: 'Orders', icon: ShoppingCart };
+
+export function DashboardNav({ tenantName, userRole, hasLifecycleBot }: { tenantName: string; userRole: string; hasLifecycleBot: boolean }) {
   const pathname = usePathname();
   const router   = useRouter();
   const supabase = getSupabaseBrowserClient();
+
+  const navItems = hasLifecycleBot
+    ? [...BASE_NAV.slice(0, 4), ORDERS_ITEM, ...BASE_NAV.slice(4)]
+    : BASE_NAV;
 
   async function handleSignOut() {
     await supabase.auth.signOut();

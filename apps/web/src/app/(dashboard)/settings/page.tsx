@@ -152,7 +152,7 @@ export default async function SettingsPage({
     return (
       <SettingsShell activeTab={activeTab}>
         <div className="space-y-5">
-          <Section icon={<Building2 size={16} />} title="Workspace">
+          <Section icon={<Building2 size={16} />} title="Workspace" hint="Read-only account details. Share your Tenant ID with support when reporting issues.">
             <div className="divide-y divide-green-50">
               <InfoRow label="Name"      value={(tenant?.['name'] as string) ?? '—'} />
               <InfoRow label="Provider"  value={(tenant?.['provider'] as string) ?? '—'} capitalize />
@@ -175,7 +175,7 @@ export default async function SettingsPage({
             </div>
           </Section>
 
-          <Section icon={<Phone size={16} />} title="WhatsApp Numbers">
+          <Section icon={<Phone size={16} />} title="WhatsApp Numbers" hint="Connect your Meta phone numbers to bots. Each number routes incoming messages to the assigned bot. Add the Phone Number ID from your Meta App Dashboard.">
             <WhatsAppNumbersManager
               numbers={numbers!.map(n => ({
                 id:              n['id'] as string,
@@ -190,7 +190,7 @@ export default async function SettingsPage({
             />
           </Section>
 
-          <Section icon={<Bot size={16} />} title="Bot Products">
+          <Section icon={<Bot size={16} />} title="Bot Products" hint="Activate or disable bots included in your plan. Only active bots respond to WhatsApp messages. Deactivating a bot does not delete its conversation history.">
             <BotProductsSection
               tenantId={(tenant?.['id'] as string) ?? ''}
               apiBase={apiBase}
@@ -205,17 +205,17 @@ export default async function SettingsPage({
             />
           </Section>
 
-          <Section icon={<ShieldCheck size={16} />} title="Guardrails">
+          <Section icon={<ShieldCheck size={16} />} title="Guardrails" hint="Define what your bots should never say or do — off-limits topics, restricted keywords, and fallback behaviour.">
             <div className="px-5 py-4">
               <p className="text-xs text-gray-500">
-                Bot guardrails are managed in the dedicated{' '}
+                Manage guardrails in the dedicated{' '}
                 <Link href="/guardrails" className="text-emerald-600 font-semibold underline">Guardrails</Link> section.
               </p>
             </div>
           </Section>
 
           {activeBots.length > 0 && (
-            <Section icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup">
+            <Section icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup" hint="Paste the Webhook URL and Verify Token into your Meta App Dashboard under WhatsApp → Configuration to activate message delivery.">
               <div className="px-5 py-4">
                 <WhatsAppSetupSection bots={botWebhooks} />
               </div>
@@ -264,7 +264,28 @@ export default async function SettingsPage({
             </span>
           </div>
 
-          {isAdmin && <TeamInviteForm />}
+          {/* Role guide */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { role: 'Admin',      desc: 'Full access. Can invite, remove members, and change all settings.',      color: 'bg-violet-50 border-violet-100 text-violet-700' },
+              { role: 'Supervisor', desc: 'Manages conversations and settings. Cannot invite or remove members.',   color: 'bg-sky-50 border-sky-100 text-sky-700' },
+              { role: 'Agent',      desc: 'Handles assigned conversations only. No access to settings.',            color: 'bg-slate-50 border-slate-100 text-slate-600' },
+            ].map(r => (
+              <div key={r.role} className={`rounded-xl border p-3 ${r.color}`}>
+                <p className="text-[11px] font-bold">{r.role}</p>
+                <p className="text-[10px] mt-1 leading-relaxed opacity-80">{r.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {isAdmin
+            ? <TeamInviteForm />
+            : (
+              <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
+                <p className="text-xs text-slate-500">Only Admins can invite or remove team members. Contact your workspace Admin to make changes.</p>
+              </div>
+            )
+          }
 
           <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-100">
@@ -375,7 +396,9 @@ export default async function SettingsPage({
     return (
       <SettingsShell activeTab={activeTab}>
         <div className="space-y-5">
-          <p className="text-sm text-gray-500">Automatically re-engage customers who go quiet.</p>
+          <p className="text-sm text-gray-500">
+            Automatically message customers who stop responding. Expand a bot card below to enable follow-ups and set the timing, message, and target contacts.
+          </p>
 
           <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 space-y-2">
             <div className="flex items-center gap-2">
@@ -465,7 +488,9 @@ export default async function SettingsPage({
     return (
       <SettingsShell activeTab={activeTab}>
         <div className="space-y-5">
-          <p className="text-sm text-gray-500">Configure your own API key and model to use for your bots.</p>
+          <p className="text-sm text-gray-500">
+            Bring your own LLM API key for cost control and higher rate limits. Leave blank to use the platform default — your bots work out of the box without any configuration here.
+          </p>
 
           <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 space-y-2">
             <div className="flex items-center gap-2">
@@ -561,8 +586,22 @@ export default async function SettingsPage({
   return (
     <SettingsShell activeTab={activeTab}>
       <div className="space-y-5">
-        <p className="text-sm text-gray-500">Configure who gets notified when a conversation is escalated.</p>
-        <Section icon={<Bell size={16} />} title="Escalation Notifications">
+        <p className="text-sm text-gray-500">
+          Set up who receives an alert the moment a customer conversation is escalated by the bot.
+        </p>
+
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-1">
+          <div className="flex items-center gap-2">
+            <Bell size={13} className="text-amber-600 shrink-0" />
+            <p className="text-xs font-semibold text-amber-800">When does escalation happen?</p>
+          </div>
+          <p className="text-xs text-amber-700">
+            The bot escalates when a customer explicitly requests a human, or when it cannot confidently answer after a set number of retries. You can also configure keywords that trigger escalation in{' '}
+            <Link href="/guardrails" className="font-semibold underline">Guardrails</Link>.
+          </p>
+        </div>
+
+        <Section icon={<Bell size={16} />} title="Escalation Notifications" hint="Add email addresses or WhatsApp numbers (international format, e.g. +919876543210) to alert when a conversation is escalated. The customer message is sent to the end user immediately on escalation.">
           <NotificationSettings
             initialEmails={(notifSettings?.escalation_emails as string[] | null) ?? []}
             initialWaNumbers={(notifSettings?.escalation_wa_numbers as string[] | null) ?? []}
@@ -617,12 +656,15 @@ function SettingsShell({
 
 // ─── Shared UI helpers ─────────────────────────────────────────────────────────
 
-function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function Section({ icon, title, hint, children }: { icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-green-50">
-        <span className="text-emerald-600">{icon}</span>
-        <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
+      <div className="flex items-start gap-2.5 px-5 py-4 border-b border-green-50">
+        <span className="text-emerald-600 mt-0.5 shrink-0">{icon}</span>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
+          {hint && <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">{hint}</p>}
+        </div>
       </div>
       {children}
     </div>

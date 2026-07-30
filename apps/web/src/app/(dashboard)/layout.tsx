@@ -25,10 +25,23 @@ export default async function DashboardLayout({
   const tenantObj  = Array.isArray(tenantsRaw) ? (tenantsRaw[0] as { name: string }) : (tenantsRaw as { name: string } | null);
   const tenantName = tenantObj?.name ?? 'Dashboard';
   const userRole   = tenantUser?.role ?? '';
+  const tenantId   = tenantUser?.tenant_id ?? '';
+
+  const { data: lifecycleBot } = tenantId
+    ? await admin
+        .from('tenant_products')
+        .select('product_type')
+        .eq('tenant_id', tenantId)
+        .eq('product_type', 'lifecycle_bot')
+        .eq('active', true)
+        .maybeSingle()
+    : { data: null };
+
+  const hasLifecycleBot = !!lifecycleBot;
 
   return (
     <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
-      <DashboardNav tenantName={tenantName} userRole={userRole} />
+      <DashboardNav tenantName={tenantName} userRole={userRole} hasLifecycleBot={hasLifecycleBot} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar email={user.email ?? ''} tenantName={tenantName} />
         <main className="flex-1 overflow-auto">{children}</main>
