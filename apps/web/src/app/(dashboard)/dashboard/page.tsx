@@ -7,21 +7,8 @@ import {
   BookOpen, ShieldAlert, ShieldOff, Lock, ExternalLink,
   User, Phone, ChevronRight, Sparkles,
 } from 'lucide-react';
-
-// ─── Display maps ─────────────────────────────────────────────────────────────
-
-const STATUS_STYLES: Record<string, { dot: string; badge: string }> = {
-  open:       { dot: 'bg-emerald-400', badge: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  escalated:  { dot: 'bg-red-400',     badge: 'bg-red-50 text-red-700 ring-red-100' },
-  resolved:   { dot: 'bg-gray-300',    badge: 'bg-gray-100 text-gray-500 ring-gray-200' },
-  bot_paused: { dot: 'bg-amber-400',   badge: 'bg-amber-50 text-amber-700 ring-amber-100' },
-};
-
-const PRODUCT_LABELS: Record<string, { label: string; color: string }> = {
-  support_bot:   { label: 'Support',   color: 'bg-sky-50 text-sky-600' },
-  sales_bot:     { label: 'Sales',     color: 'bg-violet-50 text-violet-600' },
-  lifecycle_bot: { label: 'Lifecycle', color: 'bg-orange-50 text-orange-600' },
-};
+import { RecentConversations } from '@/components/dashboard/RecentConversations';
+import type { RecentConv } from '@/app/actions/recent-conversations';
 
 // ─── Per-bot colour tokens ────────────────────────────────────────────────────
 
@@ -145,7 +132,7 @@ export default async function DashboardPage() {
       .select('id, status, product_type, updated_at, contacts(name, phone)')
       .eq('tenant_id', tid)
       .order('updated_at', { ascending: false })
-      .limit(8),
+      .limit(5),
     admin.from('tenant_products')
       .select('product_type')
       .eq('tenant_id', tid)
@@ -161,6 +148,34 @@ export default async function DashboardPage() {
       .eq('tenant_id', tid)
       .maybeSingle(),
   ]);
+
+  // ── Fetch last 5 messages per recent conversation ─────────────────────────
+
+  const recentConvIds = (recent ?? []).map(c => c.id);
+  const { data: recentMsgs } = recentConvIds.length
+    ? await admin
+        .from('messages')
+        .select('id, conversation_id, role, content, timestamp')
+        .in('conversation_id', recentConvIds)
+        .order('timestamp', { ascending: false })
+        .limit(25)
+    : { data: [] };
+
+  const msgMap = new Map<string, { id: string; role: string; content: string; timestamp: string }[]>();
+  for (const m of (recentMsgs ?? [])) {
+    const list = msgMap.get(m.conversation_id) ?? [];
+    if (list.length < 5) list.push(m);
+    msgMap.set(m.conversation_id, list);
+  }
+
+  const recentConvs: RecentConv[] = (recent ?? []).map(conv => {
+    const contact     = (conv.contacts as unknown) as { name: string | null; phone: string } | null;
+    const displayName = contact?.name ?? contact?.phone ?? 'Unknown';
+    const messages    = (msgMap.get(conv.id) ?? []).slice().reverse().map(m => ({
+      id: m.id, role: m.role as 'user' | 'assistant', content: m.content, timestamp: m.timestamp,
+    }));
+    return { id: conv.id, status: conv.status, product_type: conv.product_type, updated_at: conv.updated_at, displayName, messages };
+  });
 
   // ── Build per-bot data structures ─────────────────────────────────────────
 
@@ -431,10 +446,10 @@ export default async function DashboardPage() {
 
       {/* ── Recent Conversations ─────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
           <div>
             <h3 className="text-sm font-semibold text-gray-800">Recent Conversations</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Latest activity across all bots</p>
+            <p className="text-xs text-gray-400 mt-0.5">Latest activity across all bots · expand to preview messages</p>
           </div>
           <Link
             href="/conversations"
@@ -443,70 +458,7 @@ export default async function DashboardPage() {
             View all <ArrowRight size={12} />
           </Link>
         </div>
-
-        {!recent?.length ? (
-          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4 border border-emerald-100">
-              <MessageSquare size={24} className="text-emerald-400" />
-            </div>
-            <p className="text-sm font-semibold text-gray-600">No conversations yet</p>
-            <p className="text-xs text-gray-400 mt-1 max-w-xs">
-              Send a WhatsApp message to your bot number to see conversations appear here.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {recent.map((conv) => {
-              const contact     = (conv.contacts as unknown) as { name: string | null; phone: string } | null;
-              const displayName = contact?.name ?? contact?.phone ?? 'Unknown';
-              const style       = STATUS_STYLES[conv.status] ?? STATUS_STYLES.resolved;
-              const product     = PRODUCT_LABELS[conv.product_type];
-              const diffMins    = Math.floor((Date.now() - new Date(conv.updated_at).getTime()) / 60000);
-              const timeAgo     =
-                diffMins < 1    ? 'Just now' :
-                diffMins < 60   ? `${diffMins}m ago` :
-                diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` :
-                `${Math.floor(diffMins / 1440)}d ago`;
-
-              const avatarColors = [
-                'bg-emerald-100 text-emerald-700',
-                'bg-sky-100 text-sky-700',
-                'bg-violet-100 text-violet-700',
-                'bg-amber-100 text-amber-700',
-              ];
-              const colorIdx = displayName.charCodeAt(0) % avatarColors.length;
-
-              return (
-                <Link
-                  key={conv.id}
-                  href={`/conversations/${conv.id}`}
-                  className="flex items-center gap-4 px-6 py-3.5 hover:bg-gray-50/60 transition-colors group"
-                >
-                  <div className={`w-9 h-9 rounded-full ${avatarColors[colorIdx]} flex items-center justify-center font-bold text-xs shrink-0`}>
-                    {displayName.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-emerald-700 transition-colors">
-                      {displayName}
-                    </p>
-                    {product && (
-                      <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mt-0.5 ${product.color}`}>
-                        {product.label}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ring-1 ${style.badge}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                      {conv.status.replace('_', ' ')}
-                    </span>
-                    <span className="text-xs text-gray-400 w-14 text-right tabular-nums">{timeAgo}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
+        <RecentConversations initial={recentConvs} />
       </div>
     </div>
   );
