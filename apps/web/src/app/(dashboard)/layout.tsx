@@ -27,21 +27,19 @@ export default async function DashboardLayout({
   const userRole   = tenantUser?.role ?? '';
   const tenantId   = tenantUser?.tenant_id ?? '';
 
-  const { data: lifecycleBot } = tenantId
-    ? await admin
-        .from('tenant_products')
-        .select('product_type')
-        .eq('tenant_id', tenantId)
-        .eq('product_type', 'lifecycle_bot')
-        .eq('active', true)
-        .maybeSingle()
-    : { data: null };
+  const [{ data: lifecycleBot }, { data: salesBot }] = tenantId
+    ? await Promise.all([
+        admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('product_type', 'lifecycle_bot').eq('active', true).maybeSingle(),
+        admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('product_type', 'sales_bot').eq('active', true).maybeSingle(),
+      ])
+    : [{ data: null }, { data: null }];
 
   const hasLifecycleBot = !!lifecycleBot;
+  const hasSalesBot     = !!salesBot;
 
   return (
     <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
-      <DashboardNav tenantName={tenantName} userRole={userRole} hasLifecycleBot={hasLifecycleBot} />
+      <DashboardNav tenantName={tenantName} userRole={userRole} hasLifecycleBot={hasLifecycleBot} hasSalesBot={hasSalesBot} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar email={user.email ?? ''} tenantName={tenantName} />
         <main className="flex-1 overflow-auto">{children}</main>
