@@ -753,12 +753,84 @@ To update state, append these markers at the VERY END of your response (they are
       }
     }
 
+    // ── Resolve media attachment from the top matched KB collection ──────
+    // If the highest-ranked KB result came from a collection that has an active
+    // media attachment (image or document), send it inline with the reply text.
+    const topCollectionId = (kbResults[0] as { collection_id?: string | null } | undefined)?.collection_id ?? null;
+    type MediaAttachmentRow = { id: string; public_url: string; file_type: string; original_filename: string; send_count: number };
+    let kbAttachment: MediaAttachmentRow | null = null;
+
+    if (topCollectionId) {
+      const { data: attachmentRow } = await db
+        .from('kb_media_attachments')
+        .select('id, public_url, file_type, original_filename, send_count')
+        .eq('collection_id', topCollectionId)
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      kbAttachment = attachmentRow as MediaAttachmentRow | null;
+    }
+
     // ── Send reply to WhatsApp ────────────────────────────────────────────
-    const sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
-      type: 'text',
-      to: incoming.from,
-      text: replyText,
-    });
+    // WhatsApp caption limit: 1024 chars. For longer replies send text first,
+    // then media (so the customer reads the full answer before seeing the file).
+    const CAPTION_MAX = 1024;
+    let sendResult;
+
+    if (kbAttachment) {
+      fastify.log.info({ attachmentId: kbAttachment.id, fileType: kbAttachment.file_type }, '[Webhook] sending KB media attachment');
+
+      if (kbAttachment.file_type === 'image') {
+        if (replyText.length <= CAPTION_MAX) {
+          // One-shot: image with caption = bot reply
+          sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'media', to: incoming.from,
+            mediaType: 'image', mediaUrl: kbAttachment.public_url, caption: replyText,
+          });
+        } else {
+          // Text first (full reply), then image without caption
+          sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text', to: incoming.from, text: replyText,
+          });
+          void gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'media', to: incoming.from,
+            mediaType: 'image', mediaUrl: kbAttachment.public_url,
+          });
+        }
+      } else {
+        // Document: send with caption (truncated to limit) + filename
+        const caption = replyText.length > CAPTION_MAX
+          ? replyText.slice(0, CAPTION_MAX - 1) + '…'
+          : replyText;
+        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'media', to: incoming.from,
+          mediaType: 'document', mediaUrl: kbAttachment.public_url,
+          caption, filename: kbAttachment.original_filename,
+        });
+        // If reply was truncated, send the remainder as a follow-up text
+        if (replyText.length > CAPTION_MAX) {
+          void gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text', to: incoming.from, text: replyText.slice(CAPTION_MAX - 1),
+          });
+        }
+      }
+
+      // Increment send_count non-blocking
+      fireForget(
+        db.from('kb_media_attachments')
+          .update({ send_count: kbAttachment.send_count + 1 })
+          .eq('id', kbAttachment.id),
+        'kb-media-send-count',
+        fastify.log,
+      );
+    } else {
+      sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+        type: 'text', to: incoming.from, text: replyText,
+      });
+    }
+
     fastify.log.info({ sendResult }, '[Webhook] sendMessage result');
 
     // Feature: Status Ladder — mark outbound message as 'sent' and store Meta msg ID

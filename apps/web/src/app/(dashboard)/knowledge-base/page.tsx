@@ -6,8 +6,9 @@ import {
   Plus, BookOpen, Trash2, ChevronRight, X,
   Sparkles, ChevronLeft, CheckSquare, Square,
   Loader2, AlertCircle, Check, Pencil,
+  ImageIcon, FileText, Upload, Eye, EyeOff, Send,
 } from 'lucide-react';
-import { kbFetch } from '@/lib/kb-client';
+import { kbFetch, kbUpload } from '@/lib/kb-client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ function StepIndicator({ current }: { current: WizardStep }) {
 export default function KnowledgeBasePage() {
 
   // ── Collections tab state ──────────────────────────────────────────────────
-  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder'>('collections');
+  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media'>('collections');
   const [collections,  setCollections]  = useState<CollectionRow[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [showNew,      setShowNew]      = useState(false);
@@ -124,6 +125,30 @@ export default function KnowledgeBasePage() {
   const [importing,    setImporting]    = useState(false);
   const [importError,  setImportError]  = useState('');
   const [importedCol,  setImportedCol]  = useState<{ id: string; name: string } | null>(null);
+
+  // ── File Library state ─────────────────────────────────────────────────────
+  interface MediaRow {
+    id: string;
+    name: string;
+    description: string | null;
+    file_type: 'image' | 'document';
+    mime_type: string;
+    original_filename: string;
+    public_url: string;
+    file_size: number;
+    send_count: number;
+    active: boolean;
+    collection_id: string | null;
+    created_at: string;
+  }
+
+  const [mediaFiles,       setMediaFiles]       = useState<MediaRow[]>([]);
+  const [mediaLoading,     setMediaLoading]      = useState(false);
+  const [uploadForm,       setUploadForm]        = useState({ name: '', description: '', collectionId: '' });
+  const [uploadFile,       setUploadFile]        = useState<File | null>(null);
+  const [uploading,        setUploading]         = useState(false);
+  const [uploadError,      setUploadError]       = useState('');
+  const [dragOver,         setDragOver]          = useState(false);
 
   // ── Load collections ───────────────────────────────────────────────────────
   const loadCollections = useCallback(async () => {
@@ -158,6 +183,76 @@ export default function KnowledgeBasePage() {
     if (!confirm('Delete this collection and all its entries? This cannot be undone.')) return;
     await kbFetch(`/api/kb/collections/${id}`, { method: 'DELETE' });
     void loadCollections();
+  }
+
+  // ── File Library helpers ───────────────────────────────────────────────────
+  const loadMedia = useCallback(async () => {
+    setMediaLoading(true);
+    const res = await kbFetch('/api/kb/media');
+    if (res.ok) {
+      const json = await res.json() as { data: MediaRow[] };
+      setMediaFiles(json.data ?? []);
+    }
+    setMediaLoading(false);
+  }, []);
+
+  useEffect(() => { if (activeTab === 'media') void loadMedia(); }, [activeTab, loadMedia]);
+
+  function handleFileDrop(e: React.DragEvent) {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      setUploadFile(file);
+      if (!uploadForm.name) setUploadForm(f => ({ ...f, name: file.name.replace(/\.[^.]+$/, '') }));
+    }
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      setUploadFile(file);
+      if (!uploadForm.name) setUploadForm(f => ({ ...f, name: file.name.replace(/\.[^.]+$/, '') }));
+    }
+  }
+
+  async function handleUpload() {
+    if (!uploadFile || !uploadForm.name.trim()) { setUploadError('Choose a file and give it a name'); return; }
+    setUploading(true); setUploadError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      const params = new URLSearchParams({ name: uploadForm.name.trim() });
+      if (uploadForm.description.trim()) params.set('description', uploadForm.description.trim());
+      if (uploadForm.collectionId) params.set('collection_id', uploadForm.collectionId);
+      const res = await kbUpload(`/api/kb/media/upload?${params.toString()}`, formData);
+      if (!res.ok) {
+        setUploadError((await res.json() as { error?: string }).error ?? 'Upload failed');
+        setUploading(false); return;
+      }
+      setUploadFile(null);
+      setUploadForm({ name: '', description: '', collectionId: '' });
+      void loadMedia();
+    } catch {
+      setUploadError('Network error — please try again');
+    }
+    setUploading(false);
+  }
+
+  async function handleToggleActive(id: string, active: boolean) {
+    await kbFetch(`/api/kb/media/${id}`, { method: 'PATCH', body: JSON.stringify({ active: !active }) });
+    void loadMedia();
+  }
+
+  async function handleDeleteMedia(id: string) {
+    if (!confirm('Delete this file? This cannot be undone.')) return;
+    await kbFetch(`/api/kb/media/${id}`, { method: 'DELETE' });
+    void loadMedia();
+  }
+
+  function formatBytes(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
   // ── Builder helpers ────────────────────────────────────────────────────────
@@ -299,6 +394,11 @@ export default function KnowledgeBasePage() {
             <Plus size={15} /> New Collection
           </button>
         )}
+        {activeTab === 'media' && (
+          <div className="text-xs text-gray-400 bg-white border border-green-100 px-3 py-1.5 rounded-full shadow-sm self-start">
+            {mediaFiles.length} file{mediaFiles.length !== 1 ? 's' : ''} uploaded
+          </div>
+        )}
       </div>
 
       {/* Tab switcher */}
@@ -314,6 +414,12 @@ export default function KnowledgeBasePage() {
             activeTab === 'builder' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}>
           <Sparkles size={14} /> AI Builder
+        </button>
+        <button type="button" onClick={() => setActiveTab('media')}
+          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'media' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}>
+          <ImageIcon size={14} /> File Library
         </button>
       </div>
 
@@ -764,6 +870,220 @@ export default function KnowledgeBasePage() {
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* ── FILE LIBRARY TAB ──────────────────────────────────────────────────── */}
+      {activeTab === 'media' && (
+        <div className="space-y-5">
+
+          {/* Upload card */}
+          <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+            <div className="mb-5">
+              <h3 className="text-sm font-bold text-gray-900">Upload a File</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Images and PDFs the bot will send inline when answering relevant questions</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+              {/* Drop zone */}
+              <div className="lg:col-span-2">
+                <label
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => { handleFileDrop(e); }}
+                  className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-xl p-8 cursor-pointer transition-colors ${
+                    dragOver ? 'border-emerald-400 bg-emerald-50/60' : uploadFile ? 'border-emerald-300 bg-emerald-50/40' : 'border-green-200 hover:border-emerald-300 hover:bg-green-50/40'
+                  }`}>
+                  <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleFileInput} />
+                  {uploadFile ? (
+                    <>
+                      {uploadFile.type.startsWith('image/') ? (
+                        <ImageIcon size={28} className="text-emerald-500" />
+                      ) : (
+                        <FileText size={28} className="text-rose-400" />
+                      )}
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-gray-800 truncate max-w-[160px]">{uploadFile.name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{formatBytes(uploadFile.size)}</p>
+                      </div>
+                      <button type="button" onClick={() => setUploadFile(null)}
+                        className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                        <Upload size={20} className="text-emerald-500" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-gray-700">Drop file here</p>
+                        <p className="text-xs text-gray-400 mt-0.5">or click to browse</p>
+                        <p className="text-[11px] text-gray-300 mt-2">JPEG, PNG, WEBP, GIF, PDF · Max 20 MB</p>
+                      </div>
+                    </>
+                  )}
+                </label>
+              </div>
+
+              {/* Form fields */}
+              <div className="lg:col-span-3 space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                    File Name <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={uploadForm.name}
+                    onChange={e => setUploadForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="e.g. Product Catalogue 2025"
+                    className="w-full rounded-xl border border-green-200 bg-green-50/40 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                    Description
+                    <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— helps the bot know when to send this</span>
+                  </label>
+                  <input
+                    value={uploadForm.description}
+                    onChange={e => setUploadForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder="e.g. Full product catalogue with prices, specifications and images"
+                    className="w-full rounded-xl border border-green-200 bg-green-50/40 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                    Link to Collection
+                    <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— bot sends this when matching that collection</span>
+                  </label>
+                  <select
+                    value={uploadForm.collectionId}
+                    onChange={e => setUploadForm(f => ({ ...f, collectionId: e.target.value }))}
+                    className="w-full rounded-xl border border-green-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">No collection (available to all queries)</option>
+                    {collections.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {uploadError && (
+                  <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                    <AlertCircle size={14} className="shrink-0" /> {uploadError}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void handleUpload()}
+                  disabled={uploading || !uploadFile || !uploadForm.name.trim()}
+                  className="flex items-center gap-2 text-sm px-5 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold disabled:opacity-40 shadow-sm shadow-emerald-200"
+                >
+                  {uploading ? <><Loader2 size={15} className="animate-spin" /> Uploading…</> : <><Upload size={15} /> Upload File</>}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* File grid */}
+          {mediaLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : mediaFiles.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-green-100 shadow-sm flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-4 border border-green-100">
+                <ImageIcon size={24} className="text-green-400" />
+              </div>
+              <p className="text-sm font-semibold text-gray-600">No files yet</p>
+              <p className="text-xs text-gray-400 mt-1 max-w-xs">Upload images or PDFs above and the bot will send them automatically when answering related questions.</p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Uploaded Files</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {mediaFiles.map(file => {
+                  const isImage = file.file_type === 'image';
+                  const col = collections.find(c => c.id === file.collection_id);
+                  return (
+                    <div
+                      key={file.id}
+                      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
+                        file.active ? 'border-green-100 hover:border-emerald-200' : 'border-gray-100 opacity-60'
+                      }`}
+                    >
+                      {/* Preview area */}
+                      {isImage ? (
+                        <div className="h-36 bg-gray-50 flex items-center justify-center overflow-hidden border-b border-green-50">
+                          <img
+                            src={file.public_url}
+                            alt={file.name}
+                            className="h-full w-full object-cover"
+                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-36 bg-rose-50 flex flex-col items-center justify-center border-b border-rose-100/50 gap-2">
+                          <FileText size={32} className="text-rose-400" />
+                          <span className="text-[11px] font-semibold text-rose-500 uppercase tracking-wider">PDF Document</span>
+                        </div>
+                      )}
+
+                      {/* Info */}
+                      <div className="p-4 space-y-2.5">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 leading-tight">{file.name}</p>
+                          {file.description && (
+                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{file.description}</p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {col ? (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 font-medium">
+                              {col.name}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-gray-300 italic">no collection</span>
+                          )}
+                          {file.send_count > 0 && (
+                            <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-600 border border-sky-100 font-medium">
+                              <Send size={9} /> sent {file.send_count}×
+                            </span>
+                          )}
+                          <span className="text-[11px] text-gray-300 ml-auto">{formatBytes(file.file_size)}</span>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center justify-between pt-2 border-t border-green-50">
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleActive(file.id, file.active)}
+                            className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors ${
+                              file.active
+                                ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
+                            }`}
+                          >
+                            {file.active ? <Eye size={12} /> : <EyeOff size={12} />}
+                            {file.active ? 'Active' : 'Inactive'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteMedia(file.id)}
+                            className="flex items-center gap-1.5 text-xs font-medium text-gray-300 hover:text-red-500 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

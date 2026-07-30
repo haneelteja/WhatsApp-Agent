@@ -530,6 +530,28 @@ export interface KBDocument {
   updated_at:       string;
 }
 
+// ─── KB Media Attachments (files the bot sends inline in WhatsApp) ───────────
+
+export type KBMediaFileType = 'image' | 'document';
+
+export interface KBMediaAttachment {
+  id:                string;
+  tenant_id:         string;
+  collection_id:     string | null;
+  name:              string;
+  description:       string | null;
+  file_type:         KBMediaFileType;
+  mime_type:         string;
+  original_filename: string;
+  storage_path:      string;
+  public_url:        string;
+  file_size:         number;
+  send_count:        number;
+  active:            boolean;
+  created_at:        string;
+  updated_at:        string;
+}
+
 // ─── Enriched view types (joins) ─────────────────────────────────────────────
 
 export interface ConversationWithContact extends Conversation {
