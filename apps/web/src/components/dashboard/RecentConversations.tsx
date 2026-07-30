@@ -42,7 +42,11 @@ function ConvRow({ conv }: { conv: RecentConv }) {
   return (
     <div className="divide-y divide-gray-50">
       {/* Header row */}
-      <div className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/50 transition-colors">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50/60 transition-colors text-left cursor-pointer"
+      >
         {/* Avatar */}
         <div className={`w-8 h-8 rounded-full ${AVATAR_COLORS[colorIdx]} flex items-center justify-center font-bold text-xs shrink-0`}>
           {conv.displayName.slice(0, 2).toUpperCase()}
@@ -50,12 +54,7 @@ function ConvRow({ conv }: { conv: RecentConv }) {
 
         {/* Name + bot type */}
         <div className="flex-1 min-w-0">
-          <Link
-            href={`/conversations/${conv.id}`}
-            className="text-sm font-semibold text-gray-800 hover:text-emerald-700 transition-colors truncate block"
-          >
-            {conv.displayName}
-          </Link>
+          <p className="text-sm font-semibold text-gray-800 truncate">{conv.displayName}</p>
           {product && (
             <span className={`inline-block text-[10px] font-medium px-1.5 py-px rounded mt-0.5 ${product.color}`}>
               {product.label}
@@ -63,23 +62,16 @@ function ConvRow({ conv }: { conv: RecentConv }) {
           )}
         </div>
 
-        {/* Status + time + expand */}
+        {/* Status + time + chevron */}
         <div className="flex items-center gap-2 shrink-0">
           <span className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ring-1 ${style.badge}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
             {conv.status.replace('_', ' ')}
           </span>
           <span className="text-[11px] text-gray-400 w-12 text-right tabular-nums">{timeAgo(conv.updated_at)}</span>
-          <button
-            type="button"
-            onClick={() => setOpen(v => !v)}
-            className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-            title={open ? 'Collapse messages' : 'Expand messages'}
-          >
-            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
+          {open ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
         </div>
-      </div>
+      </button>
 
       {/* Expanded messages */}
       {open && (
