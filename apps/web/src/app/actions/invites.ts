@@ -85,7 +85,7 @@ export async function sendInviteAction(tenantId: string, email: string, role: st
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        sender:      { name: 'Alphabot', email: 'pega2023test@gmail.com' },
+        sender:      { name: 'Alphabot', email: process.env['BREVO_FROM_EMAIL'] ?? 'pega2023test@gmail.com' },
         to:          [{ email }],
         subject:     `You've been invited to ${tenant.name} on Alphabot`,
         htmlContent: emailHtml,

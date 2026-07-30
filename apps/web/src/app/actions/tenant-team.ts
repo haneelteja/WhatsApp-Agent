@@ -32,6 +32,33 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
   const { data: tenant } = await admin.from('tenants').select('name').eq('id', tenantId).single();
   if (!tenant) return { error: 'Tenant not found' };
 
+  // Block if the invited email belongs to a platform user
+  const { data: { users: allUsers } } = await admin.auth.admin.listUsers();
+  const matchedUser = allUsers.find(u => u.email?.toLowerCase() === email);
+  if (matchedUser) {
+    const { data: isPlatformUser } = await admin
+      .from('platform_users')
+      .select('id')
+      .eq('user_id', matchedUser.id)
+      .maybeSingle();
+    if (isPlatformUser) {
+      return { error: 'This email belongs to a platform team member and cannot be invited as a client.' };
+    }
+  }
+
+  // Block if the email is already a member of this tenant
+  if (matchedUser) {
+    const { data: existingMember } = await admin
+      .from('tenant_users')
+      .select('id')
+      .eq('user_id', matchedUser.id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (existingMember) {
+      return { error: 'This person is already a member of your workspace.' };
+    }
+  }
+
   // Map admin/supervisor to client_manager/client_admin for client_invites constraint
   const inviteRole = role === 'admin' ? 'client_manager' : role === 'supervisor' ? 'client_admin' : 'agent';
 
@@ -71,7 +98,7 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
       method: 'POST',
       headers: { 'api-key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sender:      { name: 'Alphabot', email: 'pega2023test@gmail.com' },
+        sender:      { name: 'Alphabot', email: process.env['BREVO_FROM_EMAIL'] ?? 'pega2023test@gmail.com' },
         to:          [{ email }],
         subject:     `You've been invited to join ${tenant.name} on Alphabot`,
         htmlContent: emailHtml,
