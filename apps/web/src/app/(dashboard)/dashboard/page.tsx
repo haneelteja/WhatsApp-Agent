@@ -308,7 +308,7 @@ export default async function DashboardPage() {
                       </div>
 
                       {kbOnlyButEmpty ? (
-                        <p className="text-[10px] text-red-600 leading-snug">KB-only mode on but no collections — bot can't answer.</p>
+                        <p className="text-[10px] text-red-600 leading-snug">KB-only mode on but no collections — bot cannot answer.</p>
                       ) : collections.length === 0 ? (
                         <div className="flex items-center gap-1.5">
                           <Sparkles size={10} className="text-gray-400 shrink-0" />
