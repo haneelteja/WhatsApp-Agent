@@ -275,278 +275,151 @@ export default async function DashboardPage() {
               const kbOnlyButEmpty = kbOnly && collections.length === 0;
 
               return (
-                <div key={slug} className={`bg-white rounded-2xl border ${meta.border} overflow-hidden shadow-sm flex flex-col`}>
+                <div key={slug} className={`bg-white rounded-xl border ${meta.border} overflow-hidden shadow-sm flex flex-col`}>
 
-                  {/* ── Card header ───────────────────────────────────────── */}
-                  <div className={`${meta.headerBg} px-5 py-4`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Bot size={15} className="text-white/80 shrink-0" />
-                          <span className="text-sm font-bold text-white">{meta.name}</span>
-                        </div>
-                        <p className="text-xs text-white/70 mt-0.5 leading-snug">{meta.desc}</p>
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          <span className="text-[10px] text-white/60 font-semibold uppercase tracking-wider">Tone:</span>
-                          <span className="text-[10px] text-white font-semibold capitalize">{tone}</span>
-                        </div>
-                      </div>
-                      <span className="flex items-center gap-1.5 text-[10px] font-semibold text-white/90 bg-white/20 px-2.5 py-1 rounded-full shrink-0 mt-0.5">
-                        <span className={`w-1.5 h-1.5 rounded-full ${meta.dotColor} animate-pulse`} />
-                        Active
+                  {/* ── Compact header ────────────────────────────────────── */}
+                  <div className={`${meta.headerBg} px-4 py-2.5 flex items-center gap-2`}>
+                    <span className="text-xs font-bold text-white">{meta.name}</span>
+                    <span className="text-[10px] text-white/60 capitalize">{tone}</span>
+                    <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold text-white/90 bg-white/20 px-2 py-0.5 rounded-full">
+                      <span className={`w-1 h-1 rounded-full ${meta.dotColor} animate-pulse`} />
+                      Active
+                    </span>
+                    {kbOnlyButEmpty && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-red-500 text-white px-2 py-0.5 rounded-full">
+                        <AlertCircle size={9} /> Config error
                       </span>
-                    </div>
+                    )}
                   </div>
 
-                  <div className="flex-1 divide-y divide-gray-100">
+                  {/* ── 2-column body ─────────────────────────────────────── */}
+                  <div className="flex-1 grid grid-cols-2 divide-x divide-gray-100">
 
-                    {/* ── Section 1: Knows About ────────────────────────── */}
-                    <div className="px-5 py-4">
-                      <div className="flex items-center gap-1.5 mb-3">
-                        <BookOpen size={12} className="text-emerald-500" />
+                    {/* LEFT: Knows About */}
+                    <div className="px-3.5 py-3 space-y-2">
+                      <div className="flex items-center gap-1 mb-1">
+                        <BookOpen size={10} className="text-emerald-500" />
                         <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Knows About</p>
                         {totalEntries > 0 && (
-                          <span className="ml-auto text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 tabular-nums">
-                            {totalEntries} entries
+                          <span className="ml-auto text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-px rounded-full border border-emerald-100 tabular-nums">
+                            {totalEntries}
                           </span>
                         )}
                       </div>
 
-                      {/* Critical: KB-only ON but no collections */}
                       {kbOnlyButEmpty ? (
-                        <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-3.5 py-3">
-                          <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-bold text-red-700">Configuration error</p>
-                            <p className="text-[10px] text-red-600 mt-0.5 leading-snug">
-                              KB-only mode is on but no knowledge base is configured. The bot will be unable to answer most questions. Add a KB collection immediately.
-                            </p>
-                          </div>
-                        </div>
-
-                      /* No collections, KB-only off → general AI fallback */
+                        <p className="text-[10px] text-red-600 leading-snug">KB-only mode on but no collections — bot can't answer.</p>
                       ) : collections.length === 0 ? (
-                        <div className="space-y-2">
-                          <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-3.5 py-3">
-                            <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
-                            <div>
-                              <p className="text-xs font-semibold text-amber-800">No knowledge base configured</p>
-                              <p className="text-[10px] text-amber-600 mt-0.5 leading-snug">
-                                Bot answers from general AI knowledge only. Add KB collections for business-specific, accurate answers.
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Sparkles size={11} className="text-gray-400 shrink-0" />
-                            <p className="text-[10px] text-gray-400">Powered by general AI knowledge</p>
-                          </div>
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles size={10} className="text-gray-400 shrink-0" />
+                          <p className="text-[10px] text-gray-400">General AI only — no KB configured</p>
                         </div>
-
-                      /* Collections present */
                       ) : (
-                        <div className="space-y-2.5">
+                        <>
                           {collections.map((col) => (
-                            <div key={col.id} className="flex items-start gap-2.5">
-                              <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
-                                <CheckCircle2 size={11} className="text-emerald-600" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold text-gray-800 leading-tight">{col.name}</p>
-                                {col.description && (
-                                  <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-1">{col.description}</p>
-                                )}
-                              </div>
-                              {col.entry_count === 0 ? (
-                                <span className="text-[10px] text-amber-500 font-semibold shrink-0 bg-amber-50 px-1.5 py-0.5 rounded">Empty</span>
-                              ) : (
-                                <span className="text-[10px] font-semibold text-gray-400 tabular-nums shrink-0">{col.entry_count}</span>
-                              )}
+                            <div key={col.id} className="flex items-center gap-1.5">
+                              <CheckCircle2 size={10} className="text-emerald-500 shrink-0" />
+                              <p className="text-[10px] text-gray-700 font-medium truncate flex-1">{col.name}</p>
+                              <span className="text-[10px] text-gray-400 tabular-nums shrink-0">
+                                {col.entry_count === 0
+                                  ? <span className="text-amber-500">Empty</span>
+                                  : col.entry_count}
+                              </span>
                             </div>
                           ))}
-
-                          {/* KB scope note */}
-                          {kbOnly ? (
-                            <div className="flex items-center gap-2 pt-1 border-t border-gray-100 mt-1">
-                              <Lock size={10} className="text-violet-500 shrink-0" />
-                              <p className="text-[10px] text-violet-600 font-medium">Strictly limited to these collections only — no general AI</p>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 pt-1 border-t border-gray-100 mt-1">
-                              <Sparkles size={10} className="text-gray-400 shrink-0" />
-                              <p className="text-[10px] text-gray-400">Also draws on general AI for topics not covered above</p>
-                            </div>
-                          )}
-                        </div>
+                          <div className="flex items-center gap-1 pt-1 border-t border-gray-100">
+                            {kbOnly
+                              ? <><Lock size={9} className="text-violet-500 shrink-0" /><p className="text-[10px] text-violet-600">KB-only · no general AI</p></>
+                              : <><Sparkles size={9} className="text-gray-400 shrink-0" /><p className="text-[10px] text-gray-400">+ general AI fallback</p></>
+                            }
+                          </div>
+                        </>
                       )}
                     </div>
 
-                    {/* ── Section 2: Escalates When ─────────────────────── */}
-                    <div className="px-5 py-4">
-                      <div className="flex items-center gap-1.5 mb-3">
-                        <ShieldAlert size={12} className="text-amber-500" />
-                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Escalates to Agent When</p>
-                      </div>
+                    {/* RIGHT: Escalation + Restrictions stacked */}
+                    <div className="flex flex-col divide-y divide-gray-100">
 
-                      <div className="space-y-3">
-                        {/* Confidence threshold — always present */}
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                            <span className="text-[8px] font-bold text-amber-700">AI</span>
-                          </div>
-                          <p className="text-xs text-gray-700">
-                            AI confidence drops below{' '}
-                            <span className="font-bold text-amber-700">{Math.round(threshold * 100)}%</span>
-                          </p>
+                      {/* Escalates When */}
+                      <div className="px-3.5 py-3 space-y-1.5">
+                        <div className="flex items-center gap-1 mb-1">
+                          <ShieldAlert size={10} className="text-amber-500" />
+                          <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Escalates When</p>
                         </div>
-
-                        {/* Trigger phrases */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-px rounded shrink-0">AI</span>
+                          <p className="text-[10px] text-gray-600">Confidence &lt; <span className="font-bold text-amber-700">{Math.round(threshold * 100)}%</span></p>
+                        </div>
                         {triggers.length > 0 ? (
-                          <div>
-                            <div className="flex items-center gap-2.5 mb-2">
-                              <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                                <MessageSquare size={9} className="text-amber-700" />
-                              </div>
-                              <p className="text-xs text-gray-700">Customer uses trigger phrases</p>
-                            </div>
-                            <div className="flex flex-wrap gap-1 pl-7">
-                              {triggers.slice(0, 10).map((t) => (
-                                <span key={t} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full font-medium">
-                                  {t}
-                                </span>
-                              ))}
-                              {triggers.length > 10 && (
-                                <span className="text-[10px] text-gray-400 self-center">+{triggers.length - 10} more</span>
-                              )}
-                            </div>
+                          <div className="flex flex-wrap gap-1">
+                            {triggers.slice(0, 6).map((t) => (
+                              <span key={t} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-px rounded-full font-medium">
+                                {t}
+                              </span>
+                            ))}
+                            {triggers.length > 6 && (
+                              <span className="text-[10px] text-gray-400">+{triggers.length - 6}</span>
+                            )}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                              <MessageSquare size={9} className="text-gray-400" />
-                            </div>
-                            <p className="text-xs text-gray-400">No keyword triggers configured</p>
+                          <p className="text-[10px] text-gray-400">No keyword triggers</p>
+                        )}
+                      </div>
+
+                      {/* Restrictions */}
+                      <div className="px-3.5 py-3 space-y-1.5">
+                        <div className="flex items-center gap-1 mb-1">
+                          <ShieldOff size={10} className="text-red-400" />
+                          <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Restrictions</p>
+                        </div>
+                        {!hasRestrictions ? (
+                          <p className="text-[10px] text-gray-400">None — open topic responses</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {kbOnly && (
+                              <span className="text-[10px] bg-violet-50 text-violet-700 border border-violet-100 px-1.5 py-px rounded-full font-medium flex items-center gap-0.5">
+                                <Lock size={8} />KB-only
+                              </span>
+                            )}
+                            {noPersonalData && (
+                              <span className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-px rounded-full font-medium flex items-center gap-0.5">
+                                <User size={8} />No personal data
+                              </span>
+                            )}
+                            {noExternalLinks && (
+                              <span className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-px rounded-full font-medium flex items-center gap-0.5">
+                                <ExternalLink size={8} />No ext. links
+                              </span>
+                            )}
+                            {noPhoneNumbers && (
+                              <span className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-px rounded-full font-medium flex items-center gap-0.5">
+                                <Phone size={8} />No phone nos.
+                              </span>
+                            )}
+                            {blockedTopics.map((t) => (
+                              <span key={t} className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-px rounded-full font-medium">{t}</span>
+                            ))}
+                            {blockedKeywords.slice(0, 4).map((k) => (
+                              <span key={k} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-px rounded-full font-medium">{k}</span>
+                            ))}
+                            {blockedKeywords.length > 4 && (
+                              <span className="text-[10px] text-gray-400">+{blockedKeywords.length - 4}</span>
+                            )}
                           </div>
                         )}
                       </div>
+
                     </div>
-
-                    {/* ── Section 3: Restrictions & Guardrails ──────────── */}
-                    <div className="px-5 py-4">
-                      <div className="flex items-center gap-1.5 mb-3">
-                        <ShieldOff size={12} className="text-red-400" />
-                        <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Restrictions & Guardrails</p>
-                      </div>
-
-                      {!hasRestrictions ? (
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                            <CheckCircle2 size={11} className="text-gray-400" />
-                          </div>
-                          <p className="text-xs text-gray-400">No restrictions — bot can respond to any topic</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-
-                          {/* KB-only mode callout */}
-                          {kbOnly && (
-                            <div className="flex items-start gap-2.5 bg-violet-50 border border-violet-100 rounded-xl px-3.5 py-2.5">
-                              <Lock size={13} className="text-violet-600 shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-xs font-bold text-violet-800">Knowledge-base only mode</p>
-                                <p className="text-[10px] text-violet-600 mt-0.5 leading-snug">
-                                  Bot strictly answers from its KB collections. Any question outside the knowledge base is declined.
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Content filters */}
-                          {(noPersonalData || noExternalLinks || noPhoneNumbers) && (
-                            <div className="space-y-2">
-                              {noPersonalData && (
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-5 h-5 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                                    <User size={9} className="text-red-400" />
-                                  </div>
-                                  <p className="text-xs text-gray-600">Will not share or request personal data</p>
-                                </div>
-                              )}
-                              {noExternalLinks && (
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-5 h-5 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                                    <ExternalLink size={9} className="text-red-400" />
-                                  </div>
-                                  <p className="text-xs text-gray-600">Will not include external links in responses</p>
-                                </div>
-                              )}
-                              {noPhoneNumbers && (
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-5 h-5 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                                    <Phone size={9} className="text-red-400" />
-                                  </div>
-                                  <p className="text-xs text-gray-600">Will not share phone numbers in responses</p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Blocked topics */}
-                          {blockedTopics.length > 0 && (
-                            <div>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Blocked Topics</p>
-                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                                  onBlockedTopic === 'escalate'
-                                    ? 'bg-amber-50 text-amber-700 border-amber-100'
-                                    : 'bg-gray-100 text-gray-500 border-gray-200'
-                                }`}>
-                                  {onBlockedTopic === 'escalate' ? '→ escalates to agent' : '→ silently ignored'}
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap gap-1">
-                                {blockedTopics.map((t) => (
-                                  <span key={t} className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-2 py-0.5 rounded-full font-medium">{t}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Blocked keywords */}
-                          {blockedKeywords.length > 0 && (
-                            <div>
-                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Blocked Keywords</p>
-                              <div className="flex flex-wrap gap-1">
-                                {blockedKeywords.slice(0, 8).map((k) => (
-                                  <span key={k} className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-2 py-0.5 rounded-full font-medium">{k}</span>
-                                ))}
-                                {blockedKeywords.length > 8 && (
-                                  <span className="text-[10px] text-gray-400 self-center">+{blockedKeywords.length - 8} more</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
                   </div>
 
-                  {/* ── Card footer ───────────────────────────────────────── */}
-                  <div className={`flex items-center border-t ${meta.border} ${meta.accentBg} px-5 py-3`}>
-                    <Link
-                      href="/knowledge-base"
-                      className={`flex items-center gap-1.5 text-xs font-semibold ${meta.accent} hover:underline`}
-                    >
-                      <BookOpen size={11} />
-                      Knowledge Base
+                  {/* ── Footer ────────────────────────────────────────────── */}
+                  <div className={`flex items-center gap-3 border-t ${meta.border} ${meta.accentBg} px-4 py-2`}>
+                    <Link href="/knowledge-base" className={`flex items-center gap-1 text-[11px] font-semibold ${meta.accent} hover:underline`}>
+                      <BookOpen size={10} />Knowledge Base
                     </Link>
-                    <ChevronRight size={12} className="text-gray-300 mx-2" />
-                    <Link
-                      href="/guardrails"
-                      className={`flex items-center gap-1.5 text-xs font-semibold ${meta.accent} hover:underline`}
-                    >
-                      <ShieldAlert size={11} />
-                      Guardrails
+                    <ChevronRight size={10} className="text-gray-300" />
+                    <Link href="/guardrails" className={`flex items-center gap-1 text-[11px] font-semibold ${meta.accent} hover:underline`}>
+                      <ShieldAlert size={10} />Guardrails
                     </Link>
                   </div>
                 </div>
