@@ -1,6 +1,6 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import Link from 'next/link';
-import { Plus, Building2, CheckCircle2, Clock, XCircle, type LucideIcon } from 'lucide-react';
+import { Plus, Building2, CheckCircle2, Clock, XCircle, Mail, type LucideIcon } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string; Icon: LucideIcon }> = {
   active:    { label: 'Active',    badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200', Icon: CheckCircle2 },
@@ -27,6 +27,7 @@ type TenantRow = {
   name: string;
   plan: string;
   status: string;
+  contact_email: string | null;
   created_at: string;
   tenant_products: TenantProduct[];
   free_trials: FreeTrial[];
@@ -37,7 +38,7 @@ export default async function PlatformClientsPage() {
 
   const { data: tenants } = await supabase
     .from('tenants')
-    .select('id, name, plan, status, created_at, tenant_products(product_type, active), free_trials(ends_at, status)')
+    .select('id, name, plan, status, contact_email, created_at, tenant_products(product_type, active), free_trials(ends_at, status)')
     .order('created_at', { ascending: false });
 
   const rows = (tenants ?? []) as TenantRow[];
@@ -106,7 +107,7 @@ export default async function PlatformClientsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60">
-                  {['Client', 'Status', 'Plan', 'Products', 'Trial', 'Added', ''].map(h => (
+                  {['Client', 'Email', 'Status', 'Plan', 'Products', 'Trial', 'Added', ''].map(h => (
                     <th key={h} className="text-left px-4 first:px-6 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -138,6 +139,20 @@ export default async function PlatformClientsPage() {
                             <p className="text-[10px] text-slate-400 font-mono">{tenant.id.slice(0, 8)}…</p>
                           </div>
                         </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {tenant.contact_email ? (
+                          <a
+                            href={`mailto:${tenant.contact_email}`}
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors max-w-[180px] truncate"
+                          >
+                            <Mail size={11} className="shrink-0 text-slate-400" />
+                            {tenant.contact_email}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
                       </td>
 
                       <td className="px-4 py-4">
