@@ -9,6 +9,7 @@ import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { saveTenantGuardrailsByIdAction } from '@/app/actions/tenant-guardrails';
 import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 import { InviteUserForm } from '@/components/platform/InviteUserForm';
+import { ContactEmailEditor } from '@/components/platform/ContactEmailEditor';
 import { WhatsAppNumberSection } from '@/components/platform/WhatsAppNumberSection';
 import { BillingManager } from '@/components/platform/BillingManager';
 import { CreditCard } from 'lucide-react';
@@ -114,6 +115,7 @@ export default async function ClientDetailPage({
             </span>
           </div>
           <p className="text-[11px] text-slate-400 font-mono mt-0.5">{tenant.id}</p>
+          <ContactEmailEditor tenantId={tenantId} initialEmail={tenant.contact_email ?? null} />
         </div>
       </div>
 

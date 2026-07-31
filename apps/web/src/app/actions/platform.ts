@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export async function createTenantAction(formData: FormData) {
@@ -89,4 +90,20 @@ export async function createTenantAction(formData: FormData) {
 export async function updateTenantStatusAction(tenantId: string, status: string) {
   const supabase = getSupabaseAdminClient();
   await supabase.from('tenants').update({ status }).eq('id', tenantId);
+}
+
+export async function updateContactEmailAction(tenantId: string, email: string): Promise<{ error?: string }> {
+  const trimmed = email.trim();
+  if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return { error: 'Invalid email address' };
+  }
+  const supabase = getSupabaseAdminClient();
+  const { error } = await supabase
+    .from('tenants')
+    .update({ contact_email: trimmed })
+    .eq('id', tenantId);
+  if (error) return { error: error.message };
+  revalidatePath(`/platform/clients/${tenantId}`);
+  revalidatePath('/platform/clients');
+  return {};
 }
