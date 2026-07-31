@@ -22,6 +22,7 @@ export function ClientProductsManager({
   const [products, setProducts] = useState<ProductRow[]>(initialProducts);
   const [pending, startTransition] = useTransition();
   const [toggling, setToggling] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function getProduct(slug: string) {
     return products.find(p => p.product_type === slug);
@@ -30,24 +31,33 @@ export function ClientProductsManager({
   function toggle(slug: string) {
     const current = getProduct(slug);
     const nextActive = !current?.active;
-
+    setError(null);
     setToggling(slug);
-    startTransition(async () => {
-      await toggleClientProductAction(tenantId, slug, nextActive);
 
-      setProducts(prev => {
-        const exists = prev.find(p => p.product_type === slug);
-        if (exists) {
-          return prev.map(p => p.product_type === slug ? { ...p, active: nextActive } : p);
-        }
-        return [...prev, { product_type: slug, active: true, tier: 'base' }];
-      });
+    startTransition(async () => {
+      const result = await toggleClientProductAction(tenantId, slug, nextActive);
+
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        setProducts(prev => {
+          const exists = prev.find(p => p.product_type === slug);
+          if (exists) {
+            return prev.map(p => p.product_type === slug ? { ...p, active: nextActive } : p);
+          }
+          return [...prev, { product_type: slug, active: true, tier: 'base' }];
+        });
+      }
 
       setToggling(null);
     });
   }
 
   return (
+    <div>
+    {error && (
+      <p className="text-xs text-red-500 mb-3">{error}</p>
+    )}
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {ALL_PRODUCTS.map(meta => {
         const row     = getProduct(meta.slug);
@@ -103,6 +113,7 @@ export function ClientProductsManager({
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

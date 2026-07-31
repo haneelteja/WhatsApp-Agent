@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSupabaseServerClient } from '@/lib/supabase/server';
 
 export async function saveProductDefaultsAction(
   slug: string,
@@ -29,7 +30,18 @@ export async function toggleClientProductAction(
   productSlug: string,
   active: boolean,
 ) {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Unauthorized' };
+
   const admin = getSupabaseAdminClient();
+
+  const { data: platformUser } = await admin
+    .from('platform_users')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!platformUser) return { error: 'Unauthorized' };
 
   if (active) {
     // Enable: upsert tenant_product row
