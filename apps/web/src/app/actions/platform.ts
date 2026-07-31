@@ -84,6 +84,93 @@ export async function createTenantAction(formData: FormData) {
     }
   }
 
+  // 4. Auto-invite contact email as client_manager + send welcome email
+  const { data: invite } = await supabase
+    .from('client_invites')
+    .insert({ tenant_id: tenant.id, email: contactEmail, role: 'client_manager' })
+    .select('token')
+    .single();
+
+  if (invite) {
+    const webUrl    = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
+    const inviteUrl = `${webUrl}/invite/${invite.token}`;
+    const apiKey    = process.env['BREVO_API_KEY'];
+
+    const productLabels: Record<string, string> = {
+      support_bot: 'Support Bot', sales_bot: 'Sales Bot', lifecycle_bot: 'Lifecycle Bot',
+    };
+    const productList = products.map(p => productLabels[p] ?? p).join(', ');
+    const webhookRows = products
+      .map(p => `<tr><td style="padding:4px 0;color:#555;font-size:13px">${productLabels[p] ?? p}</td><td style="padding:4px 0 4px 16px;font-family:monospace;font-size:12px;color:#333">POST ${webUrl}/api/webhook/${tenant.id}/${p}</td></tr>`)
+      .join('');
+
+    if (apiKey) {
+      const html = `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#fff;">
+          <div style="margin-bottom:28px;">
+            <span style="font-weight:700;font-size:20px;color:#111">Alphabot</span>
+          </div>
+          <h2 style="font-size:22px;font-weight:700;color:#111;margin:0 0 8px">Welcome to Alphabot!</h2>
+          <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 20px">
+            Your account for <strong>${name}</strong> has been set up on Alphabot. You have been assigned as the <strong>Manager</strong> for your workspace.
+          </p>
+          <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 24px">
+            Click the button below to set your password and access your dashboard:
+          </p>
+          <a href="${inviteUrl}" style="display:inline-block;background:#059669;color:#fff;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;text-decoration:none;margin-bottom:32px;">
+            Set Password &amp; Get Started
+          </a>
+
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:24px;">
+            <p style="font-size:13px;font-weight:700;color:#374151;margin:0 0 12px;text-transform:uppercase;letter-spacing:.05em">Your Workspace Details</p>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px">Company</td><td style="padding:4px 0;color:#111;font-size:13px;font-weight:600">${name}</td></tr>
+              <tr><td style="padding:4px 0;color:#6b7280;font-size:13px">Plan</td><td style="padding:4px 0;color:#111;font-size:13px;text-transform:capitalize">${plan}</td></tr>
+              <tr><td style="padding:4px 0;color:#6b7280;font-size:13px">Active Bots</td><td style="padding:4px 0;color:#111;font-size:13px">${productList}</td></tr>
+              <tr><td style="padding:4px 0;color:#6b7280;font-size:13px">Role</td><td style="padding:4px 0;color:#111;font-size:13px">Manager</td></tr>
+            </table>
+          </div>
+
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin-bottom:24px;">
+            <p style="font-size:13px;font-weight:700;color:#374151;margin:0 0 12px;text-transform:uppercase;letter-spacing:.05em">Webhook URLs</p>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 10px">Configure these in your WhatsApp provider (Twilio / Meta Cloud):</p>
+            <table style="width:100%;border-collapse:collapse;">${webhookRows}</table>
+          </div>
+
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:24px;">
+            <p style="font-size:13px;font-weight:700;color:#92400e;margin:0 0 8px">Next Steps</p>
+            <ol style="margin:0;padding-left:18px;color:#555;font-size:13px;line-height:1.8">
+              <li>Accept this invite and set your password</li>
+              <li>Log in to your dashboard at <a href="${webUrl}" style="color:#059669">${webUrl}</a></li>
+              <li>Configure your WhatsApp number using the webhook URL above</li>
+              <li>Upload your knowledge base documents</li>
+              <li>Test your bot by sending a message to your WhatsApp number</li>
+            </ol>
+          </div>
+
+          <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:0">
+            This invite link expires in 7 days. If you have any questions, reply to this email or contact your Alphabot account manager.
+          </p>
+        </div>
+      `;
+
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender:      { name: 'Alphabot', email: process.env['BREVO_FROM_EMAIL'] ?? 'pega2023test@gmail.com' },
+          to:          [{ email: contactEmail }],
+          subject:     `Welcome to Alphabot — ${name} is ready`,
+          htmlContent: html,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error('[createTenant] Brevo welcome email failed:', await res.text());
+      }
+    }
+  }
+
   redirect(`/platform/clients/${tenant.id}`);
 }
 
