@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { sendEmail } from '@/lib/email';
 
 export async function createTenantAction(formData: FormData) {
   const supabase = getSupabaseAdminClient();
@@ -104,7 +105,7 @@ export async function createTenantAction(formData: FormData) {
       .map(p => `<tr><td style="padding:4px 0;color:#555;font-size:13px">${productLabels[p] ?? p}</td><td style="padding:4px 0 4px 16px;font-family:monospace;font-size:12px;color:#333">POST ${webUrl}/api/webhook/${tenant.id}/${p}</td></tr>`)
       .join('');
 
-    if (apiKey) {
+    {
       const html = `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#fff;">
           <div style="margin-bottom:28px;">
@@ -154,20 +155,7 @@ export async function createTenantAction(formData: FormData) {
         </div>
       `;
 
-      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: { 'api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sender:      { name: 'Alphabot', email: process.env['BREVO_FROM_EMAIL'] ?? 'pega2023test@gmail.com' },
-          to:          [{ email: contactEmail }],
-          subject:     `Welcome to Alphabot — ${name} is ready`,
-          htmlContent: html,
-        }),
-      });
-
-      if (!res.ok) {
-        console.error('[createTenant] Brevo welcome email failed:', await res.text());
-      }
+      await sendEmail({ to: contactEmail, subject: `Welcome to Alphabot — ${name} is ready`, html });
     }
   }
 

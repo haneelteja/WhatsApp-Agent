@@ -3,6 +3,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/lib/email';
 
 export async function sendTeamInviteAction(_prevState: unknown, formData: FormData) {
   const email = (formData.get('email') as string | null)?.trim().toLowerCase() ?? '';
@@ -72,10 +73,11 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
 
   const webUrl    = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
   const inviteUrl = `${webUrl}/invite/${invite.token}`;
-  const apiKey    = process.env['BREVO_API_KEY'];
 
-  if (apiKey) {
-    const emailHtml = `
+  await sendEmail({
+    to:      email,
+    subject: `You've been invited to join ${tenant.name} on Alphabot`,
+    html: `
       <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;">
         <div style="margin-bottom:24px;">
           <span style="font-weight:700;font-size:18px;color:#111">Alphabot</span>
@@ -92,19 +94,8 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
           This link expires in 7 days. If you didn't expect this email, you can ignore it.
         </p>
       </div>
-    `;
-
-    await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: { 'api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sender:      { name: 'Alphabot', email: process.env['BREVO_FROM_EMAIL'] ?? 'pega2023test@gmail.com' },
-        to:          [{ email }],
-        subject:     `You've been invited to join ${tenant.name} on Alphabot`,
-        htmlContent: emailHtml,
-      }),
-    }).catch(err => console.error('[TeamInvite] Brevo error:', err));
-  }
+    `,
+  });
 
   revalidatePath('/team');
   return { success: true, inviteUrl };

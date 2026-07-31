@@ -3,6 +3,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/lib/email';
 
 // ── Send invite ───────────────────────────────────────────────────────────────
 
@@ -52,13 +53,13 @@ export async function sendInviteAction(tenantId: string, email: string, role: st
 
   if (inviteError || !invite) return { error: inviteError?.message ?? 'Failed to create invite' };
 
-  // Send email via Brevo
   const webUrl    = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
   const inviteUrl = `${webUrl}/invite/${invite.token}`;
-  const apiKey    = process.env['BREVO_API_KEY'];
 
-  if (apiKey) {
-    const emailHtml = `
+  await sendEmail({
+    to:      email,
+    subject: `You've been invited to ${tenant.name} on Alphabot`,
+    html: `
       <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;">
         <div style="margin-bottom:24px;">
           <span style="font-weight:700;font-size:18px;color:#111">Alphabot</span>
@@ -76,27 +77,8 @@ export async function sendInviteAction(tenantId: string, email: string, role: st
           Or copy this URL: ${inviteUrl}
         </p>
       </div>
-    `;
-
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key':      apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender:      { name: 'Alphabot', email: process.env['BREVO_FROM_EMAIL'] ?? 'pega2023test@gmail.com' },
-        to:          [{ email }],
-        subject:     `You've been invited to ${tenant.name} on Alphabot`,
-        htmlContent: emailHtml,
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      console.error('[sendInvite] Brevo error:', body);
-    }
-  }
+    `,
+  });
 
   revalidatePath(`/platform/clients/${tenantId}`);
   return { success: true, inviteUrl };
@@ -118,7 +100,6 @@ export async function getInviteByToken(token: string) {
 export async function acceptInviteAction(token: string, fullName: string, password: string) {
   const admin = getSupabaseAdminClient();
 
-  // Validate invite
   const { data: invite } = await admin
     .from('client_invites')
     .select('*')
@@ -129,11 +110,9 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
   if (!invite) return { error: 'Invite not found or already used' };
   if (new Date(invite.expires_at) < new Date()) return { error: 'Invite has expired' };
 
-  // Check if user already exists
   const { data: { users: existingUsers } } = await admin.auth.admin.listUsers();
   const existingUser = existingUsers.find(u => u.email === invite.email);
 
-  // Hard block: reject if this email is already a platform team member
   if (existingUser) {
     const { data: isPlatformUser } = await admin
       .from('platform_users')
@@ -150,7 +129,6 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
   if (existingUser) {
     userId = existingUser.id;
   } else {
-    // Create Supabase auth user
     const { data: newUser, error: createError } = await admin.auth.admin.createUser({
       email:           invite.email,
       password,
@@ -161,7 +139,6 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
     userId = newUser.user.id;
   }
 
-  // Link user to tenant
   const { error: tuError } = await admin.from('tenant_users').insert({
     tenant_id:  invite.tenant_id,
     user_id:    userId,
@@ -169,11 +146,10 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
     invited_by: invite.invited_by,
   });
 
-  if (tuError && tuError.code !== '23505') {  // ignore duplicate
+  if (tuError && tuError.code !== '23505') {
     return { error: tuError.message };
   }
 
-  // Mark invite as accepted
   await admin.from('client_invites').update({ accepted_at: new Date().toISOString() }).eq('token', token);
 
   revalidatePath(`/platform/clients/${invite.tenant_id}`);
