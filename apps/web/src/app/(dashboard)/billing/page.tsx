@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import { CreditCard, Check, Clock, MessageSquare, Bot, AlertCircle, Zap } from 'lucide-react';
+import UpgradePlanSection from '@/components/billing/UpgradePlanSection';
 
 const PLAN_META = {
   starter: {
@@ -112,6 +113,7 @@ export default async function BillingPage() {
     { data: tokenRow },
   ] = await Promise.all([
     admin.from('tenants').select('name, plan, status').eq('id', tenantId).single(),
+
     admin.from('tenant_products').select('product_type, active').eq('tenant_id', tenantId).eq('active', true),
     admin.from('subscriptions').select('product_type, tier, billing_cycle, next_billing_date').eq('tenant_id', tenantId),
     admin.from('free_trials').select('product_slug, ends_at, status, allowed_model').eq('tenant_id', tenantId).eq('status', 'active'),
@@ -338,6 +340,15 @@ export default async function BillingPage() {
             );
           })}
         </div>
+      )}
+
+      {/* Self-serve plan upgrade */}
+      {!isSuspended && (
+        <UpgradePlanSection
+          currentPlan={plan}
+          userEmail={user?.email ?? ''}
+          userName={user?.user_metadata?.full_name ?? ''}
+        />
       )}
     </div>
   );
