@@ -11,7 +11,8 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
-    "db:migrate": "npm run migrate --workspace=packages/database"
+    "db:migrate": "npm run migrate --workspace=packages/database",
+    "test": "turbo run test"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
