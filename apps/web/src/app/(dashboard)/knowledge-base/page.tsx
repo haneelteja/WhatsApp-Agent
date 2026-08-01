@@ -1016,6 +1016,7 @@ export default function KnowledgeBasePage() {
                       {/* Preview area */}
                       {isImage ? (
                         <div className="h-36 bg-gray-50 flex items-center justify-center overflow-hidden border-b border-green-50">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={file.public_url}
                             alt={file.name}
