@@ -64,7 +64,7 @@ export async function createPlanUpgradeOrderAction(targetPlan: string): Promise<
     body: JSON.stringify({
       amount:   pricing.amountPaise,
       currency: 'INR',
-      receipt:  `plan_${targetPlan}_${tenantUser.tenant_id.slice(0, 8)}`,
+      receipt:  `plan_${targetPlan}_${tenantUser.tenant_id.slice(0, 8)}_${Date.now()}`,
       notes: {
         tenant_id:   tenantUser.tenant_id,
         target_plan: targetPlan,

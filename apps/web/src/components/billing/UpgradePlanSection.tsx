@@ -131,6 +131,11 @@ export default function UpgradePlanSection({ currentPlan, userEmail, userName }:
         },
       };
 
+      if (!window.Razorpay) {
+        setError('Payment not ready — please refresh the page and try again.');
+        setLoading(null);
+        return;
+      }
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (e) {
@@ -144,7 +149,7 @@ export default function UpgradePlanSection({ currentPlan, userEmail, userName }:
 
   return (
     <>
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
 
       <div className="space-y-3">
         <div>

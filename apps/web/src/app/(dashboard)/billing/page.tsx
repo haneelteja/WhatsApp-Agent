@@ -234,7 +234,7 @@ export default async function BillingPage() {
         </ul>
 
         <p className="text-xs text-slate-500 border-t border-slate-200 pt-3 mt-3">
-          To upgrade your plan or adjust your subscription, contact your Alphabot account manager.
+          Upgrade anytime using the options below. For custom plans or billing queries, contact your Alphabot account manager.
         </p>
       </div>
 
