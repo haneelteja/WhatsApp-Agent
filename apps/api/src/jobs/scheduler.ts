@@ -64,21 +64,45 @@ async function processFollowUps(): Promise<void> {
       const gateway  = new WhatsAppGateway(wn.provider as WhatsAppProvider);
       const wnConfig = wn.config_json as { phone_number_id: string; access_token: string };
 
-      for (const conv of conversations) {
+      const convIds = conversations.map(c => c.id);
+
+      // Batch: fetch all existing sends for every conversation in one query
+      const { data: existingSends } = await db
+        .from('follow_up_sends')
+        .select('conversation_id')
+        .in('conversation_id', convIds);
+
+      const sendCountMap = new Map<string, number>();
+      for (const send of (existingSends ?? [])) {
+        const id = (send as { conversation_id: string }).conversation_id;
+        sendCountMap.set(id, (sendCountMap.get(id) ?? 0) + 1);
+      }
+
+      const eligibleConvs = conversations.filter(
+        conv => (sendCountMap.get(conv.id) ?? 0) < config.max_follow_ups,
+      );
+
+      if (!eligibleConvs.length) continue;
+
+      // Batch: fetch all relevant contacts in one query
+      const uniqueContactIds = [...new Set(eligibleConvs.map(c => c.contact_id))];
+      const { data: contactsData } = await db
+        .from('contacts')
+        .select('id, phone, name')
+        .in('id', uniqueContactIds);
+
+      const contactMap = new Map(
+        (contactsData ?? []).map(c => [(c as { id: string }).id, c as { id: string; phone: string; name: string | null }]),
+      );
+
+      // Collect inserts/updates — send messages sequentially to respect WA rate limits
+      const newMessages:     object[] = [];
+      const newSends:        object[] = [];
+      const updatedConvIds:  string[] = [];
+
+      for (const conv of eligibleConvs) {
         try {
-          const { count } = await db
-            .from('follow_up_sends')
-            .select('id', { count: 'exact', head: true })
-            .eq('conversation_id', conv.id);
-
-          if ((count ?? 0) >= config.max_follow_ups) continue;
-
-          const { data: contact } = await db
-            .from('contacts')
-            .select('phone, name')
-            .eq('id', conv.contact_id)
-            .single();
-
+          const contact = contactMap.get(conv.contact_id);
           if (!contact) continue;
 
           const name    = contact.name?.split(' ')[0] ?? 'there';
@@ -90,22 +114,23 @@ async function processFollowUps(): Promise<void> {
             text: message,
           });
 
-          await db.from('messages').insert({
-            conversation_id: conv.id,
-            role:            'assistant',
-            content:         message,
-          });
-
-          await db.from('follow_up_sends').insert({ conversation_id: conv.id });
-
-          await db.from('conversations')
-            .update({ updated_at: new Date().toISOString() })
-            .eq('id', conv.id);
+          newMessages.push({ conversation_id: conv.id, role: 'assistant', content: message });
+          newSends.push({ conversation_id: conv.id });
+          updatedConvIds.push(conv.id);
 
           console.log(`[FollowUp] Sent to conversation ${conv.id} (${contact.phone})`);
         } catch (convErr) {
           console.error(`[FollowUp] Failed for conversation ${conv.id}:`, convErr);
         }
+      }
+
+      // Batch inserts and update — replaces N×4 sequential round-trips with 3
+      if (newMessages.length)    await db.from('messages').insert(newMessages);
+      if (newSends.length)       await db.from('follow_up_sends').insert(newSends);
+      if (updatedConvIds.length) {
+        await db.from('conversations')
+          .update({ updated_at: new Date().toISOString() })
+          .in('id', updatedConvIds);
       }
     } catch (configErr) {
       console.error(`[FollowUp] Failed processing config ${config.id}:`, configErr);

@@ -64,8 +64,19 @@ export async function checkTokenQuota(
   return { allowed: used < limit, used, limit, remaining };
 }
 
+/** Unix timestamp for the start of next month (UTC) — used as the key's absolute expiry. */
+function monthExpiry(): number {
+  const now = new Date();
+  return Math.floor(
+    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).getTime() / 1000,
+  );
+}
+
 /**
  * Increment the Redis token counter after a successful AI call.
+ * Uses INCRBY + EXPIREAT in a pipeline so the key always carries a TTL —
+ * a bare INCRBY on an expired (auto-deleted) key would recreate it with no
+ * expiry, causing the counter to accumulate across calendar months.
  * Called non-blocking after the response is sent — the DB trigger keeps
  * tenant_token_usage_monthly in sync asynchronously via usage_events insert.
  */
@@ -75,7 +86,12 @@ export async function incrementTokenCounter(tenantId: string, tokens: number): P
   try {
     const { getRedis } = await import('../../lib/redis.js');
     const redis = getRedis();
-    if (redis) await redis.incrby(cacheKey, tokens);
+    if (redis) {
+      const pipeline = redis.pipeline();
+      pipeline.incrby(cacheKey, tokens);
+      pipeline.expireat(cacheKey, monthExpiry());
+      await pipeline.exec();
+    }
   } catch {
     // Non-fatal — DB trigger is the source of truth
   }

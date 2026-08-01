@@ -10,6 +10,20 @@ declare module 'fastify' {
   }
 }
 
+// Module-level singleton for JWT validation — avoids allocating a new SupabaseClient
+// (with its internal fetch wrappers and event emitters) on every authenticated request.
+let _anonClient: ReturnType<typeof createClient> | null = null;
+
+function getAnonClient() {
+  if (_anonClient) return _anonClient;
+  _anonClient = createClient(
+    process.env['SUPABASE_URL']!,
+    process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  return _anonClient;
+}
+
 /**
  * Fastify preHandler: validates the Supabase JWT from the Authorization header
  * and attaches tenantId + role to the request for downstream use.
@@ -25,16 +39,10 @@ export async function requireAuth(
   }
 
   const token = authHeader.slice(7);
-  const supabaseUrl = process.env['SUPABASE_URL']!;
-  const supabaseAnonKey = process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']!;
 
-  // Validate the JWT using the anon client
-  const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false },
-  });
-
-  const { data: { user }, error } = await anonClient.auth.getUser(token);
+  // Validate the JWT using the singleton anon client; getUser(token) passes the
+  // JWT as a parameter rather than a header, so the client can be safely shared.
+  const { data: { user }, error } = await getAnonClient().auth.getUser(token);
 
   if (error || !user) {
     await reply.status(401).send({ success: false, error: 'Invalid token' });
@@ -57,7 +65,7 @@ export async function requireAuth(
     return;
   }
 
-  // Fallback: platform_users get admin access to the first available tenant
+  // Fallback: platform_users get admin access to the earliest tenant
   const { data: platformUser } = await db
     .from('platform_users')
     .select('user_id')
@@ -68,6 +76,7 @@ export async function requireAuth(
     const { data: tenant } = await db
       .from('tenants')
       .select('id')
+      .order('created_at', { ascending: true })
       .limit(1)
       .single();
 

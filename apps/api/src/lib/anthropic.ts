@@ -48,6 +48,9 @@ export async function chatCompletion(params: {
       } : {}),
       messages:   params.messages,
     }),
+    // Abort if Anthropic hasn't responded within 25 s — keeps us inside the 30 s
+    // conversation lock window so the next webhook retry can acquire the lock cleanly.
+    signal: AbortSignal.timeout(25_000),
   });
 
   if (!res.ok) {

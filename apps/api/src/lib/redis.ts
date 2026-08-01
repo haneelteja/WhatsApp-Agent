@@ -6,18 +6,23 @@
  * with ioredis under `module: NodeNext` TypeScript resolution.
  */
 
+interface IRedisPipeline {
+  del(key: string): unknown;
+  incrby(key: string, increment: number): unknown;
+  expireat(key: string, unixTimestamp: number): unknown;
+  exec(): Promise<Array<[Error | null, unknown]> | null>;
+}
+
 interface IRedis {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ex: 'EX', seconds: number): Promise<'OK' | null>;
   del(...keys: string[]): Promise<number>;
   incrby(key: string, increment: number): Promise<number>;
+  expireat(key: string, unixTimestamp: number): Promise<number>;
   ping(): Promise<string>;
   on(event: string, listener: (...args: unknown[]) => void): IRedis;
   scanStream(options: { match: string; count: number }): NodeJS.EventEmitter;
-  pipeline(): {
-    del(key: string): unknown;
-    exec(): Promise<Array<[Error | null, unknown]> | null>;
-  };
+  pipeline(): IRedisPipeline;
 }
 
 let _redis: IRedis | null = null;

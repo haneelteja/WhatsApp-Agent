@@ -71,6 +71,7 @@ export async function routedChatCompletion(params: {
         method: 'POST',
         headers,
         body: JSON.stringify({ model, messages: openaiMessages, max_tokens }),
+        signal: AbortSignal.timeout(25_000),
       });
 
       if (!res.ok) {
@@ -118,6 +119,7 @@ export async function routedChatCompletion(params: {
           contents,
           generationConfig: { maxOutputTokens: max_tokens },
         }),
+        signal: AbortSignal.timeout(25_000),
       });
 
       if (!res.ok) {

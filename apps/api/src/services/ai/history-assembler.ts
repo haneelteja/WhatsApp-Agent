@@ -60,18 +60,37 @@ export function assembleHistory(messages: Message[]): AssembledHistory {
 }
 
 /**
+ * Collapse consecutive same-role messages into a single message so that
+ * the archive block can safely iterate in pairs with i += 2.
+ * Without this, a missing assistant reply (e.g. after an AI error) shifts all
+ * subsequent pairs, placing user content in the assistant slot and vice versa.
+ * Uses object spread so original message objects are never mutated.
+ */
+function toAlternating(messages: Message[]): Message[] {
+  return messages.reduce<Message[]>((acc, msg) => {
+    if (acc.length === 0 || acc[acc.length - 1]!.role !== msg.role) {
+      acc.push({ ...msg });
+    } else {
+      acc[acc.length - 1]!.content += '\n' + msg.content;
+    }
+    return acc;
+  }, []);
+}
+
+/**
  * Build a compact archive summary from older messages.
  * Extracts substantive pairs (questions + answers) and formats as a brief block.
  * No API call — pure heuristic, zero cost.
  */
 function buildArchiveBlock(messages: Message[]): string {
+  const normalised = toAlternating(messages);
   const pairs: string[] = [];
   let totalChars = 0;
 
-  // Walk pairs: user[i] + assistant[i+1]
-  for (let i = 0; i < messages.length - 1; i += 2) {
-    const user      = messages[i];
-    const assistant = messages[i + 1];
+  // Walk pairs: user[i] + assistant[i+1] — safe because toAlternating() guarantees alternation
+  for (let i = 0; i < normalised.length - 1; i += 2) {
+    const user      = normalised[i];
+    const assistant = normalised[i + 1];
 
     // Skip if roles don't match the expected pair shape
     if (!user || !assistant) continue;

@@ -11,6 +11,7 @@ import { assembleHistory } from '../../services/ai/history-assembler.js';
 import { fireForget } from '../../lib/fire-forget.js';
 import { getBotContext } from '../../services/bot-context.js';
 import { formatContactMemory } from '../../services/contact/memory.js';
+import { cacheGet, cacheSet } from '../../lib/redis.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -55,26 +56,71 @@ async function applyDeliveryStatusUpdates(
   db: ReturnType<typeof import('@alphabot/database').getServerClient>,
   updates: import('@alphabot/shared').DeliveryStatusUpdate[],
 ): Promise<void> {
-  for (const update of updates) {
-    if (!update.messageId) continue;
+  const validUpdates = updates.filter(u => !!u.messageId);
+  if (!validUpdates.length) return;
 
-    const { data: msg } = await db
-      .from('messages')
-      .select('id, delivery_status')
-      .eq('whatsapp_msg_id', update.messageId)
-      .maybeSingle();
+  // One SELECT for all message IDs in this batch (Meta often sends several receipts together)
+  const { data: msgs } = await db
+    .from('messages')
+    .select('id, whatsapp_msg_id, delivery_status')
+    .in('whatsapp_msg_id', validUpdates.map(u => u.messageId!));
 
+  if (!msgs?.length) return;
+
+  type MsgRow = { id: string; whatsapp_msg_id: string | null; delivery_status: string | null };
+  const msgMap = new Map((msgs as MsgRow[]).map(m => [m.whatsapp_msg_id ?? '', m]));
+
+  // Group qualifying updates by target status so we can batch-update per bucket
+  const updateGroups = new Map<string, string[]>(); // status → [msg.id]
+
+  for (const update of validUpdates) {
+    const msg = msgMap.get(update.messageId!);
     if (!msg) continue; // Not a message we sent
 
-    const currentRank = STATUS_RANK[(msg as { delivery_status: string | null }).delivery_status ?? ''] ?? 0;
+    const currentRank = STATUS_RANK[msg.delivery_status ?? ''] ?? 0;
     const newRank     = update.status === 'failed' ? 999 : (STATUS_RANK[update.status] ?? 0);
 
     if (newRank > currentRank) {
-      await db.from('messages')
-        .update({ delivery_status: update.status })
-        .eq('id', (msg as { id: string }).id);
+      const group = updateGroups.get(update.status) ?? [];
+      group.push(msg.id);
+      updateGroups.set(update.status, group);
     }
   }
+
+  // At most 4 UPDATE statements (one per status bucket: sent/delivered/read/failed)
+  for (const [status, ids] of updateGroups) {
+    await db.from('messages').update({ delivery_status: status }).in('id', ids);
+  }
+}
+
+/**
+ * Return the number of conversations started this calendar month for a tenant.
+ * Cached in Redis for 60 s — a tenant cannot exceed their monthly limit within
+ * the same minute they were under it, so brief staleness is acceptable.
+ * Falls back to a direct DB count when Redis is unavailable.
+ */
+async function getMonthlyConvCount(
+  db: ReturnType<typeof getServerClient>,
+  tenantId: string,
+): Promise<number> {
+  const month      = new Date().toISOString().slice(0, 7); // "2026-07"
+  const cacheKey   = `conv_count:${tenantId}:${month}`;
+  const monthStart = new Date(
+    Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
+  ).toISOString();
+
+  const cached = await cacheGet<number>(cacheKey);
+  if (cached !== null) return cached;
+
+  const { count } = await db
+    .from('conversations')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .gte('created_at', monthStart);
+
+  const result = count ?? 0;
+  await cacheSet(cacheKey, result, 60);
+  return result;
 }
 
 /** Build a context suffix appended to escalation reason notes (stage + captured entities). */
@@ -169,13 +215,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const PLAN_LIMITS: Record<string, number> = { starter: 500, growth: 2000, scale: Infinity };
     const planLimit = PLAN_LIMITS[tenant?.plan ?? 'starter'] ?? 500;
     if (isFinite(planLimit)) {
-      const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-      const { count: convCount } = await db
-        .from('conversations')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .gte('created_at', monthStart);
-      if ((convCount ?? 0) >= planLimit) {
+      const convCount = await getMonthlyConvCount(db, tenantId);
+      if (convCount >= planLimit) {
         fastify.log.warn({ tenantId, convCount, planLimit }, '[Webhook] plan limit reached — silently dropping reply');
         return;
       }
@@ -794,10 +835,14 @@ To update state, append these markers at the VERY END of your response (they are
           sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
             type: 'text', to: incoming.from, text: replyText,
           });
-          void gateway.sendMessage(config.phone_number_id, config.access_token, {
-            type: 'media', to: incoming.from,
-            mediaType: 'image', mediaUrl: kbAttachment.public_url,
-          });
+          fireForget(
+            gateway.sendMessage(config.phone_number_id, config.access_token, {
+              type: 'media', to: incoming.from,
+              mediaType: 'image', mediaUrl: kbAttachment.public_url,
+            }),
+            'kb-image-followup',
+            fastify.log,
+          );
         }
       } else {
         // Document: send with caption (truncated to limit) + filename
@@ -811,9 +856,13 @@ To update state, append these markers at the VERY END of your response (they are
         });
         // If reply was truncated, send the remainder as a follow-up text
         if (replyText.length > CAPTION_MAX) {
-          void gateway.sendMessage(config.phone_number_id, config.access_token, {
-            type: 'text', to: incoming.from, text: replyText.slice(CAPTION_MAX - 1),
-          });
+          fireForget(
+            gateway.sendMessage(config.phone_number_id, config.access_token, {
+              type: 'text', to: incoming.from, text: replyText.slice(CAPTION_MAX - 1),
+            }),
+            'kb-document-followup-text',
+            fastify.log,
+          );
         }
       }
 

@@ -108,20 +108,24 @@ export async function lookupKBByCollections(
       });
 
       if (!error && semanticResults && (semanticResults as RAGResult[]).length > 0) {
-        return (semanticResults as RAGResult[]).map(r => ({
-          id: r.id,
-          question: r.question,
-          answer: r.answer,
-          category: r.category,
-          tenant_id: '',
-          product_type: 'support_bot' as ProductSlug,
-          collection_id: collectionIds[0] ?? null,
-          embedding: null,
-          status: 'live' as const,
-          version: 1,
-          created_at: '',
-          updated_at: '',
-        }));
+        return (semanticResults as RAGResult[]).map(r => {
+          // Cast to access collection_id returned by the RPC (not in the base RAGResult type)
+          const row = r as RAGResult & { collection_id?: string | null };
+          return {
+            id: r.id,
+            question: r.question,
+            answer: r.answer,
+            category: r.category,
+            tenant_id: '',
+            product_type: 'support_bot' as ProductSlug,
+            collection_id: row.collection_id ?? null,
+            embedding: null,
+            status: 'live' as const,
+            version: 1,
+            created_at: '',
+            updated_at: '',
+          };
+        });
       }
     } catch (err) {
       console.warn('[KB] Semantic search failed, falling back to keyword:', (err as Error).message);
@@ -140,18 +144,21 @@ export async function lookupKBByCollections(
     return [];
   }
 
-  return ((textResults ?? []) as RAGResult[]).map(r => ({
-    id: r.id,
-    question: r.question,
-    answer: r.answer,
-    category: r.category,
-    tenant_id: '',
-    product_type: 'support_bot' as ProductSlug,
-    collection_id: collectionIds[0] ?? null,
-    embedding: null,
-    status: 'live' as const,
-    version: 1,
-    created_at: '',
-    updated_at: '',
-  }));
+  return ((textResults ?? []) as RAGResult[]).map(r => {
+    const row = r as RAGResult & { collection_id?: string | null };
+    return {
+      id: r.id,
+      question: r.question,
+      answer: r.answer,
+      category: r.category,
+      tenant_id: '',
+      product_type: 'support_bot' as ProductSlug,
+      collection_id: row.collection_id ?? null,
+      embedding: null,
+      status: 'live' as const,
+      version: 1,
+      created_at: '',
+      updated_at: '',
+    };
+  });
 }
