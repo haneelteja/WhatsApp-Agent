@@ -89,13 +89,16 @@ export async function createPlanUpgradeOrderAction(targetPlan: string): Promise<
 }
 
 // ── Step 2: Verify payment + upgrade plan ─────────────────────────────────────
+// targetPlan is NOT accepted from the client — it is read from Razorpay's own
+// order notes (written server-side in Step 1) to prevent plan-escalation attacks.
 export async function verifyPlanUpgradePaymentAction(
   razorpayOrderId:   string,
   razorpayPaymentId: string,
   razorpaySignature: string,
-  targetPlan:        string,
-): Promise<{ success?: boolean; error?: string }> {
-  // Verify HMAC signature
+): Promise<{ success?: boolean; plan?: string; error?: string }> {
+  if (!RAZORPAY_KEY_SECRET) return { error: 'Razorpay not configured' };
+
+  // 1. Verify HMAC signature
   const expected = crypto
     .createHmac('sha256', RAZORPAY_KEY_SECRET)
     .update(`${razorpayOrderId}|${razorpayPaymentId}`)
@@ -105,6 +108,27 @@ export async function verifyPlanUpgradePaymentAction(
     return { error: 'Payment verification failed — invalid signature' };
   }
 
+  // 2. Re-fetch order from Razorpay to read server-set notes (never trust client)
+  const orderRes = await fetch(`https://api.razorpay.com/v1/orders/${razorpayOrderId}`, {
+    headers: { Authorization: basicAuth() },
+  });
+  if (!orderRes.ok) {
+    return { error: 'Could not verify order with Razorpay — please contact support' };
+  }
+  const orderData = await orderRes.json() as {
+    notes?: { tenant_id?: string; target_plan?: string };
+    status?: string;
+  };
+
+  const targetPlan  = orderData.notes?.target_plan;
+  const orderTenantId = orderData.notes?.tenant_id;
+
+  // 3. Validate the plan from the order notes
+  if (!targetPlan || !PLAN_PRICING[targetPlan]) {
+    return { error: 'Invalid plan in payment order' };
+  }
+
+  // 4. Auth check
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
 
@@ -119,17 +143,22 @@ export async function verifyPlanUpgradePaymentAction(
 
   if (!tenantUser) return { error: 'Tenant not found' };
 
+  // 5. Cross-check that the order was created for this tenant
+  if (orderTenantId && orderTenantId !== tenantUser.tenant_id) {
+    return { error: 'Order does not belong to your account' };
+  }
+
   const tenantId = tenantUser.tenant_id;
 
-  // Update tenant plan
+  // 6. Update tenant plan
   await admin.from('tenants').update({ plan: targetPlan, status: 'active' }).eq('id', tenantId);
 
-  // Update all subscriptions to the new tier
+  // 7. Update all existing subscriptions to the new tier
   await admin
     .from('subscriptions')
     .update({ tier: targetPlan })
     .eq('tenant_id', tenantId);
 
   revalidatePath('/billing');
-  return { success: true };
+  return { success: true, plan: targetPlan };
 }

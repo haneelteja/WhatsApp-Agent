@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Script from 'next/script';
-import { Check, Zap, Star } from 'lucide-react';
+import { Check, Zap, Star, CheckCircle } from 'lucide-react';
 import { createPlanUpgradeOrderAction, verifyPlanUpgradePaymentAction } from '@/app/actions/billing-checkout';
 import { useRouter } from 'next/navigation';
 
@@ -13,32 +13,30 @@ declare global {
 }
 
 interface RazorpayOptions {
-  key:          string;
-  amount:       number;
-  currency:     string;
-  name:         string;
-  description:  string;
-  order_id:     string;
-  handler:      (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => void;
-  prefill?:     { name?: string; email?: string };
-  theme?:       { color: string };
-  modal?:       { ondismiss?: () => void };
+  key:         string;
+  amount:      number;
+  currency:    string;
+  name:        string;
+  description: string;
+  order_id:    string;
+  handler:     (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => void;
+  prefill?:    { name?: string; email?: string };
+  theme?:      { color: string };
+  modal?:      { ondismiss?: () => void };
 }
 
 const PLANS = [
   {
-    key: 'growth',
-    name: 'Growth',
-    price: '₹2,499',
-    period: '/month',
-    color: 'text-violet-700',
-    bg: 'bg-violet-50',
-    border: 'border-violet-200',
-    badgeBg: 'bg-violet-100',
-    badgeText: 'text-violet-700',
-    buttonBg: 'bg-violet-600 hover:bg-violet-700',
-    icon: <Star size={16} className="text-violet-500" />,
-    features: [
+    key:       'growth',
+    name:      'Growth',
+    price:     '₹2,499',
+    period:    '/month',
+    color:     'text-violet-700',
+    bg:        'bg-violet-50',
+    border:    'border-violet-200',
+    buttonBg:  'bg-violet-600 hover:bg-violet-700',
+    icon:      <Star size={16} className="text-violet-500" />,
+    features:  [
       '2 active bots',
       '2,000 conversations / month',
       'Advanced guardrails',
@@ -50,18 +48,16 @@ const PLANS = [
     ],
   },
   {
-    key: 'scale',
-    name: 'Scale',
-    price: '₹4,999',
-    period: '/month',
-    color: 'text-emerald-700',
-    bg: 'bg-emerald-50',
-    border: 'border-emerald-200',
-    badgeBg: 'bg-emerald-100',
-    badgeText: 'text-emerald-700',
-    buttonBg: 'bg-emerald-600 hover:bg-emerald-700',
-    icon: <Zap size={16} className="text-emerald-500" />,
-    features: [
+    key:       'scale',
+    name:      'Scale',
+    price:     '₹4,999',
+    period:    '/month',
+    color:     'text-emerald-700',
+    bg:        'bg-emerald-50',
+    border:    'border-emerald-200',
+    buttonBg:  'bg-emerald-600 hover:bg-emerald-700',
+    icon:      <Zap size={16} className="text-emerald-500" />,
+    features:  [
       'All 3 bots',
       'Unlimited conversations',
       'Full guardrails suite',
@@ -74,6 +70,8 @@ const PLANS = [
   },
 ];
 
+const PLAN_ORDER = ['starter', 'growth', 'scale'];
+
 interface Props {
   currentPlan: string;
   userEmail:   string;
@@ -81,71 +79,72 @@ interface Props {
 }
 
 export default function UpgradePlanSection({ currentPlan, userEmail, userName }: Props) {
-  const router  = useRouter();
+  const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [error,   setError]   = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const PLAN_ORDER = ['starter', 'growth', 'scale'];
-  const currentIdx = PLAN_ORDER.indexOf(currentPlan);
+  const currentIdx   = PLAN_ORDER.indexOf(currentPlan);
+  const upgradePlans = PLANS.filter(p => PLAN_ORDER.indexOf(p.key) > currentIdx);
+
+  if (upgradePlans.length === 0) return null;
 
   async function handleUpgrade(planKey: string) {
     setError(null);
+    setSuccess(null);
     setLoading(planKey);
 
     try {
       const order = await createPlanUpgradeOrderAction(planKey);
       if (order.error || !order.orderId) {
-        setError(order.error ?? 'Failed to create order');
+        setError(order.error ?? 'Failed to initiate upgrade. Please try again.');
         setLoading(null);
         return;
       }
-
-      const options: RazorpayOptions = {
-        key:         order.keyId!,
-        amount:      order.amount!,
-        currency:    order.currency!,
-        name:        'Alphabot',
-        description: `Upgrade to ${planKey.charAt(0).toUpperCase() + planKey.slice(1)} plan`,
-        order_id:    order.orderId,
-        prefill: {
-          name:  userName,
-          email: userEmail,
-        },
-        theme: { color: '#059669' },
-        modal: {
-          ondismiss: () => setLoading(null),
-        },
-        handler: async (response) => {
-          const result = await verifyPlanUpgradePaymentAction(
-            response.razorpay_order_id,
-            response.razorpay_payment_id,
-            response.razorpay_signature,
-            planKey,
-          );
-          setLoading(null);
-          if (result.error) {
-            setError(result.error);
-          } else {
-            router.refresh();
-          }
-        },
-      };
 
       if (!window.Razorpay) {
         setError('Payment not ready — please refresh the page and try again.');
         setLoading(null);
         return;
       }
-      const rzp = new window.Razorpay(options);
+
+      const rzp = new window.Razorpay({
+        key:         order.keyId!,
+        amount:      order.amount!,
+        currency:    order.currency!,
+        name:        'Alphabot',
+        description: `Upgrade to ${planKey.charAt(0).toUpperCase() + planKey.slice(1)} plan`,
+        order_id:    order.orderId,
+        prefill:     { name: userName, email: userEmail },
+        theme:       { color: '#059669' },
+        modal: {
+          ondismiss: () => setLoading(null),
+        },
+        handler: async (response) => {
+          // targetPlan is NOT sent here — the server reads it from Razorpay order notes
+          const result = await verifyPlanUpgradePaymentAction(
+            response.razorpay_order_id,
+            response.razorpay_payment_id,
+            response.razorpay_signature,
+          );
+          if (result.error) {
+            setError(result.error);
+            setLoading(null);
+          } else {
+            const planName = planKey.charAt(0).toUpperCase() + planKey.slice(1);
+            setSuccess(`You're now on the ${planName} plan! Refreshing…`);
+            setLoading(null);
+            setTimeout(() => router.refresh(), 1500);
+          }
+        },
+      });
+
       rzp.open();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
+      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
       setLoading(null);
     }
   }
-
-  const upgradePlans = PLANS.filter(p => PLAN_ORDER.indexOf(p.key) > currentIdx);
-  if (upgradePlans.length === 0) return null;
 
   return (
     <>
@@ -160,6 +159,13 @@ export default function UpgradePlanSection({ currentPlan, userEmail, userName }:
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700 flex items-center gap-2">
+            <CheckCircle size={15} className="shrink-0" />
+            {success}
           </div>
         )}
 
@@ -185,7 +191,7 @@ export default function UpgradePlanSection({ currentPlan, userEmail, userName }:
 
               <button
                 onClick={() => handleUpgrade(plan.key)}
-                disabled={!!loading}
+                disabled={!!loading || !!success}
                 className={`w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors ${plan.buttonBg} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {loading === plan.key ? 'Processing…' : `Upgrade to ${plan.name}`}
