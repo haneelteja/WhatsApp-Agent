@@ -14,3 +14,19 @@ coverage/
 .claude/
 
 .vercel
+
+# TypeScript incremental build cache — regenerated on each build, never commit
+*.tsbuildinfo
+
+# Non-code assets and generated documents — store outside the repo
+*.docx
+*.pdf
+*.xlsx
+*.mp4
+*.pptx
+generate_brd.py
+generate_brd_docx.py
+MASTER_PROMPT.md
+Content/
+docs/generate_user_guide.py
+amicorp-live.jsx

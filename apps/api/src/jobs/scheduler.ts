@@ -10,9 +10,8 @@ const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 async function pingSupabase(): Promise<void> {
   try {
     await getServerClient().from('tenants').select('id').limit(1);
-    console.log('[KeepAlive] Supabase OK');
-  } catch {
-    console.warn('[KeepAlive] Supabase ping failed');
+  } catch (err) {
+    console.error('[KeepAlive] Supabase ping failed:', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -118,7 +117,6 @@ async function processFollowUps(): Promise<void> {
           newSends.push({ conversation_id: conv.id });
           updatedConvIds.push(conv.id);
 
-          console.log(`[FollowUp] Sent to conversation ${conv.id} (${contact.phone})`);
         } catch (convErr) {
           console.error(`[FollowUp] Failed for conversation ${conv.id}:`, convErr);
         }
@@ -145,7 +143,6 @@ export function startScheduler(): void {
 
   // Daily report — 08:00 UTC every day
   cron.schedule('0 8 * * *', () => {
-    console.log('[Scheduler] Running daily report');
     void runDailyReports().catch(err =>
       console.error('[Scheduler] Daily report failed:', (err as Error).message)
     );
@@ -153,7 +150,6 @@ export function startScheduler(): void {
 
   // Follow-up messages — every hour
   cron.schedule('0 * * * *', () => {
-    console.log('[Scheduler] Running follow-up check');
     void processFollowUps().catch(err =>
       console.error('[Scheduler] Follow-up failed:', (err as Error).message)
     );
@@ -165,6 +161,4 @@ export function startScheduler(): void {
       console.error('[Scheduler] Campaign voice dispatch failed:', (err as Error).message)
     );
   });
-
-  console.log('[Scheduler] Daily report (08:00 UTC), follow-up (hourly), and campaign voice dispatch (every 15 min) scheduled');
 }

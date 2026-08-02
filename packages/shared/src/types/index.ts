@@ -29,8 +29,6 @@ export type PlatformRole = 'manager' | 'admin';
 /** Roles for client-side users (tenant_users table) */
 export type ClientRole = 'client_manager' | 'client_admin' | 'agent';
 
-/** @deprecated Use ClientRole. Kept for backward compat during migration. */
-export type UserRole = ClientRole;
 
 export type NotificationEventType =
   | 'trial_expiring_7d'
