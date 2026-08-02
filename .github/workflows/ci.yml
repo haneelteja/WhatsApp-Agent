@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  check:
+    name: Type-check & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      # Strict install — fails immediately if package-lock.json is out of sync
+      # with any package.json in the monorepo, preventing the exact class of
+      # Render build failures we had (missing vitest lock entries).
+      - name: Install dependencies (strict)
+        run: npm ci
+
+      - name: Type-check all packages
+        run: npm run type-check
+
+      - name: Run tests
+        run: npm test
