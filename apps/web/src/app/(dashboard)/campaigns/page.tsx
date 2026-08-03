@@ -1,8 +1,7 @@
-export const dynamic = 'force-dynamic';
-
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
+import type { LucideIcon } from 'lucide-react';
 import {
   Megaphone, MessageSquare, Phone, Users, CheckCircle2,
   Clock, PlayCircle, PauseCircle, Ban, PhoneCall,
@@ -41,7 +40,7 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: 'bg-red-50 text-red-700 border-red-200',
 };
 
-const STATUS_ICONS: Record<string, React.ElementType> = {
+const STATUS_ICONS: Record<string, LucideIcon> = {
   draft:     Clock,
   scheduled: Clock,
   running:   PlayCircle,
@@ -56,7 +55,7 @@ const CHANNEL_STYLES: Record<string, string> = {
   both:     'bg-violet-50 text-violet-700 border-violet-200',
 };
 
-const CHANNEL_ICONS: Record<string, React.ElementType> = {
+const CHANNEL_ICONS: Record<string, LucideIcon> = {
   whatsapp: MessageSquare,
   voice:    Phone,
   both:     PhoneCall,
