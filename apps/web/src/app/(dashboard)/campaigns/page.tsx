@@ -5,13 +5,18 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export default async function CampaignsPage() {
   try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     const admin = getSupabaseAdminClient();
-    const { data, error } = await admin.from('campaigns').select('id').limit(1);
+    const { data: tenantUser } = await admin
+      .from('tenant_users').select('tenant_id').eq('user_id', user?.id ?? '').single();
+
     return (
       <div style={{ padding: 40 }}>
-        <p>Admin query OK ✓</p>
-        <p>Rows: {JSON.stringify(data)}</p>
-        <p>Error: {JSON.stringify(error)}</p>
+        <p>Auth OK ✓</p>
+        <p>User: {user?.email ?? 'null'}</p>
+        <p>Auth error: {JSON.stringify(authError)}</p>
+        <p>Tenant ID: {tenantUser?.tenant_id ?? 'null'}</p>
       </div>
     );
   } catch (err) {
