@@ -72,6 +72,8 @@ function completionPct(camp: CampaignRow): number {
   return Math.min(100, Math.round((done / (total * (camp.channel === 'both' ? 2 : 1))) * 100));
 }
 
+export const dynamic = 'force-dynamic';
+
 export default async function CampaignsPage() {
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
@@ -84,7 +86,7 @@ export default async function CampaignsPage() {
   const tenantId = tenantUser?.tenant_id ?? '';
 
   const [
-    { data: campaigns, count: totalCampaigns },
+    { data: campaigns, count: totalCampaigns, error: campError },
     { count: runningCount },
     { count: completedCount },
   ] = await Promise.all([
@@ -98,6 +100,18 @@ export default async function CampaignsPage() {
     admin.from('campaigns').select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId).eq('status', 'completed'),
   ]);
+
+  if (campError) {
+    return (
+      <div className="p-6 lg:p-8 max-w-3xl mx-auto">
+        <h2 className="text-xl font-bold text-red-600 mb-2">Campaigns — DB Error</h2>
+        <pre className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 whitespace-pre-wrap">
+          {JSON.stringify(campError, null, 2)}
+        </pre>
+        <p className="mt-3 text-xs text-slate-400">Supabase URL: {process.env['NEXT_PUBLIC_SUPABASE_URL']}</p>
+      </div>
+    );
+  }
 
   const campaignList = (campaigns ?? []) as CampaignRow[];
 
