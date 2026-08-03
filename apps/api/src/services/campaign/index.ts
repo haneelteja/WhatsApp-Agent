@@ -42,6 +42,8 @@ export async function createCampaign(
     .insert({
       tenant_id:        tenantId,
       name:             req.name,
+      trigger_type:     'manual',
+      template_id:      req.name,   // legacy NOT NULL column — use name as placeholder
       channel:          req.channel,
       product_slug:     req.product_slug,
       status:           req.schedule_at ? 'scheduled' : 'draft',
