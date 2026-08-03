@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { Phone, Mic, Speaker } from 'lucide-react';
 import { VoiceProviderCard, type VoiceProviderRow } from '@/components/platform/VoiceProviderCard';
