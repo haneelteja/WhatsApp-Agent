@@ -1,9 +1,8 @@
 // Voice call manager — dispatch outbound calls and track their lifecycle.
 
 import { getServerClient } from '@alphabot/database';
-import { getBotContext } from '../bot-context.js';
 import { resolveVoiceProviders } from './registry.js';
-import type { BotConfig, BotVoiceConfig, DispatchCallRequest, DispatchCallResponse, ProductSlug } from '@alphabot/shared';
+import type { BotVoiceConfig, DispatchCallRequest, DispatchCallResponse } from '@alphabot/shared';
 
 const API_BASE = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
 
@@ -16,10 +15,16 @@ const API_BASE = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onr
 export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCallResponse> {
   const db = getServerClient();
 
-  // Load bot context to get voice_config
-  const botCtx    = await getBotContext(req.tenant_id, req.product_slug as ProductSlug, 'meta_cloud');
-  const botConfig = botCtx.bot_config as (BotConfig & { voice_config?: BotVoiceConfig }) | null;
-  const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
+  // Query voice_config directly — getBotContext requires a WhatsApp number which
+  // voice-only campaigns don't have, so we go straight to bot_configs.
+  const { data: botCfgRow } = await db
+    .from('bot_configs')
+    .select('voice_config')
+    .eq('tenant_id', req.tenant_id)
+    .eq('product_slug', req.product_slug)
+    .single();
+
+  const voiceCfg = (botCfgRow?.voice_config ?? {}) as BotVoiceConfig;
 
   if (!voiceCfg.enabled) {
     throw new Error(`Voice is not enabled for ${req.product_slug}. Enable it in Guardrails → Per-Bot Config → Voice.`);
