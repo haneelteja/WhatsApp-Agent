@@ -137,6 +137,11 @@ async function processCampaignContacts(campaign: CampaignV2, tenantId: string): 
   };
 
   try {
+    // Own the status transition — launchCampaign also sets this, but there can be
+    // a read-after-write lag between that update and the first check below.
+    await db.from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
+    log('set status=running');
+
     let offset = 0;
     const PAGE  = 50;
 
