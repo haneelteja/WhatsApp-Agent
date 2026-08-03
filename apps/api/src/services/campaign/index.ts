@@ -59,13 +59,17 @@ export async function createCampaign(
   if (error || !campaign) throw new Error(`Failed to create campaign: ${error?.message}`);
   const campaignId = (campaign as { id: string }).id;
 
-  // Insert contacts
+  // Insert contacts — pre-mark irrelevant channel as 'skipped' so the
+  // contact processor query (which filters by the active channel's status)
+  // actually finds them.
   const contactRows = req.contacts.map(c => ({
-    campaign_id:  campaignId,
-    tenant_id:    tenantId,
-    phone_number: c.phone_number,
-    customer_name: c.customer_name ?? null,
-    extra_data:   c,
+    campaign_id:     campaignId,
+    tenant_id:       tenantId,
+    phone_number:    c.phone_number,
+    customer_name:   c.customer_name ?? null,
+    extra_data:      c,
+    whatsapp_status: req.channel === 'voice'     ? 'skipped' : 'pending',
+    voice_status:    req.channel === 'whatsapp'  ? 'skipped' : 'pending',
   }));
 
   await db.from('campaign_contacts').insert(contactRows);
