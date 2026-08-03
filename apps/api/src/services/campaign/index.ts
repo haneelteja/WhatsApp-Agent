@@ -72,7 +72,8 @@ export async function createCampaign(
     voice_status:    req.channel === 'whatsapp'  ? 'skipped' : 'pending',
   }));
 
-  await db.from('campaign_contacts').insert(contactRows);
+  const { error: contactsErr } = await db.from('campaign_contacts').insert(contactRows);
+  if (contactsErr) throw new Error(`Failed to insert contacts: ${contactsErr.message}`);
 
   return campaignId;
 }
