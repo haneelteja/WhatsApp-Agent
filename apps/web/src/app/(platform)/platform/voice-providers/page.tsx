@@ -28,11 +28,23 @@ const SECTION_META: Record<string, { label: string; description: string; icon: R
 export default async function VoiceProvidersPage() {
   const admin = getSupabaseAdminClient();
 
-  const { data: rows } = await admin
+  const { data: rows, error: dbError } = await admin
     .from('voice_provider_configs')
     .select('id, component, provider_name, display_name, credentials_json, config_json, is_default, enabled, estimated_cost_per_min_inr')
     .order('component')
     .order('is_default', { ascending: false });
+
+  if (dbError) {
+    return (
+      <div className="p-6 lg:p-8 max-w-3xl mx-auto">
+        <h2 className="text-xl font-bold text-red-600 mb-2">Voice Providers — DB Error</h2>
+        <pre className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 whitespace-pre-wrap">
+          {JSON.stringify(dbError, null, 2)}
+        </pre>
+        <p className="mt-3 text-xs text-slate-400">Supabase URL: {process.env['NEXT_PUBLIC_SUPABASE_URL']}</p>
+      </div>
+    );
+  }
 
   const providers = (rows ?? []) as VoiceProviderRow[];
 
