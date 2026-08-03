@@ -2,21 +2,37 @@ export const dynamic = 'force-dynamic';
 
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { redirect } from 'next/navigation';
 
 export default async function CampaignsPage() {
   try {
     const supabase = await getSupabaseServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) redirect('/login');
+
     const admin = getSupabaseAdminClient();
     const { data: tenantUser } = await admin
-      .from('tenant_users').select('tenant_id').eq('user_id', user?.id ?? '').single();
+      .from('tenant_users').select('tenant_id').eq('user_id', user.id).single();
+    const tenantId = tenantUser?.tenant_id ?? '';
+
+    const [
+      { data: campaigns, count: totalCampaigns, error: campError },
+      { count: runningCount },
+      { count: completedCount },
+    ] = await Promise.all([
+      admin.from('campaigns').select('*', { count: 'exact' }).eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(50),
+      admin.from('campaigns').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'running'),
+      admin.from('campaigns').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'completed'),
+    ]);
 
     return (
       <div style={{ padding: 40 }}>
-        <p>Auth OK ✓</p>
-        <p>User: {user?.email ?? 'null'}</p>
-        <p>Auth error: {JSON.stringify(authError)}</p>
-        <p>Tenant ID: {tenantUser?.tenant_id ?? 'null'}</p>
+        <p>Queries OK ✓</p>
+        <p>Total: {totalCampaigns ?? 0}</p>
+        <p>Running: {runningCount ?? 0}</p>
+        <p>Completed: {completedCount ?? 0}</p>
+        <p>DB error: {JSON.stringify(campError)}</p>
+        <p>Rows: {JSON.stringify(campaigns?.slice(0, 2))}</p>
       </div>
     );
   } catch (err) {
