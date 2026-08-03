@@ -122,41 +122,77 @@ const CONCURRENT_LIMIT = 3;  // max concurrent sends to avoid rate limits
 
 async function processCampaignContacts(campaign: CampaignV2, tenantId: string): Promise<void> {
   const db = getServerClient();
+  const debugLog: string[] = [];
+  const log = (msg: string) => {
+    const entry = `[${new Date().toISOString()}] ${msg}`;
+    debugLog.push(entry);
+    console.log(`[Campaign:${campaign.id}] ${msg}`);
+  };
 
-  // Paginate contacts to avoid loading all in memory
-  let offset = 0;
-  const PAGE  = 50;
+  log(`started — channel=${campaign.channel}, retry_config=${JSON.stringify(campaign.retry_config)}`);
 
-  while (true) {
-    // Check if campaign is still running
-    const { data: statusCheck } = await db
-      .from('campaigns').select('status').eq('id', campaign.id).single();
-    if ((statusCheck as { status: string } | null)?.status !== 'running') break;
+  const retryConfig = (campaign.retry_config as CampaignRetryConfig | null) ?? {
+    auto_retry: true, retry_limit: 2, retry_after_hours: 4, voice_after_wa_hours: 2,
+  };
 
-    const { data: contacts } = await db
-      .from('campaign_contacts')
-      .select('*')
-      .eq('campaign_id', campaign.id)
-      .eq('whatsapp_status', campaign.channel === 'voice' ? 'skipped' : 'pending')
-      .eq('voice_status', campaign.channel === 'whatsapp' ? 'skipped' : 'pending')
-      .lt('attempts', (campaign.retry_config as CampaignRetryConfig).retry_limit + 1)
-      .range(offset, offset + PAGE - 1);
+  try {
+    let offset = 0;
+    const PAGE  = 50;
 
-    if (!contacts || contacts.length === 0) break;
+    while (true) {
+      const { data: statusCheck } = await db
+        .from('campaigns').select('status').eq('id', campaign.id).single();
+      const currentStatus = (statusCheck as { status: string } | null)?.status;
+      log(`status check: ${currentStatus}`);
+      if (currentStatus !== 'running') break;
 
-    // Process in batches of CONCURRENT_LIMIT
-    for (let i = 0; i < contacts.length; i += CONCURRENT_LIMIT) {
-      const batch = (contacts as CampaignContact[]).slice(i, i + CONCURRENT_LIMIT);
-      await Promise.allSettled(batch.map(c => processOneContact(campaign, c, tenantId)));
-      // Small delay between batches to avoid overwhelming providers
-      await new Promise(r => setTimeout(r, 500));
+      const waFilter    = campaign.channel === 'voice'    ? 'skipped' : 'pending';
+      const voiceFilter = campaign.channel === 'whatsapp' ? 'skipped' : 'pending';
+      log(`querying contacts — whatsapp_status=${waFilter}, voice_status=${voiceFilter}, attempts<${retryConfig.retry_limit + 1}`);
+
+      const { data: contacts, error: qErr } = await db
+        .from('campaign_contacts')
+        .select('*')
+        .eq('campaign_id', campaign.id)
+        .eq('whatsapp_status', waFilter)
+        .eq('voice_status', voiceFilter)
+        .lt('attempts', retryConfig.retry_limit + 1)
+        .range(offset, offset + PAGE - 1);
+
+      if (qErr) log(`query error: ${qErr.message}`);
+      log(`contacts found: ${contacts?.length ?? 0}`);
+
+      if (!contacts || contacts.length === 0) {
+        // Fetch actual contact statuses to diagnose mismatch
+        const { data: allC } = await db
+          .from('campaign_contacts')
+          .select('phone_number, whatsapp_status, voice_status, attempts')
+          .eq('campaign_id', campaign.id);
+        log(`all contacts dump: ${JSON.stringify(allC)}`);
+        break;
+      }
+
+      for (let i = 0; i < contacts.length; i += CONCURRENT_LIMIT) {
+        const batch = (contacts as CampaignContact[]).slice(i, i + CONCURRENT_LIMIT);
+        await Promise.allSettled(batch.map(c => processOneContact(campaign, c, tenantId)));
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      offset += PAGE;
     }
 
-    offset += PAGE;
-  }
+    log('loop finished — marking completed');
+    await db.from('campaigns')
+      .update({ status: 'completed', stats: { debug_log: debugLog } })
+      .eq('id', campaign.id);
 
-  // Mark campaign completed if all contacts done
-  await db.from('campaigns').update({ status: 'completed' }).eq('id', campaign.id);
+  } catch (err) {
+    const msg = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
+    log(`FATAL: ${msg}`);
+    await db.from('campaigns')
+      .update({ stats: { debug_log: debugLog } })
+      .eq('id', campaign.id);
+  }
 }
 
 async function processOneContact(
@@ -182,9 +218,14 @@ async function processOneContact(
       // Voice dispatch is handled by a scheduled job (checks wa_sent + time elapsed)
     }
   } catch (err) {
-    console.error(`[Campaign] Contact ${contact.phone_number} failed:`, err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Campaign] Contact ${contact.phone_number} failed:`, msg);
     await db.from('campaign_contacts')
-      .update({ whatsapp_status: 'failed', voice_status: 'failed' })
+      .update({
+        whatsapp_status: 'failed',
+        voice_status:    'failed',
+        outcome_json:    { error: msg },
+      })
       .eq('id', contact.id);
   }
 
