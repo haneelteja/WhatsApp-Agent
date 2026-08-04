@@ -12,6 +12,7 @@ import { InviteUserForm } from '@/components/platform/InviteUserForm';
 import { ContactEmailEditor } from '@/components/platform/ContactEmailEditor';
 import { WhatsAppNumberSection } from '@/components/platform/WhatsAppNumberSection';
 import { BillingManager } from '@/components/platform/BillingManager';
+import { TenantVoiceConfigCard, type TenantVoiceConfigRow } from '@/components/platform/TenantVoiceConfigCard';
 import { CreditCard } from 'lucide-react';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
@@ -50,6 +51,7 @@ export default async function ClientDetailPage({
     { data: llmConfigRows },
     { data: waNumbers },
     { data: subscriptions },
+    { data: tenantVoiceConfigRow },
   ] = await Promise.all([
     supabase.from('tenants').select('*').eq('id', tenantId).single(),
     supabase.from('tenant_products').select('product_type, active, tier').eq('tenant_id', tenantId),
@@ -62,6 +64,7 @@ export default async function ClientDetailPage({
     supabase.from('llm_configs').select('id, product_slug, provider, api_key, model, base_url, validation_status, validation_error, validated_at, credit_info, created_at').eq('tenant_id', tenantId),
     supabase.from('whatsapp_numbers').select('id, phone_number, provider, label, config_json, product_slug').eq('tenant_id', tenantId).eq('active', true),
     supabase.from('subscriptions').select('product_type, tier, billing_cycle, next_billing_date').eq('tenant_id', tenantId),
+    supabase.from('tenant_voice_configs').select('from_number, max_calls_per_month, max_minutes_per_month, max_calls_per_day, max_cost_inr_per_month, calls_this_month, minutes_this_month, cost_inr_this_month, calls_today').eq('tenant_id', tenantId).maybeSingle(),
   ]);
 
   // Fetch auth user details for team members
@@ -160,6 +163,27 @@ export default async function ClientDetailPage({
             tenantId={tenantId}
             activeBots={tpRows.filter(p => p.active)}
             waNumbers={(waNumbers ?? []) as { id: string; phone_number: string; provider: string; label: string | null; config_json: Record<string, string>; product_slug: string | null }[]}
+          />
+        </div>
+      </div>
+
+      {/* Voice Config */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+          <Phone size={15} className="text-violet-500" />
+          <h3 className="text-sm font-semibold text-slate-800">Voice Configuration</h3>
+          <span className="ml-auto text-[11px] px-2 py-0.5 bg-violet-50 text-violet-600 rounded-full font-medium border border-violet-100">
+            Per-client
+          </span>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-xs text-slate-400 mb-5">
+            Configure this client&apos;s outbound caller ID and monthly/daily call limits. The caller ID
+            overrides the platform-level number so each client has their own Exotel number.
+          </p>
+          <TenantVoiceConfigCard
+            tenantId={tenantId}
+            initial={tenantVoiceConfigRow as TenantVoiceConfigRow | null}
           />
         </div>
       </div>

@@ -118,8 +118,14 @@ function buildTts(row: DbProviderRow): TtsProvider {
  * Resolve the set of voice providers for a single call, taking into account:
  *  1. bot voice_config overrides (per-bot preference)
  *  2. platform defaults (from voice_provider_configs table)
+ *
+ * tenantFromNumber: client's own caller ID (from tenant_voice_configs.from_number).
+ * Falls back to the platform-level from_number in voice_provider_configs.config_json.
  */
-export async function resolveVoiceProviders(voiceConfig: BotVoiceConfig): Promise<ResolvedVoiceProviders> {
+export async function resolveVoiceProviders(
+  voiceConfig:      BotVoiceConfig,
+  tenantFromNumber?: string,
+): Promise<ResolvedVoiceProviders> {
   const rows = await loadProviderRows();
 
   const telephonyRow = findRow(rows, 'telephony', voiceConfig.telephony_provider);
@@ -135,8 +141,9 @@ export async function resolveVoiceProviders(voiceConfig: BotVoiceConfig): Promis
   const stt        = buildStt(sttRow);
   const tts        = buildTts(ttsRow);
 
-  // fromNumber: from telephony config_json
-  const fromNumber = (telephonyRow.config_json as Record<string, string>)['from_number'] ?? '';
+  // Prefer the client's own number; fall back to platform config_json.from_number
+  const platformFromNumber = (telephonyRow.config_json as Record<string, string>)['from_number'] ?? '';
+  const fromNumber = tenantFromNumber?.trim() || platformFromNumber;
 
   return { telephony, stt, tts, fromNumber };
 }

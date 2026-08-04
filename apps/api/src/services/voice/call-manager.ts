@@ -6,17 +6,114 @@ import type { BotVoiceConfig, DispatchCallRequest, DispatchCallResponse } from '
 
 const API_BASE = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
 
+// ─── Tenant voice config types ────────────────────────────────────────────────
+
+interface TenantVoiceConfig {
+  tenant_id:              string;
+  from_number:            string;
+  max_calls_per_month:    number | null;
+  max_minutes_per_month:  number | null;
+  max_calls_per_day:      number | null;
+  max_cost_inr_per_month: number | null;
+  calls_this_month:       number;
+  minutes_this_month:     number;
+  cost_inr_this_month:    number;
+  calls_today:            number;
+  monthly_reset_at:       string;  // YYYY-MM-DD
+  daily_reset_at:         string;  // YYYY-MM-DD
+}
+
+// ─── Limit enforcement ────────────────────────────────────────────────────────
+
+/**
+ * Load the tenant's voice config row, auto-create it if absent, and reset
+ * rolling counters when calendar month / day has turned over.
+ */
+async function loadTenantVoiceConfig(tenantId: string): Promise<TenantVoiceConfig> {
+  const db = getServerClient();
+
+  let { data } = await db
+    .from('tenant_voice_configs')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .single();
+
+  if (!data) {
+    // First voice call for this tenant — create the row with unlimited defaults
+    const { data: created } = await db
+      .from('tenant_voice_configs')
+      .insert({ tenant_id: tenantId })
+      .select('*')
+      .single();
+    data = created;
+  }
+
+  if (!data) throw new Error('Failed to load tenant voice config');
+
+  const cfg = data as TenantVoiceConfig;
+  const today      = new Date().toISOString().slice(0, 10);          // YYYY-MM-DD
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+  const updates: Record<string, unknown> = {};
+
+  if (cfg.monthly_reset_at < monthStartStr) {
+    updates.calls_this_month    = 0;
+    updates.minutes_this_month  = 0;
+    updates.cost_inr_this_month = 0;
+    updates.monthly_reset_at    = monthStartStr;
+  }
+
+  if (cfg.daily_reset_at < today) {
+    updates.calls_today    = 0;
+    updates.daily_reset_at = today;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await db.from('tenant_voice_configs').update(updates).eq('tenant_id', tenantId);
+    Object.assign(cfg, updates);
+  }
+
+  return cfg;
+}
+
+function enforceLimits(cfg: TenantVoiceConfig): void {
+  if (cfg.max_calls_per_month !== null && cfg.calls_this_month >= cfg.max_calls_per_month) {
+    throw new Error(
+      `Monthly call limit reached (${cfg.max_calls_per_month} calls). Contact your platform administrator to increase the limit.`,
+    );
+  }
+  if (cfg.max_calls_per_day !== null && cfg.calls_today >= cfg.max_calls_per_day) {
+    throw new Error(
+      `Daily call limit reached (${cfg.max_calls_per_day} calls). The limit resets at midnight.`,
+    );
+  }
+  if (cfg.max_minutes_per_month !== null && cfg.minutes_this_month >= cfg.max_minutes_per_month) {
+    throw new Error(
+      `Monthly minute limit reached (${cfg.max_minutes_per_month} mins). Contact your platform administrator to increase the limit.`,
+    );
+  }
+  if (cfg.max_cost_inr_per_month !== null && cfg.cost_inr_this_month >= cfg.max_cost_inr_per_month) {
+    throw new Error(
+      `Monthly cost budget reached (₹${cfg.max_cost_inr_per_month}). Contact your platform administrator to increase the limit.`,
+    );
+  }
+}
+
+// ─── Dispatch ─────────────────────────────────────────────────────────────────
+
 /**
  * Dispatch an outbound voice call.
- * 1. Creates a voice_calls record (status=initiated)
- * 2. Calls the telephony provider
- * 3. Updates the record with the telephony call SID
+ * 1. Loads tenant voice config — enforces monthly/daily limits.
+ * 2. Creates a voice_calls record (status=initiated).
+ * 3. Calls the telephony provider using the tenant's from_number.
+ * 4. Increments the tenant's usage counters.
  */
 export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCallResponse> {
   const db = getServerClient();
 
-  // Query voice_config directly — getBotContext requires a WhatsApp number which
-  // voice-only campaigns don't have, so we go straight to bot_configs.
+  // Load bot voice_config
   const { data: botCfgRow } = await db
     .from('bot_configs')
     .select('voice_config')
@@ -30,6 +127,10 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
     throw new Error(`Voice is not enabled for ${req.product_slug}. Enable it in Guardrails → Per-Bot Config → Voice.`);
   }
 
+  // Load tenant voice config and enforce limits before creating any DB records
+  const tenantVoiceCfg = await loadTenantVoiceConfig(req.tenant_id);
+  enforceLimits(tenantVoiceCfg);
+
   // Create voice_calls record first to get an ID
   const { data: callRow, error: insertErr } = await db
     .from('voice_calls')
@@ -39,7 +140,7 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
       contact_id:         req.contact_id        ?? null,
       campaign_id:        req.campaign_id       ?? null,
       direction:          'outbound',
-      from_number:        '',   // filled after provider resolution
+      from_number:        tenantVoiceCfg.from_number || '',
       to_number:          req.to_number,
       product_slug:       req.product_slug,
       telephony_provider: voiceCfg.telephony_provider ?? 'twilio',
@@ -57,24 +158,21 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
 
   const voiceCallId = (callRow as { id: string }).id;
 
-  // Build callback URLs (Twilio will POST to these)
+  // Build callback URLs
   const twimlUrl       = `${API_BASE}/api/voice/twiml/${voiceCallId}`;
   const respondUrl     = `${API_BASE}/api/voice/respond/${voiceCallId}`;
   const statusCallback = `${API_BASE}/api/voice/status/${voiceCallId}`;
 
-  // Store the respond URL in the call record so the pipeline can reference it
   await db.from('voice_calls').update({ recording_url: respondUrl }).eq('id', voiceCallId);
 
   try {
-    // Resolve providers and dispatch
-    const providers = await resolveVoiceProviders(voiceCfg);
+    // Resolve providers — pass tenant's from_number; falls back to platform config
+    const providers = await resolveVoiceProviders(voiceCfg, tenantVoiceCfg.from_number);
 
-    // Update from_number now that we have it
     await db.from('voice_calls')
       .update({ from_number: providers.fromNumber })
       .eq('id', voiceCallId);
 
-    // Encode call_context in the TwiML URL as query params
     const twimlWithContext = req.call_context
       ? `${twimlUrl}?${new URLSearchParams(req.call_context).toString()}`
       : twimlUrl;
@@ -86,10 +184,17 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
       statusCallback,
     });
 
-    // Update with telephony SID + ringing status
     await db.from('voice_calls')
       .update({ telephony_call_sid: result.callSid, status: result.status })
       .eq('id', voiceCallId);
+
+    // Increment call counters (fire-and-forget — don't block the response)
+    void db.from('tenant_voice_configs')
+      .update({
+        calls_this_month: tenantVoiceCfg.calls_this_month + 1,
+        calls_today:      tenantVoiceCfg.calls_today + 1,
+      })
+      .eq('tenant_id', req.tenant_id);
 
     return { voice_call_id: voiceCallId, telephony_call_sid: result.callSid, status: result.status };
   } catch (err) {
@@ -100,6 +205,8 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
     throw err;
   }
 }
+
+// ─── Post-call lifecycle ──────────────────────────────────────────────────────
 
 /**
  * Mark a voice call as completed and run post-call processing.
@@ -124,21 +231,17 @@ export async function finaliseCall(
   const status = statusMap[finalStatus] ?? 'completed';
 
   await db.from('voice_calls')
-    .update({
-      status,
-      duration_seconds:  durationSeconds,
-      telephony_call_sid: callSid,
-    })
+    .update({ status, duration_seconds: durationSeconds, telephony_call_sid: callSid })
     .eq('id', voiceCallId);
 
   if (status === 'completed' && durationSeconds) {
-    // Run post-call extraction (non-blocking)
-    void runPostCallProcessing(voiceCallId);
+    void runPostCallProcessing(voiceCallId, durationSeconds);
   }
 }
 
-async function runPostCallProcessing(voiceCallId: string): Promise<void> {
+async function runPostCallProcessing(voiceCallId: string, durationSeconds: number): Promise<void> {
   const db = getServerClient();
+
   const { data } = await db
     .from('voice_calls')
     .select('transcript, telephony_provider, stt_provider, duration_seconds, conversation_id, tenant_id')
@@ -146,21 +249,21 @@ async function runPostCallProcessing(voiceCallId: string): Promise<void> {
     .single();
 
   if (!data) return;
+
   const call = data as {
-    transcript: string | null;
+    transcript:         string | null;
     telephony_provider: string;
-    stt_provider: string;
-    duration_seconds: number | null;
-    conversation_id: string | null;
-    tenant_id: string;
+    stt_provider:       string;
+    duration_seconds:   number | null;
+    conversation_id:    string | null;
+    tenant_id:          string;
   };
 
-  // 1. Extract structured outcome
+  // 1. Extract structured outcome from transcript
   if (call.transcript) {
     const { extractCallOutcome } = await import('./extraction.js');
     const outcome = await extractCallOutcome(voiceCallId, call.transcript);
 
-    // 2. If escalation needed and linked to a WhatsApp conversation, update it
     if (outcome?.escalation_needed && call.conversation_id) {
       await db.from('conversations').update({
         ai_vars: { voice_outcome: outcome.summary, voice_follow_up: outcome.follow_up_action },
@@ -168,9 +271,33 @@ async function runPostCallProcessing(voiceCallId: string): Promise<void> {
     }
   }
 
-  // 3. Log cost
-  if (call.duration_seconds) {
-    const { logCallCost } = await import('./extraction.js');
-    await logCallCost(voiceCallId, call.duration_seconds, call.telephony_provider, call.stt_provider);
+  // 2. Log cost to voice_calls
+  const { logCallCost } = await import('./extraction.js');
+  await logCallCost(voiceCallId, durationSeconds, call.telephony_provider, call.stt_provider);
+
+  // 3. Update tenant's rolling usage (minutes + cost)
+  const { data: updatedCall } = await db
+    .from('voice_calls')
+    .select('cost_rupees')
+    .eq('id', voiceCallId)
+    .single();
+
+  const costRupees = (updatedCall as { cost_rupees: number | null } | null)?.cost_rupees ?? 0;
+  const minutesBilled = durationSeconds / 60;
+
+  const { data: tvc } = await db
+    .from('tenant_voice_configs')
+    .select('minutes_this_month, cost_inr_this_month')
+    .eq('tenant_id', call.tenant_id)
+    .single();
+
+  if (tvc) {
+    const prev = tvc as { minutes_this_month: number; cost_inr_this_month: number };
+    await db.from('tenant_voice_configs')
+      .update({
+        minutes_this_month:  prev.minutes_this_month  + minutesBilled,
+        cost_inr_this_month: prev.cost_inr_this_month + costRupees,
+      })
+      .eq('tenant_id', call.tenant_id);
   }
 }
