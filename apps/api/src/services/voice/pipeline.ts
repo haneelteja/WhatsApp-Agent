@@ -128,8 +128,8 @@ export async function buildGreetingTwiml(ctx: PipelineContext, callContext?: Rec
   const voiceCfg   = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
 
   const greeting =
-    voiceCfg.greeting_message ??
     callContext?.['greeting_override'] ??
+    voiceCfg.greeting_message ??
     'Hello! I am your support assistant. How can I help you today?';
 
   const ttsResult = await ctx.tts.synthesise({
@@ -314,6 +314,6 @@ export async function appendTranscript(voiceCallId: string, line: string): Promi
 
   await db
     .from('voice_calls')
-    .update({ transcript: newText, turn_count: turnCount, status: 'in_progress' })
+    .update({ transcript: newText, turn_count: turnCount })
     .eq('id', voiceCallId);
 }

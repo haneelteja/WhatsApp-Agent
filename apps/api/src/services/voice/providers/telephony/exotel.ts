@@ -25,12 +25,13 @@ export function createExotelProvider(config: ExotelConfig): TelephonyProvider {
     name: 'exotel',
 
     async dispatch({ to, from, twimlUrl, statusCallback }): Promise<OutboundCallResult> {
+      const callerNumber = from || config.from_number;
       const body = new URLSearchParams({
-        From:           from || config.from_number,
+        From:           callerNumber,
         To:             to,
         Url:            twimlUrl,      // ExoML URL (Exotel supports TwiML-compatible XML)
         StatusCallback: statusCallback,
-        CallerId:       config.from_number,
+        CallerId:       callerNumber,
         // Exotel-specific: link to your ExoPhone app for routing
         ...(config.app_id ? { AppId: config.app_id } : {}),
       });

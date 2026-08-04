@@ -36,7 +36,8 @@ export async function extractCallOutcome(
       messages:   [{ role: 'user', content: `TRANSCRIPT:\n${transcript.slice(0, 4000)}` }],
     });
 
-    const json = JSON.parse(content.trim()) as VoiceCallOutcome;
+    const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const json = JSON.parse(raw) as VoiceCallOutcome;
 
     // Persist to DB
     const db = getServerClient();

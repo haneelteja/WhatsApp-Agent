@@ -43,9 +43,15 @@ async function loadTenantVoiceConfig(tenantId: string): Promise<TenantVoiceConfi
 
   if (!data) {
     // First voice call for this tenant — create the row with unlimited defaults
+    const today = new Date().toISOString().slice(0, 10);
+    const monthStart = new Date(); monthStart.setDate(1);
     const { data: created } = await db
       .from('tenant_voice_configs')
-      .insert({ tenant_id: tenantId })
+      .insert({
+        tenant_id:        tenantId,
+        monthly_reset_at: monthStart.toISOString().slice(0, 10),
+        daily_reset_at:   today,
+      })
       .select('*')
       .single();
     data = created;
@@ -61,14 +67,14 @@ async function loadTenantVoiceConfig(tenantId: string): Promise<TenantVoiceConfi
 
   const updates: Record<string, unknown> = {};
 
-  if (cfg.monthly_reset_at < monthStartStr) {
+  if (!cfg.monthly_reset_at || cfg.monthly_reset_at < monthStartStr) {
     updates.calls_this_month    = 0;
     updates.minutes_this_month  = 0;
     updates.cost_inr_this_month = 0;
     updates.monthly_reset_at    = monthStartStr;
   }
 
-  if (cfg.daily_reset_at < today) {
+  if (!cfg.daily_reset_at || cfg.daily_reset_at < today) {
     updates.calls_today    = 0;
     updates.daily_reset_at = today;
   }
@@ -193,8 +199,6 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
   const twimlUrl       = `${API_BASE}/api/voice/twiml/${voiceCallId}`;
   const respondUrl     = `${API_BASE}/api/voice/respond/${voiceCallId}`;
   const statusCallback = `${API_BASE}/api/voice/status/${voiceCallId}`;
-
-  await db.from('voice_calls').update({ recording_url: respondUrl }).eq('id', voiceCallId);
 
   try {
     // Resolve providers — Exotel uses tenant creds; Twilio uses platform creds
