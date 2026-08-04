@@ -49,6 +49,25 @@ export interface BotVoiceConfig {
   auto_dispatch_on_escalation:    boolean;
   /** Seconds to wait after escalation before calling (0 = immediate) */
   escalation_voice_delay_seconds: number;
+
+  // ── Call Trigger Configuration ─────────────────────────────────────────────
+  /** Trigger a call when the customer uses "call me" or configured keywords */
+  trigger_on_call_request:        boolean;
+  call_request_keywords:          string[];   // e.g. ["call me", "phone call", "speak to someone"]
+  /** Trigger a call when the customer's message sentiment crosses the threshold */
+  trigger_on_negative_sentiment:  boolean;
+  negative_sentiment_threshold:   'negative' | 'frustrated';
+  /** Trigger a call when the customer goes silent for N hours after bot's reply */
+  trigger_on_no_reply:            boolean;
+  no_reply_after_hours:           number;
+  /** Gate all triggers to configured business hours */
+  business_hours_only:            boolean;
+  business_hours_start:           string;    // "09:00" (HH:mm in business_hours_timezone)
+  business_hours_end:             string;    // "18:00"
+  business_hours_timezone:        string;    // IANA tz e.g. "Asia/Kolkata"
+  business_hours_days:            number[];  // 0=Sun 1=Mon … 6=Sat; default [1,2,3,4,5]
+  /** Delay (seconds) between trigger firing and the call being placed */
+  call_delay_seconds:             number;
 }
 
 // ─── Voice Call Log ───────────────────────────────────────────────────────────

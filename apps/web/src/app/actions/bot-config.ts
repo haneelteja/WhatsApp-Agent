@@ -60,19 +60,26 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
     custom_blocked_message: input.customBlockedMessage || undefined,
   };
 
+  // Load existing voice_config to preserve fields we don't manage here (triggers, provider settings)
+  const { data: existingBotCfg } = await admin
+    .from('bot_configs')
+    .select('voice_config')
+    .eq('tenant_id', tenantUser.tenant_id)
+    .eq('product_slug', input.productSlug)
+    .single();
+
+  const existingVoiceCfg = (existingBotCfg?.voice_config ?? {}) as Record<string, unknown>;
+
   const voice_config = {
+    ...existingVoiceCfg,
     enabled:                        input.voiceEnabled,
-    telephony_provider:             null,
-    stt_provider:                   null,
-    tts_provider:                   null,
     language:                       input.voiceLanguage,
-    tts_voice:                      null,
     voicemail_enabled:              true,
     voicemail_message:              input.voiceVoicemail,
     greeting_message:               input.voiceGreeting.trim() || null,
-    max_call_duration_seconds:      300,
-    max_turns:                      20,
-    silence_timeout_seconds:        10,
+    max_call_duration_seconds:      existingVoiceCfg['max_call_duration_seconds'] ?? 300,
+    max_turns:                      existingVoiceCfg['max_turns'] ?? 20,
+    silence_timeout_seconds:        existingVoiceCfg['silence_timeout_seconds'] ?? 10,
     auto_dispatch_on_escalation:    input.autoDispatchOnEscalation,
     escalation_voice_delay_seconds: input.escalationVoiceDelaySeconds,
   };

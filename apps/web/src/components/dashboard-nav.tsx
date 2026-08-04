@@ -15,6 +15,7 @@ import {
   ShoppingCart,
   Phone,
   Megaphone,
+  Zap,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -27,6 +28,7 @@ const BASE_NAV = [
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
   // slot: Orders (lifecycle_bot only)
   { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
+  { href: '/call-triggers',  label: 'Call Triggers',  icon: Zap             },
   { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/billing',        label: 'Billing',        icon: CreditCard      },

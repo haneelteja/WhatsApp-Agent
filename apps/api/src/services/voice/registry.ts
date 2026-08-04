@@ -150,7 +150,7 @@ export async function resolveVoiceProviders(
   if (!ttsRow) throw new Error('No enabled TTS provider found. Configure one in Platform Console → Voice.');
 
   // Use tenant's own Exotel credentials if configured; else fall back to platform
-  const telephony = buildTelephony(telephonyRow, tenantExotelCreds);
+  const telephony = buildTelephony(telephonyRow, tenantExotelCreds as Record<string, string> | undefined);
   const stt        = buildStt(sttRow);
   const tts        = buildTts(ttsRow);
 

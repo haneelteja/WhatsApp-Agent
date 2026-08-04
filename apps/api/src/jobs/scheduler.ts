@@ -3,7 +3,7 @@ import { getServerClient } from '@alphabot/database';
 import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
 import { dispatchPendingVoiceCalls } from '../services/campaign/index.js';
-import type { WhatsAppProvider } from '@alphabot/shared';
+import type { BotVoiceConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
@@ -136,6 +136,106 @@ async function processFollowUps(): Promise<void> {
   }
 }
 
+function isWithinBusinessHours(cfg: BotVoiceConfig): boolean {
+  if (!cfg.business_hours_only) return true;
+  const tz = cfg.business_hours_timezone || 'Asia/Kolkata';
+  const tzDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+  const day = tzDate.getDay();
+  const minutes = tzDate.getHours() * 60 + tzDate.getMinutes();
+  const [sh = 9, sm = 0] = (cfg.business_hours_start ?? '09:00').split(':').map(Number);
+  const [eh = 18, em = 0] = (cfg.business_hours_end ?? '18:00').split(':').map(Number);
+  const days = (cfg.business_hours_days?.length ?? 0) > 0 ? cfg.business_hours_days : [1, 2, 3, 4, 5];
+  return days.includes(day) && minutes >= sh * 60 + sm && minutes < eh * 60 + em;
+}
+
+/**
+ * Fires voice calls for conversations where the customer went silent for N hours.
+ * Checks bot_configs for trigger_on_no_reply and only fires if:
+ * - Voice is enabled for the bot
+ * - No active/recent call already exists for the conversation
+ * - Within business hours (if configured)
+ */
+async function processNoReplyTriggers(): Promise<void> {
+  const db = getServerClient();
+
+  // Load all bot_configs that have no-reply trigger enabled
+  const { data: botCfgs } = await db
+    .from('bot_configs')
+    .select('tenant_id, product_slug, voice_config')
+    .not('voice_config', 'is', null);
+
+  if (!botCfgs?.length) return;
+
+  for (const row of botCfgs) {
+    const voiceCfg = row.voice_config as BotVoiceConfig;
+    if (!voiceCfg?.enabled || !voiceCfg?.trigger_on_no_reply) continue;
+    if (!isWithinBusinessHours(voiceCfg)) continue;
+
+    const hoursDelay = voiceCfg.no_reply_after_hours ?? 2;
+    const cutoff     = new Date(Date.now() - hoursDelay * 60 * 60 * 1000).toISOString();
+
+    // Find open conversations for this bot updated before the cutoff
+    const { data: conversations } = await db
+      .from('conversations')
+      .select('id, contact_id, updated_at')
+      .eq('tenant_id', row.tenant_id)
+      .eq('product_type', row.product_slug)
+      .eq('status', 'open')
+      .lt('updated_at', cutoff);
+
+    if (!conversations?.length) continue;
+
+    for (const conv of conversations) {
+      try {
+        // Check last message — only trigger if it was from the bot (customer hasn't replied)
+        const { data: lastMsg } = await db
+          .from('messages')
+          .select('role')
+          .eq('conversation_id', conv.id)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!lastMsg || (lastMsg as { role: string }).role !== 'assistant') continue;
+
+        // Skip if a no-reply voice call was already triggered for this conversation
+        const { count } = await db
+          .from('voice_calls')
+          .select('*', { count: 'exact', head: true })
+          .eq('conversation_id', conv.id)
+          .in('status', ['initiated', 'ringing', 'in_progress', 'completed']);
+
+        if ((count ?? 0) > 0) continue;
+
+        // Get contact phone
+        const { data: contact } = await db
+          .from('contacts')
+          .select('phone, name')
+          .eq('id', conv.contact_id)
+          .single();
+
+        if (!(contact as { phone: string | null } | null)?.phone) continue;
+
+        const { dispatchCall } = await import('../services/voice/call-manager.js');
+        await dispatchCall({
+          tenant_id:       row.tenant_id,
+          product_slug:    row.product_slug,
+          to_number:       (contact as { phone: string }).phone,
+          conversation_id: conv.id,
+          triggered_by:    'escalation',
+          call_context: {
+            customer_name:     (contact as { name: string | null }).name ?? '',
+            trigger_reason:    `Customer has not replied for ${hoursDelay} hours`,
+            greeting_override: `Hello${(contact as { name: string | null }).name ? ` ${(contact as { name: string | null }).name}` : ''}! I noticed we haven't heard back from you. I'm calling to check if you need any further assistance. How can I help?`,
+          },
+        });
+      } catch (err) {
+        console.error(`[NoReplyTrigger] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+}
+
 export function startScheduler(): void {
   // Keep Supabase alive (free tier pauses after 7 days inactivity)
   void pingSupabase();
@@ -159,6 +259,13 @@ export function startScheduler(): void {
   cron.schedule('*/15 * * * *', () => {
     void dispatchPendingVoiceCalls().catch(err =>
       console.error('[Scheduler] Campaign voice dispatch failed:', (err as Error).message)
+    );
+  });
+
+  // No-reply call triggers — check every 30 minutes
+  cron.schedule('*/30 * * * *', () => {
+    void processNoReplyTriggers().catch(err =>
+      console.error('[Scheduler] No-reply trigger failed:', (err as Error).message)
     );
   });
 }

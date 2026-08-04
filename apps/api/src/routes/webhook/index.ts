@@ -12,6 +12,7 @@ import { fireForget } from '../../lib/fire-forget.js';
 import { getBotContext } from '../../services/bot-context.js';
 import { formatContactMemory } from '../../services/contact/memory.js';
 import { cacheGet, cacheSet } from '../../lib/redis.js';
+import { detectSentimentText } from '../../services/sentiment/detector.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -130,6 +131,68 @@ function buildEscalationContext(stage: string, aiVars: Record<string, string>): 
   const pairs = Object.entries(aiVars);
   if (pairs.length > 0) parts.push(pairs.map(([k, v]) => `${k}=${v}`).join(', '));
   return parts.length > 0 ? ` [${parts.join(' | ')}]` : '';
+}
+
+// ─── Call Trigger Helpers ─────────────────────────────────────────────────────
+
+function isWithinBusinessHours(cfg: {
+  business_hours_only?: boolean;
+  business_hours_start?: string;
+  business_hours_end?: string;
+  business_hours_timezone?: string;
+  business_hours_days?: number[];
+}): boolean {
+  if (!cfg.business_hours_only) return true;
+  const tz = cfg.business_hours_timezone || 'Asia/Kolkata';
+  const tzDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+  const day = tzDate.getDay();
+  const minutes = tzDate.getHours() * 60 + tzDate.getMinutes();
+  const [sh = 9, sm = 0] = (cfg.business_hours_start ?? '09:00').split(':').map(Number);
+  const [eh = 18, em = 0] = (cfg.business_hours_end ?? '18:00').split(':').map(Number);
+  const days = (cfg.business_hours_days?.length ?? 0) > 0 ? cfg.business_hours_days! : [1, 2, 3, 4, 5];
+  return days.includes(day) && minutes >= sh * 60 + sm && minutes < eh * 60 + em;
+}
+
+async function dispatchCallTrigger(
+  tenantId: string,
+  productType: string,
+  conversationId: string,
+  contactPhone: string,
+  contactName: string | null,
+  triggerReason: string,
+  delaySeconds: number,
+  db: ReturnType<typeof import('@alphabot/database').getServerClient>,
+): Promise<void> {
+  try {
+    // Skip if there's already an active call for this conversation
+    const { count } = await db
+      .from('voice_calls')
+      .select('*', { count: 'exact', head: true })
+      .eq('conversation_id', conversationId)
+      .in('status', ['initiated', 'ringing', 'in_progress']);
+
+    if ((count ?? 0) > 0) return;
+
+    if (delaySeconds > 0) {
+      await new Promise(r => setTimeout(r, delaySeconds * 1000));
+    }
+
+    const { dispatchCall } = await import('../../services/voice/call-manager.js');
+    await dispatchCall({
+      tenant_id:       tenantId,
+      product_slug:    productType,
+      to_number:       contactPhone,
+      conversation_id: conversationId,
+      triggered_by:    'escalation',
+      call_context: {
+        customer_name:     contactName ?? '',
+        trigger_reason:    triggerReason,
+        greeting_override: `Hello${contactName ? ` ${contactName}` : ''}! I noticed you might need some help. I am calling to assist you. How can I help?`,
+      },
+    });
+  } catch (err) {
+    console.error('[CallTrigger] dispatch failed:', err instanceof Error ? err.message : String(err));
+  }
 }
 
 export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
@@ -891,6 +954,53 @@ To update state, append these markers at the VERY END of your response (they are
         'update-delivery-status-sent',
         fastify.log,
       );
+    }
+
+    // ── Check call triggers (keyword / sentiment) ─────────────────────────
+    // Runs after the WhatsApp reply is already sent — triggers a parallel voice call.
+    if (incoming.text && botConfig?.voice_config && conversation.status === 'open') {
+      const triggerCfg = botConfig.voice_config as import('@alphabot/shared').BotVoiceConfig;
+      const voiceEnabled = triggerCfg.enabled;
+
+      if (voiceEnabled && isWithinBusinessHours(triggerCfg)) {
+        const contactPhone = (contact as Contact).phone;
+        if (contactPhone) {
+          const delay = triggerCfg.call_delay_seconds ?? 0;
+          let triggerReason: string | null = null;
+
+          // Keyword trigger
+          if (triggerCfg.trigger_on_call_request) {
+            const keywords = triggerCfg.call_request_keywords?.length
+              ? triggerCfg.call_request_keywords
+              : ['call me', 'phone call', 'call back', 'call please', 'need a call'];
+            const lc = incoming.text.toLowerCase();
+            if (keywords.some(kw => lc.includes(kw.toLowerCase()))) {
+              triggerReason = 'Customer requested a call via WhatsApp';
+            }
+          }
+
+          // Sentiment trigger (only if keyword trigger didn't already fire)
+          if (!triggerReason && triggerCfg.trigger_on_negative_sentiment) {
+            const sentiment = await detectSentimentText(incoming.text);
+            const threshold = triggerCfg.negative_sentiment_threshold ?? 'frustrated';
+            const fires = threshold === 'negative'
+              ? ['negative', 'frustrated'].includes(sentiment)
+              : sentiment === 'frustrated';
+            if (fires) {
+              triggerReason = `Customer expressed ${sentiment} sentiment`;
+            }
+          }
+
+          if (triggerReason) {
+            const contactName = (contact as Contact).name ?? null;
+            fireForget(
+              dispatchCallTrigger(tenantId, productType, conversation.id, contactPhone, contactName, triggerReason, delay, db),
+              'call-trigger-dispatch',
+              fastify.log,
+            );
+          }
+        }
+      }
     }
 
     // ── Release optimistic lock ───────────────────────────────────────────
