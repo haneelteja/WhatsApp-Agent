@@ -134,6 +134,34 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
   const tenantVoiceCfg = await loadTenantVoiceConfig(req.tenant_id);
   enforceLimits(tenantVoiceCfg);
 
+  const telephonyProvider = voiceCfg.telephony_provider ?? 'twilio';
+
+  // For Exotel: tenant must have their own credentials — complete client isolation, no platform fallback.
+  // For Twilio: platform credentials are used (tenantExotelCreds stays undefined).
+  let tenantExotelCreds: TenantExotelCreds | undefined;
+  let tenantFromNumber: string | undefined;
+
+  if (telephonyProvider === 'exotel') {
+    if (!tenantVoiceCfg.exotel_api_key || !tenantVoiceCfg.exotel_api_token || !tenantVoiceCfg.exotel_account_sid) {
+      throw new Error(
+        'No Exotel account configured for this client. ' +
+        'Go to Settings → Voice to connect your Exotel account before launching voice calls.',
+      );
+    }
+    if (!tenantVoiceCfg.from_number) {
+      throw new Error(
+        'No outbound caller ID configured for this client. ' +
+        'Go to Settings → Voice to select your Exotel virtual number.',
+      );
+    }
+    tenantExotelCreds = {
+      api_key:     tenantVoiceCfg.exotel_api_key,
+      api_token:   tenantVoiceCfg.exotel_api_token,
+      account_sid: tenantVoiceCfg.exotel_account_sid,
+    };
+    tenantFromNumber = tenantVoiceCfg.from_number;
+  }
+
   // Create voice_calls record first to get an ID
   const { data: callRow, error: insertErr } = await db
     .from('voice_calls')
@@ -146,9 +174,9 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
       from_number:        tenantVoiceCfg.from_number || '',
       to_number:          req.to_number,
       product_slug:       req.product_slug,
-      telephony_provider: voiceCfg.telephony_provider ?? 'twilio',
-      stt_provider:       voiceCfg.stt_provider       ?? 'deepgram',
-      tts_provider:       voiceCfg.tts_provider       ?? 'twilio_say',
+      telephony_provider: telephonyProvider,
+      stt_provider:       voiceCfg.stt_provider  ?? 'deepgram',
+      tts_provider:       voiceCfg.tts_provider  ?? 'twilio_say',
       status:             'initiated',
       triggered_by:       req.triggered_by ?? 'manual',
     })
@@ -169,30 +197,8 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
   await db.from('voice_calls').update({ recording_url: respondUrl }).eq('id', voiceCallId);
 
   try {
-    // Tenant MUST have their own Exotel credentials — no fallback to platform account.
-    // Each client is fully isolated: their bot uses their credentials and their number only.
-    if (!tenantVoiceCfg.exotel_api_key || !tenantVoiceCfg.exotel_api_token || !tenantVoiceCfg.exotel_account_sid) {
-      throw new Error(
-        'No Exotel account configured for this client. ' +
-        'Go to Settings → Voice to connect your Exotel account before launching voice calls.',
-      );
-    }
-
-    if (!tenantVoiceCfg.from_number) {
-      throw new Error(
-        'No outbound caller ID configured for this client. ' +
-        'Go to Settings → Voice to select your Exotel virtual number.',
-      );
-    }
-
-    const tenantExotelCreds: TenantExotelCreds = {
-      api_key:     tenantVoiceCfg.exotel_api_key,
-      api_token:   tenantVoiceCfg.exotel_api_token,
-      account_sid: tenantVoiceCfg.exotel_account_sid,
-    };
-
-    // Resolve providers — tenant credentials are enforced; no platform fallback
-    const providers = await resolveVoiceProviders(voiceCfg, tenantVoiceCfg.from_number, tenantExotelCreds);
+    // Resolve providers — Exotel uses tenant creds; Twilio uses platform creds
+    const providers = await resolveVoiceProviders(voiceCfg, tenantFromNumber, tenantExotelCreds);
 
     await db.from('voice_calls')
       .update({ from_number: providers.fromNumber })
