@@ -220,23 +220,11 @@ export async function fetchExotelNumbersAction(
     accountSid = row?.exotel_account_sid ?? null;
   }
 
-  // Fall back to platform Exotel credentials if tenant has none
   if (!apiKey || !apiToken || !accountSid) {
-    const { data: platformRows } = await admin
-      .from('voice_provider_configs')
-      .select('credentials_json')
-      .eq('component', 'telephony')
-      .eq('provider_name', 'exotel')
-      .single();
-
-    const creds = (platformRows as { credentials_json: Record<string, string> } | null)?.credentials_json ?? {};
-    apiKey     = creds['api_key']     ?? null;
-    apiToken   = creds['api_token']   ?? null;
-    accountSid = creds['account_sid'] ?? null;
-  }
-
-  if (!apiKey || !apiToken || !accountSid) {
-    return { numbers: [], error: 'No Exotel credentials configured. Add your API key and token first.' };
+    return {
+      numbers: [],
+      error: 'No Exotel credentials configured for this account. Add your API key, token, and account SID first.',
+    };
   }
 
   try {

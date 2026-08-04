@@ -169,17 +169,29 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
   await db.from('voice_calls').update({ recording_url: respondUrl }).eq('id', voiceCallId);
 
   try {
-    // Use tenant's own Exotel credentials if configured — fully isolates them from platform account
-    const tenantExotelCreds: TenantExotelCreds | undefined =
-      (tenantVoiceCfg.exotel_api_key && tenantVoiceCfg.exotel_api_token && tenantVoiceCfg.exotel_account_sid)
-        ? {
-            api_key:     tenantVoiceCfg.exotel_api_key,
-            api_token:   tenantVoiceCfg.exotel_api_token,
-            account_sid: tenantVoiceCfg.exotel_account_sid,
-          }
-        : undefined;
+    // Tenant MUST have their own Exotel credentials — no fallback to platform account.
+    // Each client is fully isolated: their bot uses their credentials and their number only.
+    if (!tenantVoiceCfg.exotel_api_key || !tenantVoiceCfg.exotel_api_token || !tenantVoiceCfg.exotel_account_sid) {
+      throw new Error(
+        'No Exotel account configured for this client. ' +
+        'Go to Settings → Voice to connect your Exotel account before launching voice calls.',
+      );
+    }
 
-    // Resolve providers — tenant creds + from_number take precedence over platform config
+    if (!tenantVoiceCfg.from_number) {
+      throw new Error(
+        'No outbound caller ID configured for this client. ' +
+        'Go to Settings → Voice to select your Exotel virtual number.',
+      );
+    }
+
+    const tenantExotelCreds: TenantExotelCreds = {
+      api_key:     tenantVoiceCfg.exotel_api_key,
+      api_token:   tenantVoiceCfg.exotel_api_token,
+      account_sid: tenantVoiceCfg.exotel_account_sid,
+    };
+
+    // Resolve providers — tenant credentials are enforced; no platform fallback
     const providers = await resolveVoiceProviders(voiceCfg, tenantVoiceCfg.from_number, tenantExotelCreds);
 
     await db.from('voice_calls')
@@ -230,22 +242,29 @@ export async function finaliseCall(
   callSid:         string,
   finalStatus:     string,
   durationSeconds: number | null,
+  recordingUrl?:   string,
 ): Promise<void> {
   const db = getServerClient();
 
   const statusMap: Record<string, string> = {
-    'completed':   'completed',
-    'failed':      'failed',
-    'busy':        'busy',
-    'no-answer':   'no_answer',
-    'canceled':    'failed',
+    'completed': 'completed',
+    'failed':    'failed',
+    'busy':      'busy',
+    'no-answer': 'no_answer',
+    'canceled':  'failed',
   };
 
   const status = statusMap[finalStatus] ?? 'completed';
 
-  await db.from('voice_calls')
-    .update({ status, duration_seconds: durationSeconds, telephony_call_sid: callSid })
-    .eq('id', voiceCallId);
+  const updatePayload: Record<string, unknown> = {
+    status,
+    duration_seconds:   durationSeconds,
+    telephony_call_sid: callSid,
+  };
+  // Only overwrite recording_url if Exotel/Twilio actually sent one
+  if (recordingUrl) updatePayload.recording_url = recordingUrl;
+
+  await db.from('voice_calls').update(updatePayload).eq('id', voiceCallId);
 
   if (status === 'completed' && durationSeconds) {
     void runPostCallProcessing(voiceCallId, durationSeconds);

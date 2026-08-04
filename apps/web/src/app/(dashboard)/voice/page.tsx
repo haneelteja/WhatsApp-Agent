@@ -7,8 +7,8 @@ import { Phone, PhoneCall, PhoneOff, PhoneMissed, Clock, TrendingUp, IndianRupee
 import Link from 'next/link';
 
 type VoiceCallRow = {
-  id: string;
-  to_number: string;
+  id:          string;
+  to_number:   string;
   from_number: string;
   status: string;
   direction: string;
@@ -168,7 +168,8 @@ export default async function VoiceCallsPage() {
         ) : (
           <div className="divide-y divide-gray-50">
             {callList.map(call => (
-              <div key={call.id} className="px-5 py-4 hover:bg-gray-50/50 transition-colors">
+              <Link key={call.id} href={`/voice/${call.id}`}
+                className="block px-5 py-4 hover:bg-gray-50/50 transition-colors">
                 <div className="flex items-start gap-3">
                   {/* Status icon */}
                   <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -185,6 +186,9 @@ export default async function VoiceCallsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-gray-800">{call.to_number}</span>
+                      {call.from_number && (
+                        <span className="text-[11px] text-gray-400">from {call.from_number}</span>
+                      )}
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_STYLES[call.status] ?? 'bg-gray-50 text-gray-500'}`}>
                         {call.status.replace('_', ' ')}
                       </span>
@@ -215,8 +219,10 @@ export default async function VoiceCallsPage() {
                       <span className="ml-auto">{new Date(call.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   </div>
+
+                  <TrendingUp size={13} className="text-gray-200 mt-1.5 shrink-0" />
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

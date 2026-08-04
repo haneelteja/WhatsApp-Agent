@@ -165,7 +165,7 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // ─── POST /api/voice/status/:voiceCallId ──────────────────────────────────
-  // Twilio call status callback — updates call record when call ends.
+  // Twilio / Exotel call status callback — updates call record when call ends.
   fastify.post<{ Params: { voiceCallId: string }; Body: Record<string, string> }>(
     '/status/:voiceCallId',
     async (request, reply) => {
@@ -178,9 +178,11 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
       // Twilio: CallStatus + CallDuration  |  Exotel: Status + Duration
       const callStatus = body['CallStatus'] ?? body['Status']   ?? '';
       const duration   = parseInt(body['CallDuration'] ?? body['Duration'] ?? '0', 10) || null;
+      // Twilio: RecordingUrl  |  Exotel: RecordingUrl (same field name)
+      const recordingUrl = body['RecordingUrl'] ?? body['recording_url'] ?? null;
 
       if (callStatus && callStatus !== 'in-progress') {
-        void finaliseCall(voiceCallId, callSid, callStatus, duration);
+        void finaliseCall(voiceCallId, callSid, callStatus, duration, recordingUrl ?? undefined);
       }
     },
   );
