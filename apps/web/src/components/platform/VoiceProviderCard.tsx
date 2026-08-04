@@ -46,6 +46,7 @@ export interface VoiceProviderRow {
   config_json:      Record<string, string>;
   is_default:       boolean;
   enabled:          boolean;
+  has_credentials:  boolean;
   estimated_cost_per_min_inr: string | null;
 }
 
@@ -64,7 +65,7 @@ export function VoiceProviderCard({ provider }: { provider: VoiceProviderRow }) 
   const [pending, startTransition] = useTransition();
 
   const hasCredFields = Object.keys(provider.credentials_json).length > 0;
-  const credsFilled   = Object.values(provider.credentials_json).some(v => v && String(v).length > 0);
+  const [credsFilled, setCredsFilled] = useState(provider.has_credentials);
 
   function handleSave() {
     setError('');
@@ -80,6 +81,8 @@ export function VoiceProviderCard({ provider }: { provider: VoiceProviderRow }) 
         setError(result.error);
       } else {
         setSaved(true);
+        // Mark creds as filled if any were entered
+        if (Object.values(creds).some(v => v.trim())) setCredsFilled(true);
         // Clear password fields after save
         setCreds(Object.fromEntries(Object.keys(provider.credentials_json).map(k => [k, ''])));
         setTimeout(() => setSaved(false), 3000);

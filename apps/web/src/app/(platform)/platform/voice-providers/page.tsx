@@ -34,7 +34,17 @@ export default async function VoiceProvidersPage() {
     .order('component')
     .order('is_default', { ascending: false });
 
-  const providers = (rows ?? []) as VoiceProviderRow[];
+  // Strip credential values before sending to the browser — only keys are needed
+  // (so the card knows which fields to render). has_credentials flag tells the UI
+  // whether creds are already saved without exposing the actual values.
+  const rawRows = (rows ?? []) as (VoiceProviderRow & { credentials_json: Record<string, string> })[];
+  const providers = rawRows.map(p => ({
+    ...p,
+    has_credentials: Object.values(p.credentials_json ?? {}).some(v => v && v.length > 0),
+    credentials_json: Object.fromEntries(
+      Object.keys(p.credentials_json ?? {}).map(k => [k, '']),
+    ),
+  }));
 
   const byComponent: Record<string, VoiceProviderRow[]> = { telephony: [], stt: [], tts: [] };
   for (const p of providers) {
