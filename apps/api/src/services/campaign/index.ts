@@ -95,9 +95,7 @@ export async function launchCampaign(campaignId: string, tenantId: string): Prom
 
   if (camp.status === 'running') return;
 
-  const { error: launchErr } = await db
-    .from('campaigns').update({ status: 'running' }).eq('id', campaignId);
-  if (launchErr) console.error('[launchCampaign] status update error:', launchErr.message, launchErr.code);
+  await db.from('campaigns').update({ status: 'running' }).eq('id', campaignId);
 
   // Fire and forget — process contacts in background
   void processCampaignContacts(camp, tenantId);
@@ -125,85 +123,47 @@ const CONCURRENT_LIMIT = 3;  // max concurrent sends to avoid rate limits
 
 async function processCampaignContacts(campaign: CampaignV2, tenantId: string): Promise<void> {
   const db = getServerClient();
-  const debugLog: string[] = [];
-  const log = (msg: string) => {
-    const entry = `[${new Date().toISOString()}] ${msg}`;
-    debugLog.push(entry);
-    console.log(`[Campaign:${campaign.id}] ${msg}`);
-  };
-
-  log(`started — channel=${campaign.channel}, retry_config=${JSON.stringify(campaign.retry_config)}`);
 
   const retryConfig = (campaign.retry_config as CampaignRetryConfig | null) ?? {
     auto_retry: true, retry_limit: 2, retry_after_hours: 4, voice_after_wa_hours: 2,
   };
 
-  try {
-    // Own the status transition — launchCampaign also sets this, but there can be
-    // a read-after-write lag between that update and the first check below.
-    log(`updating status to running for campaign.id=${campaign.id}`);
-    const { error: runningErr } = await db
-      .from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
-    if (runningErr) log(`ERROR setting running: ${runningErr.message} code=${runningErr.code}`);
-    else log('set status=running ok');
+  // Own the running transition — launchCampaign also sets this, but there can be
+  // a read-after-write lag on the DB check below if we rely solely on that update.
+  await db.from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
 
-    let offset = 0;
-    const PAGE  = 50;
+  let offset = 0;
+  const PAGE  = 50;
 
-    while (true) {
-      const { data: statusCheck } = await db
-        .from('campaigns').select('status').eq('id', campaign.id).single();
-      const currentStatus = (statusCheck as { status: string } | null)?.status;
-      log(`status check: ${currentStatus}`);
-      if (currentStatus !== 'running') break;
+  while (true) {
+    const { data: statusCheck } = await db
+      .from('campaigns').select('status').eq('id', campaign.id).single();
+    if ((statusCheck as { status: string } | null)?.status !== 'running') break;
 
-      const waFilter    = campaign.channel === 'voice'    ? 'skipped' : 'pending';
-      const voiceFilter = campaign.channel === 'whatsapp' ? 'skipped' : 'pending';
-      log(`querying contacts — whatsapp_status=${waFilter}, voice_status=${voiceFilter}, attempts<${retryConfig.retry_limit + 1}`);
+    const waFilter    = campaign.channel === 'voice'    ? 'skipped' : 'pending';
+    const voiceFilter = campaign.channel === 'whatsapp' ? 'skipped' : 'pending';
 
-      const { data: contacts, error: qErr } = await db
-        .from('campaign_contacts')
-        .select('*')
-        .eq('campaign_id', campaign.id)
-        .eq('whatsapp_status', waFilter)
-        .eq('voice_status', voiceFilter)
-        .lt('attempts', retryConfig.retry_limit + 1)
-        .range(offset, offset + PAGE - 1);
+    const { data: contacts } = await db
+      .from('campaign_contacts')
+      .select('*')
+      .eq('campaign_id', campaign.id)
+      .eq('whatsapp_status', waFilter)
+      .eq('voice_status', voiceFilter)
+      .lt('attempts', retryConfig.retry_limit + 1)
+      .range(offset, offset + PAGE - 1);
 
-      if (qErr) log(`query error: ${qErr.message}`);
-      log(`contacts found: ${contacts?.length ?? 0}`);
+    if (!contacts || contacts.length === 0) break;
 
-      if (!contacts || contacts.length === 0) {
-        // Fetch actual contact statuses to diagnose mismatch
-        const { data: allC } = await db
-          .from('campaign_contacts')
-          .select('phone_number, whatsapp_status, voice_status, attempts')
-          .eq('campaign_id', campaign.id);
-        log(`all contacts dump: ${JSON.stringify(allC)}`);
-        break;
-      }
-
-      for (let i = 0; i < contacts.length; i += CONCURRENT_LIMIT) {
-        const batch = (contacts as CampaignContact[]).slice(i, i + CONCURRENT_LIMIT);
-        await Promise.allSettled(batch.map(c => processOneContact(campaign, c, tenantId)));
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      offset += PAGE;
+    for (let i = 0; i < contacts.length; i += CONCURRENT_LIMIT) {
+      const batch = (contacts as CampaignContact[]).slice(i, i + CONCURRENT_LIMIT);
+      await Promise.allSettled(batch.map(c => processOneContact(campaign, c, tenantId)));
+      await new Promise(r => setTimeout(r, 500));
     }
 
-    log('loop finished — marking completed');
-    await db.from('campaigns')
-      .update({ status: 'completed', stats: { debug_log: debugLog } })
-      .eq('id', campaign.id);
-
-  } catch (err) {
-    const msg = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
-    log(`FATAL: ${msg}`);
-    await db.from('campaigns')
-      .update({ stats: { debug_log: debugLog } })
-      .eq('id', campaign.id);
+    offset += PAGE;
   }
+
+  await db.from('campaigns').update({ status: 'completed' }).eq('id', campaign.id);
 }
 
 async function processOneContact(

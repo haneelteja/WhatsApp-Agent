@@ -27,14 +27,13 @@ const BASE_NAV = [
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
   // slot: Orders (lifecycle_bot only)
   { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
-  // slot: Campaigns (sales_bot only)
+  { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/billing',        label: 'Billing',        icon: CreditCard      },
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
 
-const ORDERS_ITEM    = { href: '/orders',    label: 'Orders',    icon: ShoppingCart };
-const CAMPAIGNS_ITEM = { href: '/campaigns', label: 'Campaigns', icon: Megaphone    };
+const ORDERS_ITEM = { href: '/orders', label: 'Orders', icon: ShoppingCart };
 
 export function DashboardNav({
   tenantName,
@@ -54,13 +53,8 @@ export function DashboardNav({
   // Build nav dynamically — insert gated items at their correct positions
   const navItems = (() => {
     const items = [...BASE_NAV];
-    // Orders goes after Guardrails (index 3)
+    // Orders goes after Guardrails (index 3), lifecycle_bot only
     if (hasLifecycleBot) items.splice(4, 0, ORDERS_ITEM);
-    // Campaigns goes after Voice Calls
-    if (hasSalesBot) {
-      const voiceIdx = items.findIndex(i => i.href === '/voice');
-      items.splice(voiceIdx + 1, 0, CAMPAIGNS_ITEM);
-    }
     return items;
   })();
 
