@@ -191,13 +191,10 @@ async function processOneContact(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Campaign] Contact ${contact.phone_number} failed:`, msg);
-    await db.from('campaign_contacts')
-      .update({
-        whatsapp_status: 'failed',
-        voice_status:    'failed',
-        outcome_json:    { error: msg },
-      })
-      .eq('id', contact.id);
+    const failUpdate: Record<string, unknown> = { outcome_json: { error: msg } };
+    if (campaign.channel !== 'voice')    failUpdate.whatsapp_status = 'failed';
+    if (campaign.channel !== 'whatsapp') failUpdate.voice_status    = 'failed';
+    await db.from('campaign_contacts').update(failUpdate).eq('id', contact.id);
   }
 
   // Update campaign stats

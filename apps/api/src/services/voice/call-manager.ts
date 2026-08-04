@@ -197,7 +197,6 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
 
   // Build callback URLs
   const twimlUrl       = `${API_BASE}/api/voice/twiml/${voiceCallId}`;
-  const respondUrl     = `${API_BASE}/api/voice/respond/${voiceCallId}`;
   const statusCallback = `${API_BASE}/api/voice/status/${voiceCallId}`;
 
   try {
@@ -275,6 +274,21 @@ export async function finaliseCall(
   if (recordingUrl) updatePayload.recording_url = recordingUrl;
 
   await db.from('voice_calls').update(updatePayload).eq('id', voiceCallId);
+
+  // Sync campaign_contacts.voice_status so campaign stats are accurate
+  const contactVoiceStatus: Record<string, string> = {
+    completed: 'answered',
+    failed:    'failed',
+    busy:      'failed',
+    no_answer: 'no_answer',
+    voicemail: 'voicemail',
+  };
+  const campaignContactStatus = contactVoiceStatus[status];
+  if (campaignContactStatus) {
+    void db.from('campaign_contacts')
+      .update({ voice_status: campaignContactStatus })
+      .eq('voice_call_id', voiceCallId);
+  }
 
   if (status === 'completed' && durationSeconds) {
     void runPostCallProcessing(voiceCallId, durationSeconds);

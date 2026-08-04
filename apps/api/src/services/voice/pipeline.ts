@@ -161,19 +161,25 @@ export async function processTurn(
   turnNumber:    number,
   conversationHistory: string,  // accumulated transcript text for context
 ): Promise<{ twiml: string; transcriptLine: string; shouldEnd: boolean }> {
-  // 1. Transcribe the recording
+  // 1. Load bot context first so we know the language before transcribing
+  const botCtx = await getBotContext(ctx.tenantId, ctx.productSlug, 'meta_cloud');
+  const botConfig = botCtx.bot_config as (BotConfig & { product: Product | null }) | null;
+  const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
+  const language  = voiceCfg.language ?? 'en-IN';
+
+  // 2. Transcribe the recording using the correct language
   const sttResult = await ctx.stt.transcribe({
     recordingUrl,
     recordingAuth,
-    language: 'en-IN',  // resolved later from voice config
+    language,
   });
 
   const customerText = sttResult.transcript.trim();
 
-  // Empty / silence — prompt to speak again
+  // Empty / silence — prompt to speak again (in the bot's configured language)
   if (!customerText || customerText.length < 2) {
     const silenceResponse = 'I did not catch that. Could you please repeat?';
-    const ttsResult = await ctx.tts.synthesise({ text: silenceResponse, language: 'en-IN' });
+    const ttsResult = await ctx.tts.synthesise({ text: silenceResponse, language });
     const sayPart = ttsResult.twimlSaySnippet ??
       `<Play>${buildBase64AudioUrl(ttsResult.audioBase64 ?? '', ttsResult.audioMimeType ?? 'audio/mpeg')}</Play>`;
     return {
@@ -182,12 +188,6 @@ export async function processTurn(
       shouldEnd:     false,
     };
   }
-
-  // 2. Load bot context (guardrails, KB config)
-  const botCtx = await getBotContext(ctx.tenantId, ctx.productSlug, 'meta_cloud');
-  const botConfig = botCtx.bot_config as (BotConfig & { product: Product | null }) | null;
-  const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
-  const language  = voiceCfg.language ?? 'en-IN';
 
   const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
     support_bot:   'You are a helpful customer support assistant. Answer questions accurately using the knowledge base.',
