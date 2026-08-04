@@ -64,7 +64,7 @@ export default async function ClientDetailPage({
     supabase.from('llm_configs').select('id, product_slug, provider, api_key, model, base_url, validation_status, validation_error, validated_at, credit_info, created_at').eq('tenant_id', tenantId),
     supabase.from('whatsapp_numbers').select('id, phone_number, provider, label, config_json, product_slug').eq('tenant_id', tenantId).eq('active', true),
     supabase.from('subscriptions').select('product_type, tier, billing_cycle, next_billing_date').eq('tenant_id', tenantId),
-    supabase.from('tenant_voice_configs').select('from_number, max_calls_per_month, max_minutes_per_month, max_calls_per_day, max_cost_inr_per_month, calls_this_month, minutes_this_month, cost_inr_this_month, calls_today').eq('tenant_id', tenantId).maybeSingle(),
+    supabase.from('tenant_voice_configs').select('from_number, exotel_api_key, exotel_api_token, exotel_account_sid, max_calls_per_month, max_minutes_per_month, max_calls_per_day, max_cost_inr_per_month, calls_this_month, minutes_this_month, cost_inr_this_month, calls_today').eq('tenant_id', tenantId).maybeSingle(),
   ]);
 
   // Fetch auth user details for team members

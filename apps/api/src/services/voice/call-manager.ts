@@ -1,7 +1,7 @@
 // Voice call manager — dispatch outbound calls and track their lifecycle.
 
 import { getServerClient } from '@alphabot/database';
-import { resolveVoiceProviders } from './registry.js';
+import { resolveVoiceProviders, type TenantExotelCreds } from './registry.js';
 import type { BotVoiceConfig, DispatchCallRequest, DispatchCallResponse } from '@alphabot/shared';
 
 const API_BASE = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
@@ -11,6 +11,9 @@ const API_BASE = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onr
 interface TenantVoiceConfig {
   tenant_id:              string;
   from_number:            string;
+  exotel_api_key:         string | null;
+  exotel_api_token:       string | null;
+  exotel_account_sid:     string | null;
   max_calls_per_month:    number | null;
   max_minutes_per_month:  number | null;
   max_calls_per_day:      number | null;
@@ -166,8 +169,18 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
   await db.from('voice_calls').update({ recording_url: respondUrl }).eq('id', voiceCallId);
 
   try {
-    // Resolve providers — pass tenant's from_number; falls back to platform config
-    const providers = await resolveVoiceProviders(voiceCfg, tenantVoiceCfg.from_number);
+    // Use tenant's own Exotel credentials if configured — fully isolates them from platform account
+    const tenantExotelCreds: TenantExotelCreds | undefined =
+      (tenantVoiceCfg.exotel_api_key && tenantVoiceCfg.exotel_api_token && tenantVoiceCfg.exotel_account_sid)
+        ? {
+            api_key:     tenantVoiceCfg.exotel_api_key,
+            api_token:   tenantVoiceCfg.exotel_api_token,
+            account_sid: tenantVoiceCfg.exotel_account_sid,
+          }
+        : undefined;
+
+    // Resolve providers — tenant creds + from_number take precedence over platform config
+    const providers = await resolveVoiceProviders(voiceCfg, tenantVoiceCfg.from_number, tenantExotelCreds);
 
     await db.from('voice_calls')
       .update({ from_number: providers.fromNumber })

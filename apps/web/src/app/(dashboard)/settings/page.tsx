@@ -17,6 +17,7 @@ import { FollowUpForm }          from '@/components/dashboard/FollowUpForm';
 import type { FollowUpScope }    from '@/app/actions/follow-up';
 import { LlmConfigCard }         from '@/components/LlmConfigCard';
 import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
+import { ClientVoiceConfigCard, type ClientVoiceConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,10 +84,11 @@ function maskLlmConfig(row: RawLlmConfig): LlmConfigCardProps['initial'] {
 }
 
 const TABS = [
-  { key: 'workspace',    label: 'Workspace'  },
-  { key: 'team',         label: 'Team'       },
-  { key: 'follow-ups',   label: 'Follow-ups' },
-  { key: 'models',       label: 'AI Models'  },
+  { key: 'workspace',    label: 'Workspace'     },
+  { key: 'team',         label: 'Team'          },
+  { key: 'follow-ups',   label: 'Follow-ups'    },
+  { key: 'models',       label: 'AI Models'     },
+  { key: 'voice',        label: 'Voice'         },
   { key: 'notifications',label: 'Notifications' },
 ] as const;
 
@@ -571,6 +573,41 @@ export default async function SettingsPage({
               No active bots found. Activate bots from the Workspace tab to configure per-bot models.
             </p>
           )}
+        </div>
+      </SettingsShell>
+    );
+  }
+
+  // ── Voice data ──────────────────────────────────────────────────────────────
+  if (activeTab === 'voice') {
+    const { data: tvc } = await admin
+      .from('tenant_voice_configs')
+      .select('from_number, exotel_api_key, exotel_account_sid')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    const voiceInitial: ClientVoiceConfigRow | null = tvc
+      ? {
+          from_number:        (tvc as { from_number: string; exotel_api_key: string | null; exotel_account_sid: string | null }).from_number,
+          has_exotel_creds:   !!(tvc as { exotel_api_key: string | null }).exotel_api_key,
+          exotel_account_sid: (tvc as { exotel_account_sid: string | null }).exotel_account_sid,
+        }
+      : null;
+
+    return (
+      <SettingsShell activeTab={activeTab}>
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Phone size={15} className="text-emerald-600" />
+              <h3 className="text-sm font-semibold text-gray-800">Voice Calling</h3>
+            </div>
+            <p className="text-xs text-gray-400 mb-6">
+              Connect your own Exotel account to make outbound voice calls from your number. Your credentials
+              are stored securely and never shared with other accounts.
+            </p>
+            <ClientVoiceConfigCard initial={voiceInitial} />
+          </div>
         </div>
       </SettingsShell>
     );

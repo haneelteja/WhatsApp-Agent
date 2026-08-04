@@ -60,8 +60,11 @@ function findRow(rows: DbProviderRow[], component: string, name?: string | null)
   return rows.find(r => r.component === component && r.is_default);
 }
 
-function buildTelephony(row: DbProviderRow): TelephonyProvider {
-  const c = row.credentials_json;
+function buildTelephony(
+  row:          DbProviderRow,
+  credOverride?: Record<string, string>,
+): TelephonyProvider {
+  const c   = credOverride ?? row.credentials_json;
   const cfg = row.config_json as Record<string, string>;
 
   switch (row.provider_name as TelephonyProviderName) {
@@ -114,17 +117,26 @@ function buildTts(row: DbProviderRow): TtsProvider {
   }
 }
 
+export interface TenantExotelCreds {
+  api_key:     string;
+  api_token:   string;
+  account_sid: string;
+}
+
 /**
  * Resolve the set of voice providers for a single call, taking into account:
  *  1. bot voice_config overrides (per-bot preference)
- *  2. platform defaults (from voice_provider_configs table)
+ *  2. tenant-level Exotel credentials (if the client has their own account)
+ *  3. platform defaults (from voice_provider_configs table)
  *
- * tenantFromNumber: client's own caller ID (from tenant_voice_configs.from_number).
- * Falls back to the platform-level from_number in voice_provider_configs.config_json.
+ * tenantFromNumber:  client's own caller ID — overrides platform config_json.from_number.
+ * tenantExotelCreds: client's own Exotel API credentials — overrides platform credentials.
+ *                    When present the client is completely isolated from the platform account.
  */
 export async function resolveVoiceProviders(
-  voiceConfig:      BotVoiceConfig,
-  tenantFromNumber?: string,
+  voiceConfig:        BotVoiceConfig,
+  tenantFromNumber?:  string,
+  tenantExotelCreds?: TenantExotelCreds,
 ): Promise<ResolvedVoiceProviders> {
   const rows = await loadProviderRows();
 
@@ -137,7 +149,8 @@ export async function resolveVoiceProviders(
   const ttsRow = findRow(rows, 'tts', voiceConfig.tts_provider);
   if (!ttsRow) throw new Error('No enabled TTS provider found. Configure one in Platform Console → Voice.');
 
-  const telephony = buildTelephony(telephonyRow);
+  // Use tenant's own Exotel credentials if configured; else fall back to platform
+  const telephony = buildTelephony(telephonyRow, tenantExotelCreds);
   const stt        = buildStt(sttRow);
   const tts        = buildTts(ttsRow);
 
