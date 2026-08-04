@@ -95,7 +95,9 @@ export async function launchCampaign(campaignId: string, tenantId: string): Prom
 
   if (camp.status === 'running') return;
 
-  await db.from('campaigns').update({ status: 'running' }).eq('id', campaignId);
+  const { error: launchErr } = await db
+    .from('campaigns').update({ status: 'running' }).eq('id', campaignId);
+  if (launchErr) console.error('[launchCampaign] status update error:', launchErr.message, launchErr.code);
 
   // Fire and forget — process contacts in background
   void processCampaignContacts(camp, tenantId);
@@ -139,8 +141,11 @@ async function processCampaignContacts(campaign: CampaignV2, tenantId: string): 
   try {
     // Own the status transition — launchCampaign also sets this, but there can be
     // a read-after-write lag between that update and the first check below.
-    await db.from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
-    log('set status=running');
+    log(`updating status to running for campaign.id=${campaign.id}`);
+    const { error: runningErr } = await db
+      .from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
+    if (runningErr) log(`ERROR setting running: ${runningErr.message} code=${runningErr.code}`);
+    else log('set status=running ok');
 
     let offset = 0;
     const PAGE  = 50;
