@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/refresh-models",
       "schedule": "0 2 * * 1"
+    },
+    {
+      "path": "/api/cron/keep-alive",
+      "schedule": "0 * * * *"
     }
   ]
 }
