@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export default async function RootPage() {
   const supabase = await getSupabaseServerClient();
@@ -7,23 +8,16 @@ export default async function RootPage() {
 
   if (!user) redirect('/login');
 
-  // Platform users → platform console
-  const { data: platformUser } = await supabase
-    .from('platform_users')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  // Use admin client to bypass RLS — we only need to know which role this user has
+  const admin = getSupabaseAdminClient();
+
+  const [{ data: platformUser }, { data: tenantUser }] = await Promise.all([
+    admin.from('platform_users').select('id').eq('user_id', user.id).maybeSingle(),
+    admin.from('tenant_users').select('id').eq('user_id', user.id).maybeSingle(),
+  ]);
 
   if (platformUser) redirect('/platform/clients');
-
-  // Client users → client dashboard
-  const { data: tenantUser } = await supabase
-    .from('tenant_users')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (tenantUser) redirect('/dashboard');
+  if (tenantUser)   redirect('/dashboard');
 
   redirect('/login');
 }
