@@ -6,7 +6,7 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { randomUUID } from 'crypto';
 
 type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
-type WaProvider = 'meta_cloud' | 'interakt' | 'wati' | 'gupshup';
+type WaProvider = 'meta_cloud' | 'twilio' | 'interakt' | 'wati' | 'gupshup';
 
 async function getCallerTenant() {
   const supabase = await getSupabaseServerClient();
