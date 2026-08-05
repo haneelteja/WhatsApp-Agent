@@ -11,11 +11,13 @@ ALTER TABLE knowledge_base
       )
     ) STORED;
 
--- GIN indexes are memory-intensive; bump maintenance_work_mem for this session only
-SET maintenance_work_mem = '64MB';
-
+-- GIN indexes are memory-intensive. Supabase's pooler resets session-level SET
+-- between statements, so wrap in a transaction and use SET LOCAL instead.
+BEGIN;
+SET LOCAL maintenance_work_mem = '64MB';
 CREATE INDEX IF NOT EXISTS idx_knowledge_base_fts
   ON knowledge_base USING GIN (fts_vector);
+COMMIT;
 
 -- Drop the slow ILIKE-based RPC if it exists and replace with a FTS version
 CREATE OR REPLACE FUNCTION search_knowledge_base_text(
