@@ -126,6 +126,13 @@ export async function addTenantWhatsAppNumberAction(input: AddWhatsAppNumberInpu
       phone_number_id: input.phoneNumberId.trim(),
       access_token: input.accessToken.trim(),
     };
+  } else if (input.provider === 'twilio') {
+    if (!input.accessToken?.trim()) return { error: 'Account SID:Auth Token is required for Twilio' };
+    configJson = {
+      verify_token: verifyToken,
+      phone_number_id: input.phoneNumber.trim(),
+      access_token: input.accessToken.trim(),
+    };
   } else if (input.provider === 'interakt' || input.provider === 'wati' || input.provider === 'gupshup') {
     if (!input.accessToken?.trim()) return { error: 'API Key / Access Token is required' };
     configJson = {

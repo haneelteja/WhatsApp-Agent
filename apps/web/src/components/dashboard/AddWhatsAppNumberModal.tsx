@@ -46,7 +46,7 @@ interface Props {
 }
 
 export function AddWhatsAppNumberModal({ activeBots, onClose, webhookBase }: Props) {
-  const [provider, setProvider]     = useState<'meta_cloud' | 'interakt' | 'wati' | 'gupshup'>('meta_cloud');
+  const [provider, setProvider]     = useState<'meta_cloud' | 'twilio' | 'interakt' | 'wati' | 'gupshup'>('meta_cloud');
   const [phone, setPhone]           = useState('');
   const [label, setLabel]           = useState('');
   const [bot, setBot]               = useState<ProductType>(activeBots[0] ?? 'support_bot');
@@ -165,6 +165,7 @@ export function AddWhatsAppNumberModal({ activeBots, onClose, webhookBase }: Pro
               className={inputCls}
             >
               <option value="meta_cloud">Meta Cloud API</option>
+              <option value="twilio">Twilio</option>
               <option value="interakt">Interakt</option>
               <option value="wati">WATI</option>
               <option value="gupshup">Gupshup</option>
@@ -215,12 +216,23 @@ export function AddWhatsAppNumberModal({ activeBots, onClose, webhookBase }: Pro
             </Field>
           )}
 
-          <Field label={provider === 'meta_cloud' ? 'Permanent Access Token' : 'API Key / Access Token'} required>
+          {provider === 'twilio' && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 text-xs text-blue-700">
+              Enter your Twilio <strong>Account SID:Auth Token</strong> below joined with a colon, e.g.<br />
+              <code className="font-mono">ACxxxxxxxx:your_auth_token</code>
+            </div>
+          )}
+
+          <Field label={
+            provider === 'meta_cloud' ? 'Permanent Access Token'
+            : provider === 'twilio'   ? 'Account SID:Auth Token'
+            : 'API Key / Access Token'
+          } required>
             <input
               type="password"
               value={accessToken}
               onChange={e => setToken(e.target.value)}
-              placeholder="EAAxxxxxxxxx…"
+              placeholder={provider === 'twilio' ? 'ACxxxxxxxx:your_auth_token' : 'EAAxxxxxxxxx…'}
               className={inputCls}
             />
           </Field>
