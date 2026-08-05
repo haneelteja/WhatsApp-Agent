@@ -244,7 +244,11 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
 
       if (!esc) return reply.status(404).send({ success: false, error: 'No pending escalation found' });
 
-      await claimEscalation(request.params.id, (esc as { id: string }).id, request.userId);
+      try {
+        await claimEscalation(request.params.id, (esc as { id: string }).id, request.userId);
+      } catch (err) {
+        return reply.status(409).send({ success: false, error: err instanceof Error ? err.message : 'Claim failed' });
+      }
       return { success: true };
     }
   );

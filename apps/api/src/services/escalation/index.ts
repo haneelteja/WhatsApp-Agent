@@ -107,16 +107,23 @@ export async function claimEscalation(
 ): Promise<void> {
   const db = getServerClient();
 
+  // Use status='pending' as an optimistic lock — if two agents race, only one
+  // UPDATE matches and the other gets 0 rows back (PGRST116 / data: null).
+  const { data: claimed } = await db
+    .from('escalations')
+    .update({ agent_id: agentId, status: 'assigned' })
+    .eq('id', escalationId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle();
+
+  if (!claimed) throw new Error('Escalation already claimed by another agent');
+
   await Promise.all([
     db.from('conversations').update({
       status: 'bot_paused',
       assigned_agent_id: agentId,
     }).eq('id', conversationId),
-
-    db.from('escalations').update({
-      agent_id: agentId,
-      status: 'assigned',
-    }).eq('id', escalationId),
 
     db.from('agent_sessions').insert({
       conversation_id: conversationId,
