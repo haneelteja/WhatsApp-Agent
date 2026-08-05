@@ -163,6 +163,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       .from('orders')
       .select(`*, contact:contacts(phone, name), payments(*)`)
       .eq('id', request.params.id)
+      .eq('tenant_id', request.tenantId)
       .single();
 
     if (error || !order) return reply.status(404).send({ error: 'Order not found' });
@@ -178,6 +179,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       .from('orders')
       .update({ status: request.body.status, updated_at: new Date().toISOString() })
       .eq('id', request.params.id)
+      .eq('tenant_id', request.tenantId)
       .select()
       .single();
 
@@ -191,6 +193,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       .from('orders')
       .select(`tenant_id, total, contact:contacts(phone), payments(link_url, status)`)
       .eq('id', request.params.id)
+      .eq('tenant_id', request.tenantId)
       .single();
 
     if (!order) return reply.status(404).send({ error: 'Order not found' });

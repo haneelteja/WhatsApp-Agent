@@ -221,10 +221,22 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const db = getServerClient();
+
+      // Verify conversation belongs to this tenant before looking up its escalation
+      const { data: convoCheck } = await db
+        .from('conversations')
+        .select('id')
+        .eq('id', request.params.id)
+        .eq('tenant_id', request.tenantId)
+        .single();
+
+      if (!convoCheck) return reply.status(404).send({ success: false, error: 'Not found' });
+
       const { data: esc } = await db
         .from('escalations')
         .select('id')
         .eq('conversation_id', request.params.id)
+        .eq('tenant_id', request.tenantId)
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(1)
@@ -242,6 +254,17 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     Params: { id: string };
     Body: { resolutionNote?: string };
   }>('/:id/release', { preHandler: [requireAuth] }, async (request, reply) => {
+    const db = getServerClient();
+
+    const { data: convo } = await db
+      .from('conversations')
+      .select('id')
+      .eq('id', request.params.id)
+      .eq('tenant_id', request.tenantId)
+      .single();
+
+    if (!convo) return reply.status(404).send({ success: false, error: 'Not found' });
+
     await releaseToBot(request.params.id, request.userId, request.body?.resolutionNote);
     return { success: true };
   });

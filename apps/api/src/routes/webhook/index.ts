@@ -852,7 +852,7 @@ To update state, append these markers at the VERY END of your response (they are
             text: policy.reprompt_message,
           });
         }
-      } else if ((conversation as Conversation & { low_confidence_count?: number }).low_confidence_count ?? 0 > 0) {
+      } else if (((conversation as Conversation & { low_confidence_count?: number }).low_confidence_count ?? 0) > 0) {
         // Confident reply — reset counter non-blocking
         fireForget(
           db.from('conversations').update({ low_confidence_count: 0 }).eq('id', conversation.id),

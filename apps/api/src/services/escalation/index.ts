@@ -14,11 +14,14 @@ export async function escalateConversation(
 ): Promise<EscalationResult> {
   const db = getServerClient();
 
-  // 1. Flip conversation status
-  await db
+  // 1. Flip conversation status — must succeed before creating the escalation record,
+  // otherwise the bot continues auto-replying to an escalated conversation.
+  const { error: convError } = await db
     .from('conversations')
     .update({ status: 'escalated' })
     .eq('id', conversation.id);
+
+  if (convError) throw new Error(`Failed to escalate conversation: ${convError.message}`);
 
   // 2. Create escalation record
   const { data, error } = await db

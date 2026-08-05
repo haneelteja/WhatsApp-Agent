@@ -14,14 +14,11 @@ const getTenantContext = cache(async () => {
   if (!user) return null;
 
   const admin = getSupabaseAdminClient();
-  const [{ data: tenantUser }, { data: lifecycleBot }] = await Promise.all([
-    admin.from('tenant_users')
-      .select('role, tenant_id, tenants(name)')
-      .eq('user_id', user.id)
-      .single(),
-    // Nested — needs tenantId; resolved separately below after tenantUser
-    Promise.resolve({ data: null as null }),
-  ]);
+  const { data: tenantUser } = await admin
+    .from('tenant_users')
+    .select('role, tenant_id, tenants(name)')
+    .eq('user_id', user.id)
+    .single();
 
   if (!tenantUser) return null;
 

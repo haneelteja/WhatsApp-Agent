@@ -67,13 +67,17 @@ async function _lookupKBFromDb(
   }
 
   // 3. Final fallback: legacy product_type-scoped keyword search
+  // Strip PostgREST filter-injection characters before embedding in the .or() string.
+  // A raw comma would add extra filter predicates; parens alter grouping.
+  const safeQ = query.replace(/[,()]/g, ' ');
+
   const { data, error } = await db
     .from('knowledge_base')
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('product_type', productSlug)
     .eq('status', 'live')
-    .or(`question.ilike.%${query}%,answer.ilike.%${query}%,category.ilike.%${query}%`)
+    .or(`question.ilike.%${safeQ}%,answer.ilike.%${safeQ}%,category.ilike.%${safeQ}%`)
     .limit(limit);
 
   if (error) {

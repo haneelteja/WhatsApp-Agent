@@ -132,8 +132,7 @@ async function processCampaignContacts(campaign: CampaignV2, tenantId: string): 
   // a read-after-write lag on the DB check below if we rely solely on that update.
   await db.from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
 
-  let offset = 0;
-  const PAGE  = 50;
+  const PAGE = 50;
 
   while (true) {
     const { data: statusCheck } = await db
@@ -143,6 +142,9 @@ async function processCampaignContacts(campaign: CampaignV2, tenantId: string): 
     const waFilter    = campaign.channel === 'voice'    ? 'skipped' : 'pending';
     const voiceFilter = campaign.channel === 'whatsapp' ? 'skipped' : 'pending';
 
+    // Always query from position 0 — processed contacts shift out of the filtered
+    // set (their status is updated to sent/failed) so the window advances naturally.
+    // Using offset here would skip contacts when the filtered set shrinks mid-run.
     const { data: contacts } = await db
       .from('campaign_contacts')
       .select('*')
@@ -150,7 +152,7 @@ async function processCampaignContacts(campaign: CampaignV2, tenantId: string): 
       .eq('whatsapp_status', waFilter)
       .eq('voice_status', voiceFilter)
       .lt('attempts', retryConfig.retry_limit + 1)
-      .range(offset, offset + PAGE - 1);
+      .limit(PAGE);
 
     if (!contacts || contacts.length === 0) break;
 
@@ -159,8 +161,6 @@ async function processCampaignContacts(campaign: CampaignV2, tenantId: string): 
       await Promise.allSettled(batch.map(c => processOneContact(campaign, c, tenantId)));
       await new Promise(r => setTimeout(r, 500));
     }
-
-    offset += PAGE;
   }
 
   // Final stats reconcile — single query after all contacts processed
@@ -195,7 +195,9 @@ async function processOneContact(
     console.error(`[Campaign] Contact ${contact.phone_number} failed:`, msg);
     const failUpdate: Record<string, unknown> = { outcome_json: { error: msg } };
     if (campaign.channel !== 'voice')    failUpdate.whatsapp_status = 'failed';
-    if (campaign.channel !== 'whatsapp') failUpdate.voice_status    = 'failed';
+    // For 'both': only WhatsApp was attempted here — voice is dispatched later by
+    // the scheduler. Only mark voice_status failed when it was actually attempted.
+    if (campaign.channel === 'voice')    failUpdate.voice_status    = 'failed';
     await db.from('campaign_contacts').update(failUpdate).eq('id', contact.id);
   }
 

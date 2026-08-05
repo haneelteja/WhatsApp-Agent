@@ -26,7 +26,8 @@ export default async function AnalyticsPage() {
     .eq('user_id', user.id)
     .single();
 
-  const tenantId     = tenantUser?.tenant_id ?? '';
+  if (!tenantUser?.tenant_id) redirect('/login');
+  const tenantId = tenantUser.tenant_id;
   const sevenDaysAgo  = new Date(Date.now() - 7  * 86400000).toISOString();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
   const currentMonth  = new Date().toISOString().slice(0, 7); // "YYYY-MM"

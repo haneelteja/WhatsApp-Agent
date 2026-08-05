@@ -84,7 +84,7 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
     escalation_voice_delay_seconds: input.escalationVoiceDelaySeconds,
   };
 
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('bot_configs')
     .update({
       system_prompt:        input.systemPrompt.trim() || null,
@@ -96,9 +96,12 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
       updated_by:           user.id,
     })
     .eq('tenant_id', tenantUser.tenant_id)
-    .eq('product_slug', input.productSlug);
+    .eq('product_slug', input.productSlug)
+    .select('id')
+    .maybeSingle();
 
   if (error) return { error: error.message };
+  if (!updated) return { error: 'Bot config not found — activate your bot in Settings first' };
 
   revalidatePath('/settings');
   revalidatePath('/call-triggers');
