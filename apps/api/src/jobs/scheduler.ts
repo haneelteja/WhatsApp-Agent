@@ -166,6 +166,8 @@ async function processNoReplyTriggers(): Promise<void> {
 
   if (!botCfgs?.length) return;
 
+  const { dispatchCall } = await import('../services/voice/call-manager.js');
+
   for (const row of botCfgs) {
     const voiceCfg = row.voice_config as BotVoiceConfig;
     if (!voiceCfg?.enabled || !voiceCfg?.trigger_on_no_reply) continue;
@@ -174,63 +176,31 @@ async function processNoReplyTriggers(): Promise<void> {
     const hoursDelay = voiceCfg.no_reply_after_hours ?? 2;
     const cutoff     = new Date(Date.now() - hoursDelay * 60 * 60 * 1000).toISOString();
 
-    // Find open conversations for this bot updated before the cutoff
-    const { data: conversations } = await db
-      .from('conversations')
-      .select('id, contact_id, updated_at')
-      .eq('tenant_id', row.tenant_id)
-      .eq('product_type', row.product_slug)
-      .eq('status', 'open')
-      .lt('updated_at', cutoff);
+    // Single SQL RPC replaces 3 sequential per-conversation queries (last msg + call check + contact)
+    const { data: candidates } = await db.rpc('get_no_reply_candidates', {
+      p_tenant_id:    row.tenant_id,
+      p_product_slug: row.product_slug,
+      p_cutoff:       cutoff,
+    }) as { data: Array<{ conversation_id: string; contact_phone: string; contact_name: string | null }> | null };
 
-    if (!conversations?.length) continue;
+    if (!candidates?.length) continue;
 
-    for (const conv of conversations) {
+    for (const cand of candidates) {
       try {
-        // Check last message — only trigger if it was from the bot (customer hasn't replied)
-        const { data: lastMsg } = await db
-          .from('messages')
-          .select('role')
-          .eq('conversation_id', conv.id)
-          .order('timestamp', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (!lastMsg || (lastMsg as { role: string }).role !== 'assistant') continue;
-
-        // Skip if a no-reply voice call was already triggered for this conversation
-        const { count } = await db
-          .from('voice_calls')
-          .select('*', { count: 'exact', head: true })
-          .eq('conversation_id', conv.id)
-          .in('status', ['initiated', 'ringing', 'in_progress', 'completed']);
-
-        if ((count ?? 0) > 0) continue;
-
-        // Get contact phone
-        const { data: contact } = await db
-          .from('contacts')
-          .select('phone, name')
-          .eq('id', conv.contact_id)
-          .single();
-
-        if (!(contact as { phone: string | null } | null)?.phone) continue;
-
-        const { dispatchCall } = await import('../services/voice/call-manager.js');
         await dispatchCall({
           tenant_id:       row.tenant_id,
           product_slug:    row.product_slug,
-          to_number:       (contact as { phone: string }).phone,
-          conversation_id: conv.id,
+          to_number:       cand.contact_phone,
+          conversation_id: cand.conversation_id,
           triggered_by:    'escalation',
           call_context: {
-            customer_name:     (contact as { name: string | null }).name ?? '',
+            customer_name:     cand.contact_name ?? '',
             trigger_reason:    `Customer has not replied for ${hoursDelay} hours`,
-            greeting_override: `Hello${(contact as { name: string | null }).name ? ` ${(contact as { name: string | null }).name}` : ''}! I noticed we haven't heard back from you. I'm calling to check if you need any further assistance. How can I help?`,
+            greeting_override: `Hello${cand.contact_name ? ` ${cand.contact_name}` : ''}! I noticed we haven't heard back from you. I'm calling to check if you need any further assistance. How can I help?`,
           },
         });
       } catch (err) {
-        console.error(`[NoReplyTrigger] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
+        console.error(`[NoReplyTrigger] Failed for conversation ${cand.conversation_id}:`, err instanceof Error ? err.message : String(err));
       }
     }
   }

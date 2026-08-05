@@ -1,6 +1,8 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 import { getServerClient } from '@alphabot/database';
+import { cacheGet, cacheSet } from '../lib/redis.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -24,30 +26,24 @@ function getAnonClient() {
   return _anonClient;
 }
 
-/**
- * Fastify preHandler: validates the Supabase JWT from the Authorization header
- * and attaches tenantId + role to the request for downstream use.
- */
-export async function requireAuth(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  const authHeader = request.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    await reply.status(401).send({ success: false, error: 'Missing auth token' });
-    return;
-  }
+interface AuthContext {
+  tenantId: string;
+  userId:   string;
+  userRole: 'admin' | 'supervisor' | 'agent';
+}
 
-  const token = authHeader.slice(7);
+// Cache auth results for 30s — safe since JWTs are valid for 1h and the
+// tenant→user mapping is stable within that window.
+const AUTH_CACHE_TTL = 30;
 
-  // Validate the JWT using the singleton anon client; getUser(token) passes the
-  // JWT as a parameter rather than a header, so the client can be safely shared.
+async function resolveAuthContext(token: string): Promise<AuthContext | null> {
+  const cacheKey = `auth:${createHash('sha256').update(token).digest('hex').slice(0, 32)}`;
+
+  const cached = await cacheGet<AuthContext>(cacheKey);
+  if (cached) return cached;
+
   const { data: { user }, error } = await getAnonClient().auth.getUser(token);
-
-  if (error || !user) {
-    await reply.status(401).send({ success: false, error: 'Invalid token' });
-    return;
-  }
+  if (error || !user) return null;
 
   const db = getServerClient();
 
@@ -59,10 +55,13 @@ export async function requireAuth(
     .single();
 
   if (membership) {
-    request.tenantId = membership.tenant_id as string;
-    request.userId = user.id;
-    request.userRole = membership.role as 'admin' | 'supervisor' | 'agent';
-    return;
+    const ctx: AuthContext = {
+      tenantId: membership.tenant_id as string,
+      userId:   user.id,
+      userRole: membership.role as 'admin' | 'supervisor' | 'agent',
+    };
+    await cacheSet(cacheKey, ctx, AUTH_CACHE_TTL);
+    return ctx;
   }
 
   // Fallback: platform_users get admin access to the earliest tenant
@@ -80,18 +79,46 @@ export async function requireAuth(
       .limit(1)
       .single();
 
-    if (!tenant) {
-      await reply.status(403).send({ success: false, error: 'No tenant found' });
-      return;
-    }
+    if (!tenant) return null;
 
-    request.tenantId = tenant.id as string;
-    request.userId = user.id;
-    request.userRole = 'admin';
+    const ctx: AuthContext = {
+      tenantId: tenant.id as string,
+      userId:   user.id,
+      userRole: 'admin',
+    };
+    await cacheSet(cacheKey, ctx, AUTH_CACHE_TTL);
+    return ctx;
+  }
+
+  return null;
+}
+
+/**
+ * Fastify preHandler: validates the Supabase JWT from the Authorization header
+ * and attaches tenantId + role to the request for downstream use.
+ * Auth context is cached in Redis for 30s to eliminate repeat DB lookups.
+ */
+export async function requireAuth(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    await reply.status(401).send({ success: false, error: 'Missing auth token' });
     return;
   }
 
-  await reply.status(403).send({ success: false, error: 'No tenant membership found' });
+  const token = authHeader.slice(7);
+  const ctx   = await resolveAuthContext(token);
+
+  if (!ctx) {
+    await reply.status(401).send({ success: false, error: 'Invalid token or no tenant membership' });
+    return;
+  }
+
+  request.tenantId  = ctx.tenantId;
+  request.userId    = ctx.userId;
+  request.userRole  = ctx.userRole;
 }
 
 export function requireRole(...roles: Array<'admin' | 'supervisor' | 'agent'>) {

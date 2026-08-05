@@ -12,13 +12,15 @@ import {
 } from '../../services/payment/phonepe.js';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import type { WhatsAppProvider } from '@alphabot/shared';
+import { requireAuth } from '../../middleware/auth.js';
 
 export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
   const db = getServerClient();
 
+  fastify.addHook('preHandler', requireAuth);
+
   // ─── POST /api/orders — create order + generate Razorpay payment link ────
   fastify.post<{ Body: {
-    tenantId:       string;
     contactId:      string;
     conversationId: string;
     items:          Array<{ name: string; quantity: number; price: number; sku?: string }>;
@@ -26,9 +28,10 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     sendLink?:      boolean;
     provider?:      'razorpay' | 'phonepe';
   } }>('/', async (request, reply) => {
-    const { tenantId, contactId, conversationId, items, total, sendLink = true, provider = 'razorpay' } = request.body;
+    const tenantId = request.tenantId;
+    const { contactId, conversationId, items, total, sendLink = true, provider = 'razorpay' } = request.body;
 
-    if (!tenantId || !contactId || !conversationId || !items?.length || !total) {
+    if (!contactId || !conversationId || !items?.length || !total) {
       return reply.status(400).send({ error: 'Missing required fields' });
     }
 
@@ -139,9 +142,9 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // ─── GET /api/orders — list orders for a tenant ──────────────────────────
-  fastify.get<{ Querystring: { tenantId: string; limit?: string; offset?: string } }>('/', async (request, reply) => {
-    const { tenantId, limit = '50', offset = '0' } = request.query;
-    if (!tenantId) return reply.status(400).send({ error: 'tenantId required' });
+  fastify.get<{ Querystring: { limit?: string; offset?: string } }>('/', async (request, reply) => {
+    const tenantId = request.tenantId;
+    const { limit = '50', offset = '0' } = request.query;
 
     const { data: orders, error } = await db
       .from('orders')

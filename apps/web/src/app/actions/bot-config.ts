@@ -100,6 +100,7 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
 
   if (error) return { error: error.message };
 
-  revalidatePath('/dashboard/settings');
+  revalidatePath('/settings');
+  revalidatePath('/call-triggers');
   return { success: true };
 }

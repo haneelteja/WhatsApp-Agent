@@ -48,27 +48,32 @@ export default async function ConversationDetailPage({
 
   if (!conversation) notFound();
 
-  const { data: messages } = await admin
+  // Fetch latest 50 messages — older messages load via cursor scroll in the client.
+  const { data: messagesDesc } = await admin
     .from('messages')
     .select('id, role, content, timestamp, confidence_score')
     .eq('conversation_id', id)
-    .order('timestamp', { ascending: true });
+    .order('timestamp', { ascending: false })
+    .limit(50);
+  const messages = (messagesDesc ?? []).reverse();
 
-  // Fetch team members for assign dropdown
+  // Fetch team members for assign dropdown — single listUsers call instead of N getUserById
   const { data: tenantUsersData } = await admin
     .from('tenant_users')
     .select('user_id, role')
     .eq('tenant_id', tenantId ?? '');
 
-  const teamMembers = await Promise.all(
-    (tenantUsersData ?? []).map(async (tu) => {
-      const { data: { user: authUser } } = await admin.auth.admin.getUserById(tu.user_id);
-      return {
-        id: tu.user_id,
-        name: (authUser?.user_metadata?.full_name as string | undefined) ?? authUser?.email ?? tu.user_id,
-      };
-    })
-  );
+  const memberIds = new Set((tenantUsersData ?? []).map(tu => tu.user_id));
+  const { data: { users: authUsers } } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+  const authUserMap = new Map(authUsers.filter(u => memberIds.has(u.id)).map(u => [u.id, u]));
+
+  const teamMembers = (tenantUsersData ?? []).map(tu => {
+    const authUser = authUserMap.get(tu.user_id);
+    return {
+      id: tu.user_id,
+      name: (authUser?.user_metadata?.full_name as string | undefined) ?? authUser?.email ?? tu.user_id,
+    };
+  });
 
   const contact = conversation.contacts as { phone: string; name: string | null } | null;
   const displayName = contact?.name ?? contact?.phone ?? 'Unknown';

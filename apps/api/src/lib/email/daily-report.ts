@@ -203,7 +203,8 @@ export async function runDailyReports(): Promise<void> {
           .limit(10),
         db.from('conversations')
           .select('product_type, status, created_at')
-          .eq('tenant_id', tenant.id),
+          .eq('tenant_id', tenant.id)
+          .gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString()),
       ]);
 
       // Compute per-bot stats

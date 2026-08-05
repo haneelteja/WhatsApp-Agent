@@ -20,7 +20,10 @@ export function ConversationMessages({
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const supabase = getSupabaseBrowserClient();
+  // useRef stabilises the client — getSupabaseBrowserClient returns a singleton
+  // but calling it unconditionally in the component body still runs the factory
+  // function on every render cycle.
+  const supabase = useRef(getSupabaseBrowserClient()).current;
 
   // Auto-scroll to bottom whenever messages change
   useEffect(() => {

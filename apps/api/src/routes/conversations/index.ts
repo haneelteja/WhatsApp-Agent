@@ -43,7 +43,6 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       .select(`
         *,
         contact:contacts(*),
-        messages(*),
         escalation:escalations(*)
       `)
       .eq('id', request.params.id)
@@ -52,7 +51,16 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
 
     if (error || !data) return reply.status(404).send({ success: false, error: 'Not found' });
 
-    return { success: true, data };
+    // Fetch latest 50 messages separately — embedded select has no limit support.
+    // Older messages are available via GET /:id/messages?before=<id>&limit=50.
+    const { data: messages } = await db
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', request.params.id)
+      .order('timestamp', { ascending: false })
+      .limit(50);
+
+    return { success: true, data: { ...data, messages: (messages ?? []).reverse() } };
   });
 
   // ─── GET /api/conversations/:id/messages ──────────────────────────────────

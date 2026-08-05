@@ -311,17 +311,15 @@ async function sendEscalationNotifications(
       `View: ${convUrl}`,
     ].join('\n');
 
-    for (const number of waNumbers) {
-      try {
-        await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+    await Promise.allSettled(
+      waNumbers.map(number =>
+        gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
           type: 'text',
           to:   number,
           text: teamWaMessage,
-        });
-      } catch (err) {
-        console.error(`[Escalation] Failed to send team WA to ${number}:`, err);
-      }
-    }
+        }).catch(err => console.error(`[Escalation] Failed to send team WA to ${number}:`, err))
+      )
+    );
   }
 }
 

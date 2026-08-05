@@ -29,13 +29,14 @@ export default async function AnalyticsPage() {
   const tenantId     = tenantUser?.tenant_id ?? '';
   const sevenDaysAgo  = new Date(Date.now() - 7  * 86400000).toISOString();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+  const currentMonth  = new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
   const [
     { count: totalConvs },
     { count: openConvs },
     { count: resolvedConvs },
     { count: escalatedTotal },
-    { data: tokenEvents },
+    { data: tokenRow },
     { data: weekEvents },
     { data: monthEvents },
   ] = await Promise.all([
@@ -43,13 +44,14 @@ export default async function AnalyticsPage() {
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'resolved'),
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['escalated']),
-    admin.from('usage_events').select('token_count').eq('tenant_id', tenantId).eq('event_type', 'ai_token_used'),
+    // Single-row aggregate lookup — O(1) vs full usage_events table scan
+    admin.from('tenant_token_usage_monthly').select('token_count').eq('tenant_id', tenantId).eq('month_year', currentMonth).maybeSingle(),
     admin.from('usage_events').select('event_type, created_at').eq('tenant_id', tenantId).gte('created_at', sevenDaysAgo),
     admin.from('usage_events').select('event_type, product_type').eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo),
   ]);
 
   // Aggregate totals
-  const totalTokens   = (tokenEvents ?? []).reduce((s, e) => s + (e.token_count ?? 0), 0);
+  const totalTokens   = (tokenRow as { token_count?: number } | null)?.token_count ?? 0;
   const totalMessages = (monthEvents ?? []).filter(e => e.event_type === 'message_sent').length;
   const escalationRate = totalConvs
     ? Math.round(((escalatedTotal ?? 0) / totalConvs) * 100)

@@ -163,35 +163,40 @@ async function dispatchCallTrigger(
   delaySeconds: number,
   db: ReturnType<typeof import('@alphabot/database').getServerClient>,
 ): Promise<void> {
-  try {
-    // Skip if there's already an active call for this conversation
-    const { count } = await db
-      .from('voice_calls')
-      .select('*', { count: 'exact', head: true })
-      .eq('conversation_id', conversationId)
-      .in('status', ['initiated', 'ringing', 'in_progress']);
+  // Skip if there's already an active call for this conversation
+  const { count } = await db
+    .from('voice_calls')
+    .select('*', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+    .in('status', ['initiated', 'ringing', 'in_progress']);
 
-    if ((count ?? 0) > 0) return;
+  if ((count ?? 0) > 0) return;
 
-    if (delaySeconds > 0) {
-      await new Promise(r => setTimeout(r, delaySeconds * 1000));
+  const doDispatch = async () => {
+    try {
+      const { dispatchCall } = await import('../../services/voice/call-manager.js');
+      await dispatchCall({
+        tenant_id:       tenantId,
+        product_slug:    productType,
+        to_number:       contactPhone,
+        conversation_id: conversationId,
+        triggered_by:    'escalation',
+        call_context: {
+          customer_name:     contactName ?? '',
+          trigger_reason:    triggerReason,
+          greeting_override: `Hello${contactName ? ` ${contactName}` : ''}! I noticed you might need some help. I am calling to assist you. How can I help?`,
+        },
+      });
+    } catch (err) {
+      console.error('[CallTrigger] dispatch failed:', err instanceof Error ? err.message : String(err));
     }
+  };
 
-    const { dispatchCall } = await import('../../services/voice/call-manager.js');
-    await dispatchCall({
-      tenant_id:       tenantId,
-      product_slug:    productType,
-      to_number:       contactPhone,
-      conversation_id: conversationId,
-      triggered_by:    'escalation',
-      call_context: {
-        customer_name:     contactName ?? '',
-        trigger_reason:    triggerReason,
-        greeting_override: `Hello${contactName ? ` ${contactName}` : ''}! I noticed you might need some help. I am calling to assist you. How can I help?`,
-      },
-    });
-  } catch (err) {
-    console.error('[CallTrigger] dispatch failed:', err instanceof Error ? err.message : String(err));
+  if (delaySeconds > 0) {
+    // Schedule without blocking — setTimeout callback fires in the background
+    setTimeout(() => { void doDispatch(); }, delaySeconds * 1000);
+  } else {
+    await doDispatch();
   }
 }
 

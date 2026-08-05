@@ -17,14 +17,17 @@ import {
   cancelCampaign,
 } from '../../services/campaign/index.js';
 import type { CreateCampaignRequest } from '@alphabot/shared';
+import { requireAuth } from '../../middleware/auth.js';
 
 export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
+
+  fastify.addHook('preHandler', requireAuth);
 
   // ─── POST /api/campaigns/:tenantId ───────────────────────────────────────
   fastify.post<{ Params: { tenantId: string }; Body: CreateCampaignRequest }>(
     '/:tenantId',
     async (request, reply) => {
-      const { tenantId } = request.params;
+      const tenantId = request.tenantId; // from verified JWT, ignores param
       const body = request.body;
 
       if (!body?.name || !body?.channel || !body?.product_slug) {
@@ -50,7 +53,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { tenantId: string }; Querystring: { page?: string; channel?: string; status?: string } }>(
     '/:tenantId',
     async (request, reply) => {
-      const { tenantId } = request.params;
+      const tenantId = request.tenantId;
       const { page = '1', channel, status } = request.query;
       const pageSize = 20;
       const offset   = (parseInt(page, 10) - 1) * pageSize;
@@ -77,7 +80,8 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { tenantId: string; id: string } }>(
     '/:tenantId/:id',
     async (request, reply) => {
-      const { tenantId, id } = request.params;
+      const tenantId = request.tenantId;
+      const { id } = request.params;
       const db = getServerClient();
 
       const { data, error } = await db
@@ -96,7 +100,8 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { tenantId: string; id: string } }>(
     '/:tenantId/:id/launch',
     async (request, reply) => {
-      const { tenantId, id } = request.params;
+      const tenantId = request.tenantId;
+      const { id } = request.params;
       try {
         await launchCampaign(id, tenantId);
         return reply.send({ ok: true, status: 'running' });
@@ -110,7 +115,8 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { tenantId: string; id: string } }>(
     '/:tenantId/:id/pause',
     async (request, reply) => {
-      const { tenantId, id } = request.params;
+      const tenantId = request.tenantId;
+      const { id } = request.params;
       await pauseCampaign(id, tenantId);
       return reply.send({ ok: true, status: 'paused' });
     },
@@ -120,7 +126,8 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { tenantId: string; id: string } }>(
     '/:tenantId/:id/cancel',
     async (request, reply) => {
-      const { tenantId, id } = request.params;
+      const tenantId = request.tenantId;
+      const { id } = request.params;
       await cancelCampaign(id, tenantId);
       return reply.send({ ok: true, status: 'cancelled' });
     },
@@ -133,7 +140,8 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/:tenantId/:id/contacts',
     async (request, reply) => {
-      const { tenantId, id } = request.params;
+      const tenantId = request.tenantId;
+      const { id } = request.params;
       const { page = '1', voice_status, whatsapp_status } = request.query;
       const pageSize = 50;
       const offset   = (parseInt(page, 10) - 1) * pageSize;

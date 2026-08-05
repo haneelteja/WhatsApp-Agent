@@ -163,6 +163,8 @@ async function processCampaignContacts(campaign: CampaignV2, tenantId: string): 
     offset += PAGE;
   }
 
+  // Final stats reconcile — single query after all contacts processed
+  await updateCampaignStats(campaign.id);
   await db.from('campaigns').update({ status: 'completed' }).eq('id', campaign.id);
 }
 
@@ -197,8 +199,6 @@ async function processOneContact(
     await db.from('campaign_contacts').update(failUpdate).eq('id', contact.id);
   }
 
-  // Update campaign stats
-  await updateCampaignStats(campaign.id);
 }
 
 async function sendWhatsApp(campaign: CampaignV2, contact: CampaignContact, tenantId: string): Promise<void> {
