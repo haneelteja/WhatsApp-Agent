@@ -1,6 +1,13 @@
 -- Migration 023: Add full-text search support to knowledge_base.
 -- The previous ILIKE fallback triggered sequential scans. A generated tsvector
 -- column with a GIN index enables fast full-text search without application changes.
+--
+-- NOTE: Both ALTER TABLE (populates generated column for all rows) and CREATE INDEX
+-- exceed Supabase's default maintenance_work_mem (32 MB). Use SET LOCAL inside a
+-- single explicit transaction so the raised limit applies to both operations.
+
+BEGIN;
+SET LOCAL maintenance_work_mem = '64MB';
 
 ALTER TABLE knowledge_base
   ADD COLUMN IF NOT EXISTS fts_vector tsvector
@@ -11,12 +18,9 @@ ALTER TABLE knowledge_base
       )
     ) STORED;
 
--- GIN indexes are memory-intensive. Supabase's pooler resets session-level SET
--- between statements, so wrap in a transaction and use SET LOCAL instead.
-BEGIN;
-SET LOCAL maintenance_work_mem = '64MB';
 CREATE INDEX IF NOT EXISTS idx_knowledge_base_fts
   ON knowledge_base USING GIN (fts_vector);
+
 COMMIT;
 
 -- Drop the slow ILIKE-based RPC if it exists and replace with a FTS version
