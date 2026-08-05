@@ -58,15 +58,19 @@ export class TwilioProvider implements IWhatsAppProvider {
   }
 
   // phoneNumber   = Twilio sandbox number, e.g. +14155238886
-  // credentials   = "AccountSid:AuthToken" (stored as access_token in config_json)
+  // credentials   = "AccountSid:AuthToken" or "AccountSid:AuthToken|ContentSid"
+  //                 ContentSid is optional — required for accounts that enforce
+  //                 WhatsApp Content Templates (Twilio error 63016).
   async sendMessage(
     phoneNumber: string,
     credentials: string,
     message: OutgoingMessage
   ): Promise<SendMessageResult> {
-    const colonIdx = credentials.indexOf(':');
-    const accountSid = credentials.slice(0, colonIdx);
-    const authToken = credentials.slice(colonIdx + 1);
+    // Split optional ContentSid from credentials
+    const [credsPart, contentSid] = credentials.split('|');
+    const colonIdx  = credsPart.indexOf(':');
+    const accountSid = credsPart.slice(0, colonIdx);
+    const authToken  = credsPart.slice(colonIdx + 1);
 
     let body = '';
     if (message.type === 'text') {
@@ -80,10 +84,17 @@ export class TwilioProvider implements IWhatsAppProvider {
     }
 
     const params = new URLSearchParams({
-      To: `whatsapp:${message.to}`,
+      To:   `whatsapp:${message.to}`,
       From: `whatsapp:${phoneNumber}`,
-      Body: body,
     });
+
+    if (contentSid?.trim()) {
+      // Use Content API — required when Twilio enforces WhatsApp templates (error 63016)
+      params.append('ContentSid', contentSid.trim());
+      params.append('ContentVariables', JSON.stringify({ '1': body }));
+    } else {
+      params.append('Body', body);
+    }
 
     const response = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,

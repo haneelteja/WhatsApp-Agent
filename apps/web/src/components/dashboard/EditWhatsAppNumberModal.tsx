@@ -43,19 +43,34 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
   const [bot, setBot]               = useState<string>(number.product_slug ?? '');
   const [phoneNumberId, setPhoneId] = useState(number.phone_number_id ?? '');
   const [accessToken, setToken]     = useState('');
+  const [contentSid, setContentSid] = useState('');
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState('');
+
+  const isTwilio = number.provider === 'twilio';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError('');
 
+    // For Twilio, combine credentials: "AccountSid:AuthToken|ContentSid"
+    let finalToken: string | undefined = accessToken || undefined;
+    if (isTwilio && finalToken && contentSid.trim()) {
+      finalToken = `${finalToken}|${contentSid.trim()}`;
+    } else if (isTwilio && !finalToken && contentSid.trim()) {
+      // ContentSid only — need to append to existing token, but we can't read it.
+      // User must re-enter the full token when changing ContentSid.
+      setError('Please re-enter Account SID:Auth Token when updating Content SID');
+      setSaving(false);
+      return;
+    }
+
     const result = await updateWhatsAppNumberAction(number.id, {
       label:         label || undefined,
       product_slug:  bot   || undefined,
       phoneNumberId: number.provider === 'meta_cloud' ? phoneNumberId || undefined : undefined,
-      accessToken:   accessToken || undefined,
+      accessToken:   finalToken,
     });
 
     setSaving(false);
@@ -123,15 +138,29 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
             </Field>
           )}
 
-          <Field label={number.provider === 'meta_cloud' ? 'Access Token (leave blank to keep current)' : 'API Key (leave blank to keep current)'}>
+          <Field label={number.provider === 'meta_cloud' ? 'Access Token (leave blank to keep current)' : 'Account SID:Auth Token (leave blank to keep current)'}>
             <input
               type="password"
               value={accessToken}
               onChange={e => setToken(e.target.value)}
-              placeholder="Paste new token to replace…"
+              placeholder={isTwilio ? 'ACxxxxxxxx:your_auth_token' : 'Paste new token to replace…'}
               className={inputCls}
             />
           </Field>
+
+          {isTwilio && (
+            <Field label="Content SID (required for WhatsApp replies)">
+              <input
+                value={contentSid}
+                onChange={e => setContentSid(e.target.value)}
+                placeholder="HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                className={inputCls}
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Create a free-form template in Twilio → Messaging → Content Template Builder. Body: <code>{'{{1}}'}</code>. Copy the HX... SID here.
+              </p>
+            </Field>
+          )}
 
           {error && <p className="text-xs text-red-500">{error}</p>}
 
