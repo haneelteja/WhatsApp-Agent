@@ -147,6 +147,5 @@ export async function GET(request: NextRequest) {
     results['openrouter'] = { fetched: 0, error: String(e) };
   }
 
-  console.log('[cron/refresh-models]', results);
   return NextResponse.json({ ok: true, results, timestamp: now });
 }

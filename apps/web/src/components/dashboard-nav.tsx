@@ -41,12 +41,10 @@ export function DashboardNav({
   tenantName,
   userRole,
   hasLifecycleBot,
-  hasSalesBot,
 }: {
   tenantName: string;
   userRole: string;
   hasLifecycleBot: boolean;
-  hasSalesBot: boolean;
 }) {
   const pathname = usePathname();
   const router   = useRouter();

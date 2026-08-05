@@ -71,8 +71,8 @@ export default async function CallTriggersPage() {
         <div>
           <p className="font-medium">How triggers work</p>
           <p className="text-blue-700 mt-0.5">
-            When a trigger fires, the bot places an outbound voice call to the customer's WhatsApp number.
-            Voice must be enabled for the bot (Settings → Voice tab) and the telephony provider must be configured.
+            When a trigger fires, the bot places an outbound voice call to the customer&apos;s WhatsApp number.
+            Voice must be enabled for the bot (Settings &rarr; Voice tab) and the telephony provider must be configured.
             Business hours gates and call delays apply to all triggers below.
           </p>
         </div>
