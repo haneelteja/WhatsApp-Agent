@@ -11,6 +11,9 @@ ALTER TABLE knowledge_base
       )
     ) STORED;
 
+-- GIN indexes are memory-intensive; bump maintenance_work_mem for this session only
+SET maintenance_work_mem = '64MB';
+
 CREATE INDEX IF NOT EXISTS idx_knowledge_base_fts
   ON knowledge_base USING GIN (fts_vector);
 
