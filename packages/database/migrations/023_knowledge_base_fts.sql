@@ -23,7 +23,10 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_base_fts
 
 COMMIT;
 
--- Drop the slow ILIKE-based RPC if it exists and replace with a FTS version
+-- Drop the slow ILIKE-based RPC if it exists and replace with a FTS version.
+-- Must DROP first because CREATE OR REPLACE cannot change the return type.
+DROP FUNCTION IF EXISTS search_knowledge_base_text(text, uuid[], integer);
+
 CREATE OR REPLACE FUNCTION search_knowledge_base_text(
   query_text     TEXT,
   collection_ids UUID[],
