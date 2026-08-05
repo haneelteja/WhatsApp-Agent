@@ -24,13 +24,12 @@ const getTenantContext = cache(async () => {
 
   const tenantId = tenantUser.tenant_id ?? '';
 
-  const { data: lb } = await admin
-    .from('tenant_products')
-    .select('product_type')
-    .eq('tenant_id', tenantId)
-    .eq('product_type', 'lifecycle_bot')
-    .eq('active', true)
-    .maybeSingle();
+  const [{ data: lb }, { data: sb }] = await Promise.all([
+    admin.from('tenant_products').select('product_type')
+      .eq('tenant_id', tenantId).eq('product_type', 'lifecycle_bot').eq('active', true).maybeSingle(),
+    admin.from('tenant_products').select('product_type')
+      .eq('tenant_id', tenantId).eq('product_type', 'sales_bot').eq('active', true).maybeSingle(),
+  ]);
 
   const tenantsRaw = tenantUser.tenants as unknown;
   const tenantObj  = Array.isArray(tenantsRaw) ? (tenantsRaw[0] as { name: string }) : (tenantsRaw as { name: string } | null);
@@ -41,6 +40,7 @@ const getTenantContext = cache(async () => {
     userRole:      tenantUser.role ?? '',
     tenantId,
     hasLifecycleBot: !!lb,
+    hasSalesBot:     !!sb,
   };
 });
 
@@ -56,7 +56,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
-      <DashboardNav tenantName={ctx.tenantName} userRole={ctx.userRole} hasLifecycleBot={ctx.hasLifecycleBot} />
+      <DashboardNav tenantName={ctx.tenantName} userRole={ctx.userRole} hasLifecycleBot={ctx.hasLifecycleBot} hasSalesBot={ctx.hasSalesBot} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar email={ctx.user.email ?? ''} tenantName={ctx.tenantName} />
         <main className="flex-1 overflow-auto">{children}</main>

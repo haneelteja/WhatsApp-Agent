@@ -16,6 +16,8 @@ import {
   Phone,
   Megaphone,
   Zap,
+  Users,
+  Target,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -35,16 +37,20 @@ const BASE_NAV = [
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
 
-const ORDERS_ITEM = { href: '/orders', label: 'Orders', icon: ShoppingCart };
+const CONTACTS_ITEM = { href: '/contacts', label: 'Contacts', icon: Users };
+const LEADS_ITEM    = { href: '/leads',    label: 'Leads',    icon: Target };
+const ORDERS_ITEM   = { href: '/orders',   label: 'Orders',   icon: ShoppingCart };
 
 export function DashboardNav({
   tenantName,
   userRole,
   hasLifecycleBot,
+  hasSalesBot,
 }: {
   tenantName: string;
   userRole: string;
   hasLifecycleBot: boolean;
+  hasSalesBot?: boolean;
 }) {
   const pathname = usePathname();
   const router   = useRouter();
@@ -53,8 +59,15 @@ export function DashboardNav({
   // Build nav dynamically — insert gated items at their correct positions
   const navItems = (() => {
     const items = [...BASE_NAV];
-    // Orders goes after Guardrails (index 3), lifecycle_bot only
-    if (hasLifecycleBot) items.splice(4, 0, ORDERS_ITEM);
+    // Contacts goes after Conversations (index 1), visible to all
+    items.splice(2, 0, CONTACTS_ITEM);
+    // Leads goes after Contacts (index 3), sales_bot only
+    if (hasSalesBot) items.splice(3, 0, LEADS_ITEM);
+    // Orders goes after Guardrails, lifecycle_bot only — use findIndex for robustness
+    if (hasLifecycleBot) {
+      const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
+      items.splice(guardrailsIdx + 1, 0, ORDERS_ITEM);
+    }
     return items;
   })();
 
