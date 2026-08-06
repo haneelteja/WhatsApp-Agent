@@ -142,12 +142,17 @@ export default function KnowledgeBasePage() {
     created_at: string;
   }
 
+  interface QueuedFile {
+    file: File;
+    status: 'pending' | 'uploading' | 'done' | 'error';
+    error?: string;
+  }
+
   const [mediaFiles,       setMediaFiles]       = useState<MediaRow[]>([]);
   const [mediaLoading,     setMediaLoading]      = useState(false);
-  const [uploadForm,       setUploadForm]        = useState({ name: '', description: '', collectionId: '' });
-  const [uploadFile,       setUploadFile]        = useState<File | null>(null);
+  const [uploadForm,       setUploadForm]        = useState({ description: '', collectionId: '' });
+  const [uploadQueue,      setUploadQueue]       = useState<QueuedFile[]>([]);
   const [uploading,        setUploading]         = useState(false);
-  const [uploadError,      setUploadError]       = useState('');
   const [dragOver,         setDragOver]          = useState(false);
 
   // ── Load collections ───────────────────────────────────────────────────────
@@ -198,44 +203,60 @@ export default function KnowledgeBasePage() {
 
   useEffect(() => { if (activeTab === 'media') void loadMedia(); }, [activeTab, loadMedia]);
 
+  function addFilesToQueue(files: FileList | File[]) {
+    const arr = Array.from(files);
+    setUploadQueue(q => [
+      ...q,
+      ...arr.map(f => ({ file: f, status: 'pending' as const })),
+    ]);
+  }
+
   function handleFileDrop(e: React.DragEvent) {
     e.preventDefault(); setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      setUploadFile(file);
-      if (!uploadForm.name) setUploadForm(f => ({ ...f, name: file.name.replace(/\.[^.]+$/, '') }));
-    }
+    if (e.dataTransfer.files.length) addFilesToQueue(e.dataTransfer.files);
   }
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadFile(file);
-      if (!uploadForm.name) setUploadForm(f => ({ ...f, name: file.name.replace(/\.[^.]+$/, '') }));
-    }
+    if (e.target.files?.length) addFilesToQueue(e.target.files);
+    e.target.value = '';
+  }
+
+  function removeFromQueue(idx: number) {
+    setUploadQueue(q => q.filter((_, i) => i !== idx));
   }
 
   async function handleUpload() {
-    if (!uploadFile || !uploadForm.name.trim()) { setUploadError('Choose a file and give it a name'); return; }
-    setUploading(true); setUploadError('');
-    try {
-      const formData = new FormData();
-      formData.append('file', uploadFile);
-      const params = new URLSearchParams({ name: uploadForm.name.trim() });
-      if (uploadForm.description.trim()) params.set('description', uploadForm.description.trim());
-      if (uploadForm.collectionId) params.set('collection_id', uploadForm.collectionId);
-      const res = await kbUpload(`/api/kb/media/upload?${params.toString()}`, formData);
-      if (!res.ok) {
-        setUploadError((await res.json() as { error?: string }).error ?? 'Upload failed');
-        setUploading(false); return;
+    const pending = uploadQueue.filter(q => q.status === 'pending');
+    if (!pending.length) return;
+    setUploading(true);
+
+    for (const item of pending) {
+      setUploadQueue(q => q.map(i => i === item ? { ...i, status: 'uploading' } : i));
+      try {
+        const formData = new FormData();
+        formData.append('file', item.file);
+        const name = item.file.name.replace(/\.[^.]+$/, '');
+        const params = new URLSearchParams({ name });
+        if (uploadForm.description.trim()) params.set('description', uploadForm.description.trim());
+        if (uploadForm.collectionId) params.set('collection_id', uploadForm.collectionId);
+        const res = await kbUpload(`/api/kb/media/upload?${params.toString()}`, formData);
+        const json = await res.json() as { error?: string };
+        if (!res.ok) {
+          setUploadQueue(q => q.map(i => i === item ? { ...i, status: 'error', error: json.error ?? 'Upload failed' } : i));
+        } else {
+          setUploadQueue(q => q.map(i => i === item ? { ...i, status: 'done' } : i));
+        }
+      } catch {
+        setUploadQueue(q => q.map(i => i === item ? { ...i, status: 'error', error: 'Network error' } : i));
       }
-      setUploadFile(null);
-      setUploadForm({ name: '', description: '', collectionId: '' });
-      void loadMedia();
-    } catch {
-      setUploadError('Network error — please try again');
     }
+
     setUploading(false);
+    void loadMedia();
+    // Clear done items after a short delay so user sees the green ticks
+    setTimeout(() => {
+      setUploadQueue(q => q.filter(i => i.status !== 'done'));
+    }, 1500);
   }
 
   async function handleToggleActive(id: string, active: boolean) {
@@ -880,68 +901,68 @@ export default function KnowledgeBasePage() {
           {/* Upload card */}
           <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
             <div className="mb-5">
-              <h3 className="text-sm font-bold text-gray-900">Upload a File</h3>
+              <h3 className="text-sm font-bold text-gray-900">Upload Files</h3>
               <p className="text-xs text-gray-400 mt-0.5">Images and PDFs the bot will send inline when answering relevant questions</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
               {/* Drop zone */}
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-2 flex flex-col gap-3">
                 <label
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={e => { handleFileDrop(e); }}
-                  className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-xl p-8 cursor-pointer transition-colors ${
-                    dragOver ? 'border-emerald-400 bg-emerald-50/60' : uploadFile ? 'border-emerald-300 bg-emerald-50/40' : 'border-green-200 hover:border-emerald-300 hover:bg-green-50/40'
+                  className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-xl p-6 cursor-pointer transition-colors ${
+                    dragOver ? 'border-emerald-400 bg-emerald-50/60' : uploadQueue.length ? 'border-emerald-300 bg-emerald-50/30' : 'border-green-200 hover:border-emerald-300 hover:bg-green-50/40'
                   }`}>
-                  <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleFileInput} />
-                  {uploadFile ? (
-                    <>
-                      {uploadFile.type.startsWith('image/') ? (
-                        <ImageIcon size={28} className="text-emerald-500" />
-                      ) : (
-                        <FileText size={28} className="text-rose-400" />
-                      )}
-                      <div className="text-center">
-                        <p className="text-sm font-semibold text-gray-800 truncate max-w-[160px]">{uploadFile.name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{formatBytes(uploadFile.size)}</p>
-                      </div>
-                      <button type="button" onClick={() => setUploadFile(null)}
-                        className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                        <Upload size={20} className="text-emerald-500" />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm font-semibold text-gray-700">Drop file here</p>
-                        <p className="text-xs text-gray-400 mt-0.5">or click to browse</p>
-                        <p className="text-[11px] text-gray-300 mt-2">JPEG, PNG, WEBP, GIF, PDF · Max 20 MB</p>
-                      </div>
-                    </>
-                  )}
+                  <input type="file" accept="image/*,.pdf" multiple className="hidden" onChange={handleFileInput} />
+                  <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                    <Upload size={18} className="text-emerald-500" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-700">Drop files here</p>
+                    <p className="text-xs text-gray-400 mt-0.5">or click to browse · select multiple</p>
+                    <p className="text-[11px] text-gray-300 mt-1.5">JPEG, PNG, WEBP, GIF, PDF · Max 20 MB each</p>
+                  </div>
                 </label>
+
+                {/* Queued file list */}
+                {uploadQueue.length > 0 && (
+                  <div className="space-y-1.5">
+                    {uploadQueue.map((item, idx) => (
+                      <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs ${
+                        item.status === 'done'      ? 'bg-emerald-50 border-emerald-100' :
+                        item.status === 'error'     ? 'bg-red-50 border-red-100' :
+                        item.status === 'uploading' ? 'bg-blue-50 border-blue-100' :
+                                                      'bg-gray-50 border-gray-100'
+                      }`}>
+                        {item.file.type.startsWith('image/') ? (
+                          <ImageIcon size={13} className="shrink-0 text-gray-400" />
+                        ) : (
+                          <FileText size={13} className="shrink-0 text-rose-400" />
+                        )}
+                        <span className="flex-1 truncate text-gray-700 font-medium">{item.file.name}</span>
+                        <span className="text-gray-300 shrink-0">{formatBytes(item.file.size)}</span>
+                        {item.status === 'pending' && (
+                          <button type="button" onClick={() => removeFromQueue(idx)} className="shrink-0 text-gray-300 hover:text-red-400 transition-colors">
+                            <X size={12} />
+                          </button>
+                        )}
+                        {item.status === 'uploading' && <Loader2 size={12} className="shrink-0 text-blue-400 animate-spin" />}
+                        {item.status === 'done'      && <Check size={12} className="shrink-0 text-emerald-500" />}
+                        {item.status === 'error'     && <span title={item.error}><AlertCircle size={12} className="shrink-0 text-red-400" /></span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Form fields */}
               <div className="lg:col-span-3 space-y-4">
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
-                    File Name <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    value={uploadForm.name}
-                    onChange={e => setUploadForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="e.g. Product Catalogue 2025"
-                    className="w-full rounded-xl border border-green-200 bg-green-50/40 px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
                     Description
-                    <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— helps the bot know when to send this</span>
+                    <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— applied to all files in this batch</span>
                   </label>
                   <input
                     value={uploadForm.description}
@@ -954,7 +975,7 @@ export default function KnowledgeBasePage() {
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
                     Link to Collection
-                    <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— bot sends this when matching that collection</span>
+                    <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— bot sends these when matching that collection</span>
                   </label>
                   <select
                     value={uploadForm.collectionId}
@@ -968,19 +989,16 @@ export default function KnowledgeBasePage() {
                   </select>
                 </div>
 
-                {uploadError && (
-                  <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
-                    <AlertCircle size={14} className="shrink-0" /> {uploadError}
-                  </div>
-                )}
-
                 <button
                   type="button"
                   onClick={() => void handleUpload()}
-                  disabled={uploading || !uploadFile || !uploadForm.name.trim()}
+                  disabled={uploading || uploadQueue.filter(q => q.status === 'pending').length === 0}
                   className="flex items-center gap-2 text-sm px-5 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold disabled:opacity-40 shadow-sm shadow-emerald-200"
                 >
-                  {uploading ? <><Loader2 size={15} className="animate-spin" /> Uploading…</> : <><Upload size={15} /> Upload File</>}
+                  {uploading
+                    ? <><Loader2 size={15} className="animate-spin" /> Uploading…</>
+                    : <><Upload size={15} /> Upload {uploadQueue.filter(q => q.status === 'pending').length || ''} {uploadQueue.filter(q => q.status === 'pending').length === 1 ? 'File' : 'Files'}</>
+                  }
                 </button>
               </div>
             </div>
