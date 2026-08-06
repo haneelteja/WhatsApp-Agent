@@ -304,4 +304,49 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       return { success: true };
     }
   );
+
+  // ─── PATCH /api/conversations/:id/stage — manual lead stage update ────────
+  fastify.patch<{
+    Params: { id: string };
+    Body: { stage: string; mark_converted?: boolean };
+  }>(
+    '/:id/stage',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const VALID_STAGES = ['greeting', 'qualifying', 'resolving', 'following_up', 'closing'];
+      const { stage, mark_converted } = request.body;
+
+      if (!VALID_STAGES.includes(stage)) {
+        return reply.status(400).send({ success: false, error: `Invalid stage. Must be one of: ${VALID_STAGES.join(', ')}` });
+      }
+
+      const db = getServerClient();
+
+      const { data: convo } = await db
+        .from('conversations')
+        .select('id')
+        .eq('id', request.params.id)
+        .eq('tenant_id', request.tenantId)
+        .single();
+
+      if (!convo) return reply.status(404).send({ success: false, error: 'Not found' });
+
+      const updates: Record<string, unknown> = { stage };
+      if (mark_converted) {
+        updates['status'] = 'resolved';
+      } else {
+        // Re-open if it was resolved and being moved back to an active stage
+        updates['status'] = 'escalated';
+      }
+
+      const { error } = await db
+        .from('conversations')
+        .update(updates)
+        .eq('id', request.params.id)
+        .eq('tenant_id', request.tenantId);
+
+      if (error) return reply.status(500).send({ success: false, error: error.message });
+      return { success: true };
+    }
+  );
 }
