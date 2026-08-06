@@ -27,9 +27,10 @@ export async function escalateConversation(
   const { data, error } = await db
     .from('escalations')
     .insert({
+      tenant_id:       conversation.tenant_id,
       conversation_id: conversation.id,
-      trigger_reason: triggerReason,
-      status: 'pending',
+      trigger_reason:  triggerReason,
+      status:          'pending',
     })
     .select('id')
     .single();
