@@ -40,3 +40,5 @@ ALTER TABLE kb_media_attachments ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY kb_media_tenant_isolation ON kb_media_attachments
   USING (tenant_id = (current_setting('app.tenant_id', true))::uuid);
+
+GRANT ALL ON TABLE kb_media_attachments TO anon, authenticated, service_role;
