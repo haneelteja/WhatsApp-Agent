@@ -225,7 +225,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       // Verify conversation belongs to this tenant before looking up its escalation
       const { data: convoCheck } = await db
         .from('conversations')
-        .select('id')
+        .select('id, status')
         .eq('id', request.params.id)
         .eq('tenant_id', request.tenantId)
         .single();
@@ -240,15 +240,31 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (!esc) return reply.status(404).send({ success: false, error: 'No pending escalation found' });
-
-      try {
-        await claimEscalation(request.params.id, (esc as { id: string }).id, request.userId);
-      } catch (err) {
-        return reply.status(409).send({ success: false, error: err instanceof Error ? err.message : 'Claim failed' });
+      if (esc) {
+        // Normal path: escalation row exists — claim it properly
+        try {
+          await claimEscalation(request.params.id, (esc as { id: string }).id, request.userId);
+        } catch (err) {
+          return reply.status(409).send({ success: false, error: err instanceof Error ? err.message : 'Claim failed' });
+        }
+      } else {
+        // Fallback: conversation is escalated but no escalation row exists
+        // (can happen when the escalation insert previously failed mid-flight).
+        // Do a direct takeover so the agent can still handle the conversation.
+        await Promise.all([
+          db.from('conversations').update({
+            status:            'bot_paused',
+            assigned_agent_id: request.userId,
+          }).eq('id', request.params.id),
+          db.from('agent_sessions').insert({
+            conversation_id: request.params.id,
+            agent_id:        request.userId,
+          }),
+        ]);
       }
+
       return { success: true };
     }
   );
