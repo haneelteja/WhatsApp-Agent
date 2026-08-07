@@ -314,9 +314,13 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     // ── Upsert contact ──────────────────────────────────────────────────────
     // When a user has a WhatsApp username, Meta sends a BSUID (opaque ID)
-    // in `from` instead of a phone number. Phone numbers are all-digit E.164;
-    // BSUIDs contain non-digit characters.
-    const isBsuid = !/^\d{7,15}$/.test(incoming.from);
+    // in `from` instead of a phone number. Phone numbers are E.164 (digits
+    // only, or with a leading +). Twilio always sends +E.164, so strip the
+    // leading + before checking so "+919652321333" is treated as a phone.
+    const normalizedFrom = incoming.from.replace(/^\+/, '');
+    const isBsuid = !/^\d{7,15}$/.test(normalizedFrom);
+    // Preserve the original form (with +) as the stored phone number.
+    const phoneValue = incoming.from.startsWith('+') ? incoming.from : `+${incoming.from}`;
 
     const contactUpsertResult = isBsuid
       ? await db
@@ -330,7 +334,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       : await db
           .from('contacts')
           .upsert(
-            { tenant_id: tenantId, phone: incoming.from, name: incoming.contactName ?? null },
+            { tenant_id: tenantId, phone: phoneValue, name: incoming.contactName ?? null },
             { onConflict: 'tenant_id,phone', ignoreDuplicates: false }
           )
           .select()
