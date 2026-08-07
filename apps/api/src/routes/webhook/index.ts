@@ -295,6 +295,12 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       phone_number_id: string;
       access_token: string;
     };
+    // Bot session replies always happen within the 24h WhatsApp window (customer
+    // just sent a message), so plain Body works without a Content Template.
+    // Strip ContentSid here so Twilio uses Body instead of ContentVariables.
+    if (wn.provider === 'twilio') {
+      config.access_token = config.access_token.split('|')[0]!;
+    }
 
     // ── Feature: Status Ladder — process delivery receipts ────────────────
     // Meta delivers receipts (sent/delivered/read) through the same POST endpoint

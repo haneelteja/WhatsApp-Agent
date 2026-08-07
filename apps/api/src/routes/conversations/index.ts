@@ -150,7 +150,11 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     const { config_json, provider } = wn as { config_json: { phone_number_id: string; access_token: string }; provider: string };
     const gateway = new WhatsAppGateway(provider as 'meta_cloud');
 
-    const agentCredentials = config_json.access_token;
+    // Agent replies use plain Body — strip ContentSid (needed only for proactive
+    // campaign outbound). Within the 24h WhatsApp session window, Body always works.
+    const agentCredentials = provider === 'twilio'
+      ? config_json.access_token.split('|')[0]!
+      : config_json.access_token;
 
     // contact.phone may be null for BSUID-only contacts; fall back to bsuid
     const toPhone = (conversation.contact as { phone: string | null; bsuid?: string | null }).phone
@@ -169,6 +173,15 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
 
     if (result.status === 'failed') {
       fastify.log.error({ error: result.error, provider, conversationId: request.params.id }, '[Send] WhatsApp send failed after retries');
+      // "ContentSid Required" means the WhatsApp 24h session window has expired —
+      // the customer must send a new message before the agent can reply.
+      const isSessionExpired = result.error?.toLowerCase().includes('contentsid required');
+      if (isSessionExpired) {
+        return reply.status(422).send({
+          success: false,
+          error: 'WhatsApp session expired — the customer needs to send you a message first before you can reply.',
+        });
+      }
       return reply.status(502).send({ success: false, error: result.error });
     }
 
