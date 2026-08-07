@@ -150,12 +150,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     const { config_json, provider } = wn as { config_json: { phone_number_id: string; access_token: string }; provider: string };
     const gateway = new WhatsAppGateway(provider as 'meta_cloud');
 
-    // For Twilio agent sends, strip the ContentSid so the message goes via plain
-    // Body — agent sends are always session replies (within 24 h of customer msg)
-    // and ContentVariables is a paid-only Twilio feature.
-    const agentCredentials = provider === 'twilio'
-      ? config_json.access_token.split('|')[0]!
-      : config_json.access_token;
+    const agentCredentials = config_json.access_token;
 
     // contact.phone may be null for BSUID-only contacts; fall back to bsuid
     const toPhone = (conversation.contact as { phone: string | null; bsuid?: string | null }).phone
