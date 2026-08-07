@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { LifeBuoy, TrendingUp, Zap, Copy, Check } from 'lucide-react';
-import { activateTenantProductAction, deactivateTenantProductAction, assignNumberToBotAction } from '@/app/actions/tenant-products';
+import { deactivateTenantProductAction, assignNumberToBotAction } from '@/app/actions/tenant-products';
 
 type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
 
@@ -61,19 +61,6 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
 
   const activeSet = new Set(products.filter(p => p.active).map(p => p.product_type));
 
-  function handleActivate(pt: ProductType) {
-    setActioningBot(pt);
-    startTransition(async () => {
-      await activateTenantProductAction(pt);
-      setProducts(prev => {
-        const exists = prev.find(p => p.product_type === pt);
-        if (exists) return prev.map(p => p.product_type === pt ? { ...p, active: true } : p);
-        return [...prev, { product_type: pt, tier: 'base', active: true }];
-      });
-      setActioningBot(null);
-    });
-  }
-
   function handleDeactivate(pt: ProductType) {
     setActioningBot(pt);
     startTransition(async () => {
@@ -90,11 +77,15 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
     });
   }
 
+  const activeBots = ALL_PRODUCTS.filter(pt => activeSet.has(pt));
+
   return (
     <div className="space-y-3 px-5 py-4">
-      {ALL_PRODUCTS.map(pt => {
+      {activeBots.length === 0 && (
+        <p className="text-sm text-slate-400 text-center py-4">No bots are active on this account. Contact support to add a bot.</p>
+      )}
+      {activeBots.map(pt => {
         const meta = BOT_META[pt];
-        const isActive = activeSet.has(pt);
         const isLoading = actioningBot === pt && pending;
         const webhookUrl = `${apiBase}/api/webhook/${tenantId}/${pt}`;
         const assignedNumbers = numbers.filter(n => n.product_slug === pt);
@@ -102,7 +93,7 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
         return (
           <div
             key={pt}
-            className={`rounded-xl border p-4 transition-all ${isActive ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200 bg-white'}`}
+            className="rounded-xl border border-emerald-200 bg-emerald-50/20 p-4 transition-all"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -112,12 +103,10 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-slate-800">{meta.name}</p>
-                    {isActive && (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        Active
-                      </span>
-                    )}
+                    <span className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      Active
+                    </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{meta.description}</p>
                 </div>
@@ -125,14 +114,10 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
               <button
                 type="button"
                 disabled={isLoading || pending}
-                onClick={() => isActive ? handleDeactivate(pt) : handleActivate(pt)}
-                className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-50 ${
-                  isActive
-                    ? 'border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
-                }`}
+                onClick={() => handleDeactivate(pt)}
+                className="shrink-0 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-50 border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200"
               >
-                {isLoading ? '…' : isActive ? 'Deactivate' : 'Activate'}
+                {isLoading ? '…' : 'Deactivate'}
               </button>
             </div>
 
