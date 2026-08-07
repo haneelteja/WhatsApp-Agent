@@ -157,6 +157,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     );
 
     if (result.status === 'failed') {
+      fastify.log.error({ error: result.error, provider, conversationId: request.params.id }, '[Send] WhatsApp send failed after retries');
       return reply.status(502).send({ success: false, error: result.error });
     }
 

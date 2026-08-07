@@ -115,11 +115,9 @@ export class TwilioProvider implements IWhatsAppProvider {
     };
 
     if (!response.ok) {
-      return {
-        messageId: '',
-        status: 'failed',
-        error: data.error_message ?? data.message ?? `Twilio HTTP ${response.status}`,
-      };
+      const errorMsg = data.error_message ?? data.message ?? `Twilio HTTP ${response.status}`;
+      console.error(`[Twilio] sendMessage failed (HTTP ${response.status}): ${errorMsg} | to=${message.to} from=${phoneNumber} contentSid=${contentSid ?? 'none'}`);
+      return { messageId: '', status: 'failed', error: errorMsg };
     }
 
     return { messageId: data.sid ?? '', status: 'sent' };
