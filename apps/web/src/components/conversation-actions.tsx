@@ -20,6 +20,7 @@ interface Props {
 export function ConversationActions({ conversationId, status, teamMembers, assignedAgentId }: Props) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [actioning, setActioning] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const router = useRouter();
@@ -83,8 +84,14 @@ export function ConversationActions({ conversationId, status, teamMembers, assig
     e.preventDefault();
     if (!message.trim()) return;
     setSending(true);
-    await apiPost(`/api/conversations/${conversationId}/send`, { message });
-    setMessage('');
+    setSendError(null);
+    const res = await apiPost(`/api/conversations/${conversationId}/send`, { message });
+    if (res.ok) {
+      setMessage('');
+    } else {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      setSendError(body.error ?? 'Failed to send message');
+    }
     setSending(false);
   }
 
@@ -180,23 +187,30 @@ export function ConversationActions({ conversationId, status, teamMembers, assig
 
       {/* Message input — only when agent has claimed */}
       {status === 'bot_paused' && (
-        <form onSubmit={handleSend} className="flex items-center gap-3 px-5 py-3">
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type a message as agent…"
-            className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-          />
-          <button
-            type="submit"
-            disabled={sending || !message.trim()}
-            aria-label="Send message"
-            className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center disabled:opacity-40 transition-colors shadow-sm shrink-0"
-          >
-            <Send size={16} />
-          </button>
-        </form>
+        <div className="px-5 py-3 space-y-2">
+          {sendError && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {sendError}
+            </p>
+          )}
+          <form onSubmit={handleSend} className="flex items-center gap-3">
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => { setMessage(e.target.value); setSendError(null); }}
+              placeholder="Type a message as agent…"
+              className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+            />
+            <button
+              type="submit"
+              disabled={sending || !message.trim()}
+              aria-label="Send message"
+              className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center disabled:opacity-40 transition-colors shadow-sm shrink-0"
+            >
+              <Send size={16} />
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );
