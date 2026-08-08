@@ -56,6 +56,11 @@ export function DashboardNav({
   const router   = useRouter();
   const supabase = getSupabaseBrowserClient();
 
+  // Items visible to each role (most-restrictive first)
+  const AGENT_HREFS      = new Set(['/dashboard', '/conversations', '/contacts']);
+  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/contacts', '/leads', '/orders', '/analytics', '/settings']);
+  // admin / client_manager — no filter (see everything)
+
   // Build nav dynamically — insert gated items at their correct positions
   const navItems = (() => {
     const items = [...BASE_NAV];
@@ -68,6 +73,9 @@ export function DashboardNav({
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
       items.splice(guardrailsIdx + 1, 0, ORDERS_ITEM);
     }
+    // Role-based filtering
+    if (userRole === 'agent') return items.filter(i => AGENT_HREFS.has(i.href));
+    if (userRole === 'supervisor') return items.filter(i => SUPERVISOR_HREFS.has(i.href));
     return items;
   })();
 
