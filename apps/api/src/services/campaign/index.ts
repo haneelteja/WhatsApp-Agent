@@ -121,7 +121,7 @@ export async function cancelCampaign(campaignId: string, tenantId: string): Prom
 
 const CONCURRENT_LIMIT = 3;  // max concurrent sends to avoid rate limits
 
-async function processCampaignContacts(campaign: CampaignV2, tenantId: string): Promise<void> {
+export async function processCampaignContacts(campaign: CampaignV2, tenantId: string): Promise<void> {
   const db = getServerClient();
 
   const retryConfig = (campaign.retry_config as CampaignRetryConfig | null) ?? {

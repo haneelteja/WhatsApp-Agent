@@ -255,7 +255,7 @@ async function recoverStaleCampaigns(): Promise<void> {
 
   const { data: stale } = await db
     .from('campaigns')
-    .select('id, tenant_id, product_slug')
+    .select('*')
     .eq('status', 'running')
     .lt('updated_at', staleThreshold);
 
@@ -263,9 +263,7 @@ async function recoverStaleCampaigns(): Promise<void> {
 
   for (const campaign of stale) {
     console.warn(`[CampaignRecovery] Resuming stale campaign ${campaign.id}`);
-    // Re-set status to running (resets updated_at) then resume processing
-    await db.from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
-    void processCampaignContacts(campaign.id, campaign.tenant_id, campaign.product_slug)
-      .catch(err => console.error(`[CampaignRecovery] Resume failed for ${campaign.id}:`, (err as Error).message));
+    void processCampaignContacts(campaign as Parameters<typeof processCampaignContacts>[0], campaign.tenant_id)
+      .catch((err: unknown) => console.error(`[CampaignRecovery] Resume failed for ${campaign.id}:`, (err as Error).message));
   }
 }
