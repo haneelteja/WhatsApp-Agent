@@ -5,6 +5,7 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import { Phone, PhoneCall, PhoneOff, PhoneMissed, Clock, TrendingUp, IndianRupee } from 'lucide-react';
 import Link from 'next/link';
+import { MakeCallButton } from '@/components/dashboard/MakeCallButton';
 
 type VoiceCallRow = {
   id:          string;
@@ -65,6 +66,7 @@ export default async function VoiceCallsPage() {
     .from('tenant_users').select('tenant_id').eq('user_id', user.id).single();
   const tenantId = tenantUser?.tenant_id ?? '';
 
+  const apiBase      = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
 
   const [
@@ -130,12 +132,15 @@ export default async function VoiceCallsPage() {
           <h2 className="text-xl font-bold text-gray-900">Voice Calls</h2>
           <p className="text-sm text-gray-500 mt-0.5">AI voice call log — outbound escalations and campaigns</p>
         </div>
-        <Link
-          href="/campaigns"
-          className="text-sm font-medium bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-colors"
-        >
-          + New Campaign
-        </Link>
+        <div className="flex items-center gap-2">
+          <MakeCallButton tenantId={tenantId} productSlug="support_bot" apiBase={apiBase} />
+          <Link
+            href="/campaigns"
+            className="text-sm font-medium border border-emerald-200 text-emerald-700 px-4 py-2 rounded-xl hover:bg-emerald-50 transition-colors"
+          >
+            + Campaign
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
