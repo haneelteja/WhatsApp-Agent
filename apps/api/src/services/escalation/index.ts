@@ -225,7 +225,7 @@ async function sendEscalationNotifications(
   // Fetch notification settings, contact, recent messages, and WhatsApp config in parallel
   const [settingsRes, contactRes, messagesRes, wnRes] = await Promise.all([
     db.from('tenant_notification_settings')
-      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message')
+      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email')
       .eq('tenant_id', conversation.tenant_id)
       .single(),
     db.from('contacts')
@@ -296,6 +296,7 @@ async function sendEscalationNotifications(
       transcript,
       convUrl,
       tenantId: conversation.tenant_id,
+      fromEmail: (settings as { from_email?: string } | null)?.from_email ?? undefined,
     });
   }
 
@@ -343,10 +344,11 @@ async function sendEscalationEmails(
     transcript: string;
     convUrl: string;
     tenantId: string;
+    fromEmail?: string;
   }
 ): Promise<void> {
   const apiKey = process.env['RESEND_API_KEY'];
-  const from   = process.env['RESEND_FROM_EMAIL'] ?? 'alerts@alphabot.in';
+  const from   = ctx.fromEmail ?? process.env['RESEND_FROM_EMAIL'] ?? 'alerts@alphabot.in';
   if (!apiKey) return;
 
   const transcriptHtml = ctx.transcript

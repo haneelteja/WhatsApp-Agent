@@ -8,12 +8,14 @@ interface Props {
   initialEmails: string[];
   initialWaNumbers: string[];
   initialCustomerMessage: string;
+  initialFromEmail: string;
 }
 
-export function NotificationSettings({ initialEmails, initialWaNumbers, initialCustomerMessage }: Props) {
+export function NotificationSettings({ initialEmails, initialWaNumbers, initialCustomerMessage, initialFromEmail }: Props) {
   const [emails, setEmails]           = useState<string[]>(initialEmails);
   const [waNumbers, setWaNumbers]     = useState<string[]>(initialWaNumbers);
   const [customerMsg, setCustomerMsg] = useState(initialCustomerMessage);
+  const [fromEmail, setFromEmail]     = useState(initialFromEmail);
   const [emailInput, setEmailInput]   = useState('');
   const [waInput, setWaInput]         = useState('');
   const [saving, setSaving]           = useState(false);
@@ -54,6 +56,7 @@ export function NotificationSettings({ initialEmails, initialWaNumbers, initialC
         escalation_emails: emails,
         escalation_wa_numbers: waNumbers,
         escalation_customer_message: customerMsg,
+        from_email: fromEmail || null,
       }),
     });
     setSaving(false);
@@ -63,6 +66,19 @@ export function NotificationSettings({ initialEmails, initialWaNumbers, initialC
 
   return (
     <div className="divide-y divide-slate-100">
+      {/* From email */}
+      <div className="px-5 py-4 space-y-3">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">From email address</p>
+        <p className="text-xs text-slate-400">Email address escalation alerts are sent from. Must be a verified domain in your email provider.</p>
+        <input
+          type="email"
+          value={fromEmail}
+          onChange={e => setFromEmail(e.target.value)}
+          placeholder="noreply@yourdomain.com"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-mono"
+        />
+      </div>
+
       {/* Escalation emails */}
       <div className="px-5 py-4 space-y-3">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Alert emails</p>

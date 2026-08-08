@@ -26,10 +26,10 @@ import { useRouter } from 'next/navigation';
 const BASE_NAV = [
   { href: '/dashboard',      label: 'Overview',       icon: LayoutDashboard },
   { href: '/conversations',  label: 'Conversations',  icon: MessageSquare   },
+  { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
   // slot: Orders (lifecycle_bot only)
-  { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
   { href: '/call-triggers',  label: 'Call Triggers',  icon: Zap             },
   { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
@@ -64,10 +64,10 @@ export function DashboardNav({
   // Build nav dynamically — insert gated items at their correct positions
   const navItems = (() => {
     const items = [...BASE_NAV];
-    // Contacts goes after Conversations (index 1), visible to all
-    items.splice(2, 0, CONTACTS_ITEM);
-    // Leads goes after Contacts (index 3), sales_bot only
-    if (hasSalesBot) items.splice(3, 0, LEADS_ITEM);
+    // Contacts goes after Voice Calls (index 2), visible to all
+    items.splice(3, 0, CONTACTS_ITEM);
+    // Leads goes after Contacts (index 4), sales_bot only
+    if (hasSalesBot) items.splice(4, 0, LEADS_ITEM);
     // Orders goes after Guardrails, lifecycle_bot only — use findIndex for robustness
     if (hasLifecycleBot) {
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');

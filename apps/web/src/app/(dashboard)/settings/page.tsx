@@ -635,6 +635,7 @@ export default async function SettingsPage({
             initialEmails={(notifSettings?.escalation_emails as string[] | null) ?? []}
             initialWaNumbers={(notifSettings?.escalation_wa_numbers as string[] | null) ?? []}
             initialCustomerMessage={notifSettings?.escalation_customer_message ?? 'Your query has been escalated to our team. A team member will get back to you shortly.'}
+            initialFromEmail={(notifSettings as { from_email?: string | null } | null)?.from_email ?? ''}
           />
         </Section>
       </div>

@@ -29,10 +29,11 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
       escalation_emails?: string[];
       escalation_wa_numbers?: string[];
       escalation_customer_message?: string;
+      from_email?: string;
     };
   }>('/notifications', { preHandler: [requireAuth] }, async (request, reply) => {
     const db = getServerClient();
-    const { escalation_emails, escalation_wa_numbers, escalation_customer_message } = request.body;
+    const { escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email } = request.body;
 
     const { data, error } = await db
       .from('tenant_notification_settings')
@@ -41,6 +42,7 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
         ...(escalation_emails !== undefined && { escalation_emails }),
         ...(escalation_wa_numbers !== undefined && { escalation_wa_numbers }),
         ...(escalation_customer_message !== undefined && { escalation_customer_message }),
+        ...(from_email !== undefined && { from_email }),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'tenant_id' })
       .select()
