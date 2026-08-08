@@ -15,8 +15,7 @@ import { getServerClient } from '@alphabot/database';
 import { dispatchCall, finaliseCall } from '../../services/voice/call-manager.js';
 import { buildGreetingTwiml, processTurn, buildVoicemailTwiml, appendTranscript } from '../../services/voice/pipeline.js';
 import { resolveVoiceProviders, bustProviderCache, estimateCostPerMin } from '../../services/voice/registry.js';
-import { getBotContext } from '../../services/bot-context.js';
-import type { BotConfig, BotVoiceConfig, DispatchCallRequest, ProductSlug } from '@alphabot/shared';
+import type { BotVoiceConfig, DispatchCallRequest, ProductSlug } from '@alphabot/shared';
 
 export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
 
@@ -57,10 +56,15 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
 
         const call = callRow as { tenant_id: string; product_slug: string; stt_provider: string; tts_provider: string };
 
-        // Load providers
-        const botCtx    = await getBotContext(call.tenant_id, call.product_slug as ProductSlug, 'meta_cloud');
-        const botConfig = botCtx.bot_config as (BotConfig & { voice_config?: BotVoiceConfig }) | null;
-        const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
+        // Load providers — query bot_configs directly (getBotContext needs a WA number)
+        const { data: bcRowsTwiml } = await db
+          .from('bot_configs')
+          .select('voice_config')
+          .eq('tenant_id', call.tenant_id)
+          .eq('product_slug', call.product_slug)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        const voiceCfg  = ((bcRowsTwiml?.[0] as { voice_config?: BotVoiceConfig } | null)?.voice_config ?? {}) as BotVoiceConfig;
         const providers = await resolveVoiceProviders(voiceCfg);
 
         const apiBase   = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
@@ -124,9 +128,15 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const botCtx    = await getBotContext(call.tenant_id, call.product_slug as ProductSlug, 'meta_cloud');
-        const botConfig = botCtx.bot_config as (BotConfig & { voice_config?: BotVoiceConfig }) | null;
-        const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
+        // Load providers — query bot_configs directly (getBotContext needs a WA number)
+        const { data: bcRowsRespond } = await db
+          .from('bot_configs')
+          .select('voice_config')
+          .eq('tenant_id', call.tenant_id)
+          .eq('product_slug', call.product_slug)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        const voiceCfg  = ((bcRowsRespond?.[0] as { voice_config?: BotVoiceConfig } | null)?.voice_config ?? {}) as BotVoiceConfig;
         const providers = await resolveVoiceProviders(voiceCfg);
 
         // Twilio recordings require Basic auth — load token from DB (not env var) since

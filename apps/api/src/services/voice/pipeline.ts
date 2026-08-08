@@ -15,10 +15,9 @@
 import { getServerClient } from '@alphabot/database';
 import { getAIResponse } from '../ai/claude.js';
 import { lookupKB } from '../kb/lookup.js';
-import { getBotContext } from '../bot-context.js';
 import type { SttProvider, TtsProvider } from './types.js';
 import type {
-  BotConfig, BotVoiceConfig, Message, PlatformGuardrails, LayeredGuardrailsConfig, Product,
+  BotVoiceConfig, Message, PlatformGuardrails, LayeredGuardrailsConfig,
   ProductSlug,
 } from '@alphabot/shared';
 
@@ -84,6 +83,52 @@ async function loadPreviousContext(
 
   if (parts.length === 0) return '';
   return `\n\nPrevious interactions with this customer (do NOT repeat questions already answered):\n${parts.join('\n\n')}`;
+}
+
+// ─── Voice-specific bot context loader ───────────────────────────────────────
+// getBotContext requires a matching whatsapp_numbers row — voice calls have none.
+// This helper fetches bot_config + guardrails directly without that dependency.
+
+interface VoiceBotCtx {
+  voiceCfg:            BotVoiceConfig;
+  baseSystemPrompt:    string | null;
+  guardrails_json:     Record<string, unknown> | null;
+  platform_guardrails: PlatformGuardrails | null;
+  bot_type_guardrails: LayeredGuardrailsConfig | null;
+  tenant_guardrails:   LayeredGuardrailsConfig | null;
+}
+
+async function loadVoiceBotContext(
+  db:          ReturnType<typeof getServerClient>,
+  tenantId:    string,
+  productSlug: ProductSlug,
+): Promise<VoiceBotCtx> {
+  const [botCfgRes, platformGRes, botTypeGRes, tenantGRes] = await Promise.all([
+    db.from('bot_configs')
+      .select('system_prompt, guardrails_json, voice_config')
+      .eq('tenant_id', tenantId)
+      .eq('product_slug', productSlug)
+      .order('updated_at', { ascending: false })
+      .limit(1),
+    db.from('platform_settings').select('value').eq('key', 'guardrails').maybeSingle(),
+    db.from('bot_type_guardrails').select('guardrails_json').eq('product_slug', productSlug).maybeSingle(),
+    db.from('tenant_guardrails').select('guardrails_json').eq('tenant_id', tenantId).maybeSingle(),
+  ]);
+
+  const row = (botCfgRes.data ?? [])[0] as {
+    system_prompt:   string | null;
+    guardrails_json: Record<string, unknown> | null;
+    voice_config:    BotVoiceConfig | null;
+  } | undefined;
+
+  return {
+    voiceCfg:            (row?.voice_config ?? {}) as BotVoiceConfig,
+    baseSystemPrompt:    row?.system_prompt ?? null,
+    guardrails_json:     row?.guardrails_json ?? null,
+    platform_guardrails: (platformGRes.data as { value: PlatformGuardrails } | null)?.value ?? null,
+    bot_type_guardrails: (botTypeGRes.data as { guardrails_json: LayeredGuardrailsConfig } | null)?.guardrails_json ?? null,
+    tenant_guardrails:   (tenantGRes.data as { guardrails_json: LayeredGuardrailsConfig } | null)?.guardrails_json ?? null,
+  };
 }
 
 // Markers the AI can emit to control call flow
@@ -185,9 +230,8 @@ export interface PipelineContext {
  * Plays greeting then starts the first recording.
  */
 export async function buildGreetingTwiml(ctx: PipelineContext, callContext?: Record<string, string>): Promise<string> {
-  const botCtx     = await getBotContext(ctx.tenantId, ctx.productSlug, 'meta_cloud');
-  const botConfig  = botCtx.bot_config as BotConfig | null;
-  const voiceCfg   = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
+  const db = getServerClient();
+  const { voiceCfg } = await loadVoiceBotContext(db, ctx.tenantId, ctx.productSlug);
 
   const greeting =
     callContext?.['greeting_override'] ??
@@ -226,13 +270,12 @@ export async function processTurn(
   const db = getServerClient();
 
   // 1. Load bot context + previous customer history in parallel
-  const [botCtx, previousContext] = await Promise.all([
-    getBotContext(ctx.tenantId, ctx.productSlug, 'meta_cloud'),
+  const [vbCtx, previousContext] = await Promise.all([
+    loadVoiceBotContext(db, ctx.tenantId, ctx.productSlug),
     loadPreviousContext(db, ctx.voiceCallId, ctx.tenantId),
   ]);
-  const botConfig = botCtx.bot_config as (BotConfig & { product: Product | null }) | null;
-  const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
-  const language  = voiceCfg.language ?? 'en-IN';
+  const voiceCfg = vbCtx.voiceCfg;
+  const language = voiceCfg.language ?? 'en-IN';
 
   // 2. Transcribe the recording using the correct language
   const sttResult = await ctx.stt.transcribe({
@@ -263,16 +306,15 @@ export async function processTurn(
   };
 
   const baseSystemPrompt =
-    botConfig?.system_prompt ??
-    (botConfig?.product as Product | null)?.default_prompt ??
+    vbCtx.baseSystemPrompt ??
     DEFAULT_SYSTEM_PROMPTS[ctx.productSlug] ??
     DEFAULT_SYSTEM_PROMPTS['support_bot']!;
 
   // 3. Merge guardrails
-  const globalG   = (botCtx.platform_guardrails ?? null) as PlatformGuardrails | null;
-  const botTypeG  = (botCtx.bot_type_guardrails ?? null) as LayeredGuardrailsConfig | null;
-  const tenantG   = (botCtx.tenant_guardrails ?? null) as LayeredGuardrailsConfig | null;
-  const clientBotG = botConfig?.guardrails_json ?? null;
+  const globalG    = vbCtx.platform_guardrails;
+  const botTypeG   = vbCtx.bot_type_guardrails;
+  const tenantG    = vbCtx.tenant_guardrails;
+  const clientBotG = vbCtx.guardrails_json as { blocked_topics?: string[]; tone?: string; kb_only_mode?: boolean } | null;
 
   const systemPrompt = buildVoiceSystemPrompt(
     baseSystemPrompt, voiceCfg, globalG, botTypeG, tenantG, clientBotG, language, previousContext,
