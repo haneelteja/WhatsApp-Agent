@@ -636,6 +636,10 @@ export default async function SettingsPage({
             initialWaNumbers={(notifSettings?.escalation_wa_numbers as string[] | null) ?? []}
             initialCustomerMessage={notifSettings?.escalation_customer_message ?? 'Your query has been escalated to our team. A team member will get back to you shortly.'}
             initialFromEmail={(notifSettings as { from_email?: string | null } | null)?.from_email ?? ''}
+            initialResendConfigured={!!(notifSettings as { resend_api_key?: string | null } | null)?.resend_api_key}
+            initialResendKeyMasked={(notifSettings as { resend_api_key?: string | null } | null)?.resend_api_key
+              ? '••••' + ((notifSettings as { resend_api_key: string }).resend_api_key).slice(-4)
+              : ''}
           />
         </Section>
       </div>

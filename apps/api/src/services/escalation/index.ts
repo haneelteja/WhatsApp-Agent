@@ -225,7 +225,7 @@ async function sendEscalationNotifications(
   // Fetch notification settings, contact, recent messages, and WhatsApp config in parallel
   const [settingsRes, contactRes, messagesRes, wnRes] = await Promise.all([
     db.from('tenant_notification_settings')
-      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email')
+      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email, resend_api_key')
       .eq('tenant_id', conversation.tenant_id)
       .single(),
     db.from('contacts')
@@ -289,6 +289,7 @@ async function sendEscalationNotifications(
   // ── 2. Email to each configured address ────────────────────────────────
   const emails = (settings?.escalation_emails as string[] | null) ?? [];
   if (emails.length > 0) {
+    const s = settings as { from_email?: string; resend_api_key?: string } | null;
     void sendEscalationEmails(emails, {
       customerName,
       customerPhone,
@@ -296,7 +297,8 @@ async function sendEscalationNotifications(
       transcript,
       convUrl,
       tenantId: conversation.tenant_id,
-      fromEmail: (settings as { from_email?: string } | null)?.from_email ?? undefined,
+      fromEmail:    s?.from_email    ?? undefined,
+      resendApiKey: s?.resend_api_key ?? undefined,
     });
   }
 
@@ -345,9 +347,11 @@ async function sendEscalationEmails(
     convUrl: string;
     tenantId: string;
     fromEmail?: string;
+    resendApiKey?: string;
   }
 ): Promise<void> {
-  const apiKey = process.env['RESEND_API_KEY'];
+  // Prefer tenant's own Resend key; fall back to platform key
+  const apiKey = ctx.resendApiKey ?? process.env['RESEND_API_KEY'];
   const from   = ctx.fromEmail ?? process.env['RESEND_FROM_EMAIL'] ?? 'alerts@alphabot.in';
   if (!apiKey) return;
 
