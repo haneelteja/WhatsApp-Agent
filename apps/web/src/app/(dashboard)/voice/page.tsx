@@ -66,16 +66,22 @@ export default async function VoiceCallsPage() {
     .from('tenant_users').select('tenant_id').eq('user_id', user.id).single();
   const tenantId = tenantUser?.tenant_id ?? '';
 
-  const apiBase      = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+  const apiBase        = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
+  const thirtyDaysAgo  = new Date(Date.now() - 30 * 86400000).toISOString();
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
 
   const [
+    { data: chartCalls },
     { data: calls, count: totalCalls },
     { count: completedCalls },
     { count: failedCalls },
     { count: voicemailCalls },
     { data: costData },
   ] = await Promise.all([
+    admin.from('voice_calls')
+      .select('created_at, status')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', fourteenDaysAgo),
     admin.from('voice_calls')
       .select('*', { count: 'exact' })
       .eq('tenant_id', tenantId)
@@ -92,6 +98,19 @@ export default async function VoiceCallsPage() {
       .eq('tenant_id', tenantId)
       .gte('created_at', thirtyDaysAgo),
   ]);
+
+  // Build 14-day chart data
+  const dailyMap = new Map<string, number>();
+  for (const c of (chartCalls ?? []) as Array<{ created_at: string }>) {
+    const day = c.created_at.slice(0, 10);
+    dailyMap.set(day, (dailyMap.get(day) ?? 0) + 1);
+  }
+  const chartDays = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(Date.now() - (13 - i) * 86400000);
+    const key = d.toISOString().slice(0, 10);
+    return { key, label: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), count: dailyMap.get(key) ?? 0 };
+  });
+  const chartMax = Math.max(...chartDays.map(d => d.count), 1);
 
   const callList = (calls ?? []) as VoiceCallRow[];
   const totalCost = (costData ?? []).reduce((s, c) => s + (c.cost_rupees ?? 0), 0);
@@ -155,6 +174,39 @@ export default async function VoiceCallsPage() {
             <p className="text-[11px] text-gray-400">{s.sub}</p>
           </div>
         ))}
+      </div>
+
+      {/* Daily calls chart */}
+      <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-700">Calls per day</h3>
+          <span className="text-xs text-gray-400">Last 14 days</span>
+        </div>
+        <div className="flex items-end gap-1 h-24">
+          {chartDays.map(day => (
+            <div key={day.key} className="flex-1 flex flex-col items-center gap-1 group">
+              <div className="relative flex-1 w-full flex items-end">
+                <div
+                  className="w-full bg-emerald-500 rounded-t-sm group-hover:bg-emerald-400 transition-colors"
+                  style={{ height: day.count === 0 ? '2px' : `${Math.max(4, (day.count / chartMax) * 80)}px`, opacity: day.count === 0 ? 0.2 : 1 }}
+                  title={`${day.label}: ${day.count} call${day.count !== 1 ? 's' : ''}`}
+                />
+                {day.count > 0 && (
+                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-emerald-700 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    {day.count}
+                  </span>
+                )}
+              </div>
+              <span className="text-[9px] text-gray-300 rotate-45 origin-left translate-y-1 hidden sm:block">
+                {day.label.split(' ')[0]}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between mt-3 text-[10px] text-gray-300">
+          <span>{chartDays[0]!.label}</span>
+          <span>{chartDays[13]!.label}</span>
+        </div>
       </div>
 
       {/* Call log */}

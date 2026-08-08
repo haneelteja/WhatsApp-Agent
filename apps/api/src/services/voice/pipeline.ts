@@ -25,6 +25,67 @@ import type {
 const MAX_TURNS   = 20;
 const RECORD_SEC  = 10;   // max silence detection window per turn
 
+// ─── Previous context loader ──────────────────────────────────────────────────
+
+/**
+ * Fetch previous voice call summaries and linked WhatsApp messages for the
+ * customer being called, so the bot doesn't ask repeat questions.
+ */
+async function loadPreviousContext(
+  db:           ReturnType<typeof getServerClient>,
+  voiceCallId:  string,
+  tenantId:     string,
+): Promise<string> {
+  const { data: currentCall } = await db
+    .from('voice_calls')
+    .select('to_number, conversation_id')
+    .eq('id', voiceCallId)
+    .single();
+
+  if (!currentCall) return '';
+  const call = currentCall as { to_number: string; conversation_id: string | null };
+
+  const parts: string[] = [];
+
+  // Last 2 completed calls to this number
+  const { data: prevCalls } = await db
+    .from('voice_calls')
+    .select('transcript, created_at, outcome_json')
+    .eq('tenant_id', tenantId)
+    .eq('to_number', call.to_number)
+    .eq('status', 'completed')
+    .neq('id', voiceCallId)
+    .order('created_at', { ascending: false })
+    .limit(2);
+
+  for (const c of (prevCalls ?? []) as Array<{ transcript: string | null; created_at: string; outcome_json: { summary?: string } | null }>) {
+    const date = new Date(c.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    const summary = c.outcome_json?.summary ?? (c.transcript ? c.transcript.slice(0, 300) : null);
+    if (summary) parts.push(`[Voice call on ${date}]: ${summary}`);
+  }
+
+  // Last 10 messages from the linked WhatsApp conversation
+  if (call.conversation_id) {
+    const { data: msgs } = await db
+      .from('messages')
+      .select('role, content, timestamp')
+      .eq('conversation_id', call.conversation_id)
+      .order('timestamp', { ascending: false })
+      .limit(10);
+
+    const msgArr = ((msgs ?? []) as Array<{ role: string; content: string }>).reverse();
+    if (msgArr.length > 0) {
+      const chatStr = msgArr
+        .map(m => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content.slice(0, 200)}`)
+        .join('\n');
+      parts.push(`[Recent WhatsApp chat]:\n${chatStr}`);
+    }
+  }
+
+  if (parts.length === 0) return '';
+  return `\n\nPrevious interactions with this customer (do NOT repeat questions already answered):\n${parts.join('\n\n')}`;
+}
+
 // Markers the AI can emit to control call flow
 const END_CALL_MARKER = '[END_CALL]';
 
@@ -54,15 +115,16 @@ function pauseTag(sec = 1): string {
 // ─── System prompt assembly for voice ────────────────────────────────────────
 
 function buildVoiceSystemPrompt(
-  basePrompt: string,
-  voiceConfig: BotVoiceConfig,
-  globalG:  PlatformGuardrails | null,
-  botTypeG: LayeredGuardrailsConfig | null,
-  tenantG:  LayeredGuardrailsConfig | null,
-  clientBotG: { blocked_topics?: string[]; tone?: string; kb_only_mode?: boolean } | null,
-  language: string,
+  basePrompt:      string,
+  voiceConfig:     BotVoiceConfig,
+  globalG:         PlatformGuardrails | null,
+  botTypeG:        LayeredGuardrailsConfig | null,
+  tenantG:         LayeredGuardrailsConfig | null,
+  clientBotG:      { blocked_topics?: string[]; tone?: string; kb_only_mode?: boolean } | null,
+  language:        string,
+  previousContext: string = '',
 ): string {
-  let prompt = basePrompt;
+  let prompt = basePrompt + previousContext;
 
   // Voice-specific instructions
   prompt += `\n\nIMPORTANT — You are responding via VOICE CALL, not text:
@@ -161,8 +223,13 @@ export async function processTurn(
   turnNumber:    number,
   conversationHistory: string,  // accumulated transcript text for context
 ): Promise<{ twiml: string; transcriptLine: string; shouldEnd: boolean }> {
-  // 1. Load bot context first so we know the language before transcribing
-  const botCtx = await getBotContext(ctx.tenantId, ctx.productSlug, 'meta_cloud');
+  const db = getServerClient();
+
+  // 1. Load bot context + previous customer history in parallel
+  const [botCtx, previousContext] = await Promise.all([
+    getBotContext(ctx.tenantId, ctx.productSlug, 'meta_cloud'),
+    loadPreviousContext(db, ctx.voiceCallId, ctx.tenantId),
+  ]);
   const botConfig = botCtx.bot_config as (BotConfig & { product: Product | null }) | null;
   const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
   const language  = voiceCfg.language ?? 'en-IN';
@@ -208,7 +275,7 @@ export async function processTurn(
   const clientBotG = botConfig?.guardrails_json ?? null;
 
   const systemPrompt = buildVoiceSystemPrompt(
-    baseSystemPrompt, voiceCfg, globalG, botTypeG, tenantG, clientBotG, language,
+    baseSystemPrompt, voiceCfg, globalG, botTypeG, tenantG, clientBotG, language, previousContext,
   );
 
   // 4. KB lookup
