@@ -3,7 +3,7 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Building2, Phone, Bot, Link2, ShieldCheck, Bell, CreditCard, ChevronRight,
+  Building2, Phone, Bot, Link2, Bell, CreditCard, ChevronRight,
   Users, Mail, Clock, Trash2, RefreshCw, Info, Cpu,
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
@@ -207,14 +207,6 @@ export default async function SettingsPage({
             />
           </Section>
 
-          <Section icon={<ShieldCheck size={16} />} title="Guardrails" hint="Define what your bots should never say or do — off-limits topics, restricted keywords, and fallback behaviour.">
-            <div className="px-5 py-4">
-              <p className="text-xs text-gray-500">
-                Manage guardrails in the dedicated{' '}
-                <Link href="/guardrails" className="text-emerald-600 font-semibold underline">Guardrails</Link> section.
-              </p>
-            </div>
-          </Section>
 
           {activeBots.length > 0 && (
             <Section icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup" hint="Paste the Webhook URL and Verify Token into your Meta App Dashboard under WhatsApp → Configuration to activate message delivery.">
