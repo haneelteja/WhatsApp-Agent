@@ -129,9 +129,21 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
         const voiceCfg  = (botConfig?.voice_config ?? {}) as BotVoiceConfig;
         const providers = await resolveVoiceProviders(voiceCfg);
 
-        // Twilio recordings require Basic auth; Exotel recordings are publicly accessible
-        const twilioCreds = (providers.telephony.name === 'twilio')
-          ? `Basic ${Buffer.from(`${body['AccountSid'] ?? body['account_sid'] ?? ''}:${process.env['TWILIO_AUTH_TOKEN'] ?? ''}`).toString('base64')}`
+        // Twilio recordings require Basic auth — load token from DB (not env var) since
+        // the token is stored in voice_provider_configs after platform setup.
+        let twilioAuthToken = process.env['TWILIO_AUTH_TOKEN'] ?? '';
+        if (!twilioAuthToken && providers.telephony.name === 'twilio') {
+          const { data: twRow } = await db
+            .from('voice_provider_configs')
+            .select('credentials_json')
+            .eq('component', 'telephony')
+            .eq('provider_name', 'twilio')
+            .single();
+          twilioAuthToken = (twRow?.credentials_json as { auth_token?: string } | null)?.auth_token ?? '';
+        }
+
+        const twilioCreds = providers.telephony.name === 'twilio'
+          ? `Basic ${Buffer.from(`${body['AccountSid'] ?? body['account_sid'] ?? ''}:${twilioAuthToken}`).toString('base64')}`
           : '';  // Exotel: no auth needed
 
         const apiBase    = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
