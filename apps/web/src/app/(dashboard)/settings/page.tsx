@@ -17,7 +17,7 @@ import { FollowUpForm }          from '@/components/dashboard/FollowUpForm';
 import type { FollowUpScope }    from '@/app/actions/follow-up';
 import { LlmConfigCard }         from '@/components/LlmConfigCard';
 import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
-import { ClientVoiceConfigCard, type ClientVoiceConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
+import { ClientVoiceConfigCard, type BotVoiceConfigRow, type ExotelConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -572,17 +572,33 @@ export default async function SettingsPage({
 
   // ── Voice data ──────────────────────────────────────────────────────────────
   if (activeTab === 'voice') {
-    const { data: tvc } = await admin
-      .from('tenant_voice_configs')
-      .select('from_number, exotel_api_key, exotel_account_sid')
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
+    const [{ data: voiceProducts }, { data: botCfgs }, { data: tvc }] = await Promise.all([
+      admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
+      admin.from('bot_configs').select('product_slug, voice_config').eq('tenant_id', tenantId),
+      admin.from('tenant_voice_configs')
+        .select('from_number, exotel_api_key, exotel_account_sid')
+        .eq('tenant_id', tenantId)
+        .maybeSingle(),
+    ]);
 
-    const voiceInitial: ClientVoiceConfigRow | null = tvc
+    const BOT_NAMES: Record<string, string> = {
+      support_bot:   'Support Bot',
+      sales_bot:     'Sales Bot',
+      lifecycle_bot: 'Lifecycle Bot',
+    };
+
+    const voiceBots: BotVoiceConfigRow[] = (voiceProducts ?? []).map(p => ({
+      product_slug:  p.product_type,
+      product_name:  BOT_NAMES[p.product_type] ?? p.product_type,
+      voice_config:  ((botCfgs ?? []).find(bc => bc.product_slug === p.product_type)?.voice_config ?? null) as BotVoiceConfigRow['voice_config'],
+    }));
+
+    const tvcRow = tvc as { from_number: string; exotel_api_key: string | null; exotel_account_sid: string | null } | null;
+    const exotelInitial: ExotelConfigRow | null = tvcRow
       ? {
-          from_number:        (tvc as { from_number: string; exotel_api_key: string | null; exotel_account_sid: string | null }).from_number,
-          has_exotel_creds:   !!(tvc as { exotel_api_key: string | null }).exotel_api_key,
-          exotel_account_sid: (tvc as { exotel_account_sid: string | null }).exotel_account_sid,
+          from_number:        tvcRow.from_number,
+          has_exotel_creds:   !!tvcRow.exotel_api_key,
+          exotel_account_sid: tvcRow.exotel_account_sid,
         }
       : null;
 
@@ -595,10 +611,10 @@ export default async function SettingsPage({
               <h3 className="text-sm font-semibold text-gray-800">Voice Calling</h3>
             </div>
             <p className="text-xs text-gray-400 mb-6">
-              Connect your own Exotel account to make outbound voice calls from your number. Your credentials
-              are stored securely and never shared with other accounts.
+              Enable voice calls for each bot. When enabled, your bot can make AI-powered outbound calls —
+              on escalation, on demand, or via campaign. Platform voice (Twilio) is managed for you.
             </p>
-            <ClientVoiceConfigCard initial={voiceInitial} />
+            <ClientVoiceConfigCard bots={voiceBots} exotel={exotelInitial} />
           </div>
         </div>
       </SettingsShell>
