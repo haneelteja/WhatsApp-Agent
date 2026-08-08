@@ -121,8 +121,7 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
               </button>
             </div>
 
-            {isActive && (
-              <div className="mt-3 pt-3 border-t border-emerald-100 space-y-2">
+            <div className="mt-3 pt-3 border-t border-emerald-100 space-y-2">
                 <div>
                   <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Webhook URL</p>
                   <div className="flex items-center gap-2 bg-white rounded-lg border border-emerald-100 px-3 py-2">
@@ -158,7 +157,7 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
                   </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
         );
       })}
