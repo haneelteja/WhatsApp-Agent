@@ -158,7 +158,6 @@ export function BotProductsSection({ tenantId, apiBase, tenantProducts: initialP
                 )}
               </div>
             </div>
-          </div>
         );
       })}
 
