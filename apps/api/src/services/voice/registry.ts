@@ -83,7 +83,7 @@ function buildTelephony(
   }
 }
 
-function buildStt(row: DbProviderRow): SttProvider {
+function buildStt(row: DbProviderRow, allRows?: DbProviderRow[]): SttProvider {
   const c = row.credentials_json;
   const cfg = row.config_json as Record<string, string>;
 
@@ -92,14 +92,21 @@ function buildStt(row: DbProviderRow): SttProvider {
       return createDeepgramProvider({ api_key: c['api_key']!, model: cfg['model'] });
     case 'sarvam':
       return createSarvamSttProvider({ api_key: c['api_key']!, model: cfg['model'], language_code: cfg['language_code'] });
-    case 'azure_speech':
-      throw new Error('Azure Speech STT not yet implemented — use deepgram or sarvam');
+    case 'azure_speech': {
+      // Not yet implemented — fall back to deepgram default
+      const fallback = allRows ? findRow(allRows, 'stt', 'deepgram') ?? findRow(allRows, 'stt') : undefined;
+      if (fallback && fallback.provider_name !== 'azure_speech') {
+        console.warn('[Voice] azure_speech STT not implemented, falling back to', fallback.provider_name);
+        return buildStt(fallback);
+      }
+      throw new Error('Azure Speech STT is not yet supported and no fallback STT provider is configured');
+    }
     default:
       throw new Error(`Unknown STT provider: ${row.provider_name}`);
   }
 }
 
-function buildTts(row: DbProviderRow): TtsProvider {
+function buildTts(row: DbProviderRow, allRows?: DbProviderRow[]): TtsProvider {
   const c = row.credentials_json;
   const cfg = row.config_json as Record<string, string>;
 
@@ -110,8 +117,17 @@ function buildTts(row: DbProviderRow): TtsProvider {
       return createExotelSayProvider({ voice: cfg['voice'], language: cfg['language'] });
     case 'google_tts':
       return createGoogleTtsProvider({ api_key: c['api_key']!, voice_name: cfg['voice_name'] });
-    case 'sarvam_tts':
-      throw new Error('Sarvam TTS not yet implemented — use exotel_say or google_tts');
+    case 'sarvam_tts': {
+      // Not yet implemented — fall back to google_tts or twilio_say
+      const fallback = allRows
+        ? findRow(allRows, 'tts', 'google_tts') ?? findRow(allRows, 'tts', 'twilio_say') ?? findRow(allRows, 'tts')
+        : undefined;
+      if (fallback && fallback.provider_name !== 'sarvam_tts') {
+        console.warn('[Voice] sarvam_tts not implemented, falling back to', fallback.provider_name);
+        return buildTts(fallback);
+      }
+      throw new Error('Sarvam TTS is not yet supported and no fallback TTS provider is configured');
+    }
     default:
       throw new Error(`Unknown TTS provider: ${row.provider_name}`);
   }
@@ -151,8 +167,8 @@ export async function resolveVoiceProviders(
 
   // Use tenant's own Exotel credentials if configured; else fall back to platform
   const telephony = buildTelephony(telephonyRow, tenantExotelCreds as Record<string, string> | undefined);
-  const stt        = buildStt(sttRow);
-  const tts        = buildTts(ttsRow);
+  const stt        = buildStt(sttRow, rows);
+  const tts        = buildTts(ttsRow, rows);
 
   // Prefer the client's own number; fall back to platform config_json.from_number
   const platformFromNumber = (telephonyRow.config_json as Record<string, string>)['from_number'] ?? '';

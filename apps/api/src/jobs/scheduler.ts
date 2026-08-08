@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { getServerClient } from '@alphabot/database';
 import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
-import { dispatchPendingVoiceCalls } from '../services/campaign/index.js';
+import { dispatchPendingVoiceCalls, processCampaignContacts } from '../services/campaign/index.js';
 import type { BotVoiceConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -238,4 +238,34 @@ export function startScheduler(): void {
       console.error('[Scheduler] No-reply trigger failed:', (err as Error).message)
     );
   });
+
+  // Campaign recovery — reset and resume campaigns stuck in 'running' after a server restart.
+  // A campaign is considered stale if it has been 'running' for more than 10 minutes
+  // with no contact status change (updated_at on the campaign row hasn't advanced).
+  cron.schedule('*/10 * * * *', () => {
+    void recoverStaleCampaigns().catch(err =>
+      console.error('[Scheduler] Campaign recovery failed:', (err as Error).message)
+    );
+  });
+}
+
+async function recoverStaleCampaigns(): Promise<void> {
+  const db = getServerClient();
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+  const { data: stale } = await db
+    .from('campaigns')
+    .select('id, tenant_id, product_slug')
+    .eq('status', 'running')
+    .lt('updated_at', staleThreshold);
+
+  if (!stale?.length) return;
+
+  for (const campaign of stale) {
+    console.warn(`[CampaignRecovery] Resuming stale campaign ${campaign.id}`);
+    // Re-set status to running (resets updated_at) then resume processing
+    await db.from('campaigns').update({ status: 'running' }).eq('id', campaign.id);
+    void processCampaignContacts(campaign.id, campaign.tenant_id, campaign.product_slug)
+      .catch(err => console.error(`[CampaignRecovery] Resume failed for ${campaign.id}:`, (err as Error).message));
+  }
 }

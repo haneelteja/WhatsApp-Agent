@@ -81,7 +81,7 @@ export async function getBotContext(
   const [tenantRes, botConfigRes, platformGRes, botTypeGRes, tenantGRes, llmRes] = await Promise.all([
     db.from('tenants').select('plan, status').eq('id', tenantId).single(),
     db.from('bot_configs')
-      .select('id, system_prompt, ai_model, confidence_threshold, escalation_triggers, guardrails_json, escalation_policy')
+      .select('id, system_prompt, ai_model, confidence_threshold, escalation_triggers, guardrails_json, escalation_policy, voice_config')
       .eq('tenant_id', tenantId)
       .eq('product_slug', productSlug)
       .single(),

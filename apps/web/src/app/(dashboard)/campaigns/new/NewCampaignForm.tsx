@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 
 type Channel = 'whatsapp' | 'voice' | 'both';
@@ -34,7 +35,8 @@ function parseContacts(raw: string): Array<{ phone_number: string; customer_name
 }
 
 export function NewCampaignForm({ tenantId, productSlugs, apiBase }: Props) {
-  const router = useRouter();
+  const router   = useRouter();
+  const supabase = getSupabaseBrowserClient();
 
   const [name,            setName]            = useState('');
   const [channel,         setChannel]         = useState<Channel>('whatsapp');
@@ -69,9 +71,11 @@ export function NewCampaignForm({ tenantId, productSlugs, apiBase }: Props) {
 
     setBusy(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
       const res = await fetch(`${apiBase}/api/campaigns/${tenantId}`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           name:             name.trim(),
           channel,

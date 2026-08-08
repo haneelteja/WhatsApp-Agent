@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { PlayCircle, PauseCircle, Ban, Loader2 } from 'lucide-react';
 
 type Props = {
@@ -14,7 +15,8 @@ type Props = {
 };
 
 export function CampaignActions({ campaignId, tenantId, status, canLaunch, canPause, canCancel }: Props) {
-  const router  = useRouter();
+  const router   = useRouter();
+  const supabase = getSupabaseBrowserClient();
   const [busy, setBusy] = useState<string | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -22,8 +24,11 @@ export function CampaignActions({ campaignId, tenantId, status, canLaunch, canPa
   async function callAction(action: 'launch' | 'pause' | 'cancel') {
     setBusy(action);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
       const res = await fetch(`${apiBase}/api/campaigns/${tenantId}/${campaignId}/${action}`, {
-        method: 'POST',
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
