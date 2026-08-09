@@ -36,9 +36,9 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
     }
   });
 
-  // ─── GET /api/voice/twiml/:voiceCallId ───────────────────────────────────
-  // Twilio calls this when the customer answers. Returns TwiML greeting + first Record.
-  fastify.get<{ Params: { voiceCallId: string }; Querystring: Record<string, string> }>(
+  // ─── POST /api/voice/twiml/:voiceCallId ──────────────────────────────────
+  // Twilio POSTs to this when the customer answers. Returns TwiML greeting + first Record.
+  fastify.post<{ Params: { voiceCallId: string }; Querystring: Record<string, string> }>(
     '/twiml/:voiceCallId',
     async (request, reply) => {
       const { voiceCallId } = request.params;
