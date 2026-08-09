@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import {
   Phone, CheckCircle2, Save, Eye, EyeOff, RefreshCw,
-  ChevronDown, ChevronUp, Zap, Clock,
+  ChevronDown, ChevronUp, Zap, Clock, Mic, MessageSquare,
 } from 'lucide-react';
 import { saveBotVoiceConfigAction } from '@/app/actions/bot-voice-config';
 import {
@@ -32,6 +32,26 @@ export interface ClientVoiceConfigCardProps {
   exotel: ExotelConfigRow | null;
 }
 
+// ─── Language + voice options ─────────────────────────────────────────────────
+
+const LANGUAGES = [
+  { code: 'en-IN', label: 'English (India)' },
+  { code: 'hi-IN', label: 'Hindi' },
+  { code: 'te-IN', label: 'Telugu' },
+  { code: 'ta-IN', label: 'Tamil' },
+  { code: 'kn-IN', label: 'Kannada' },
+  { code: 'mr-IN', label: 'Marathi' },
+  { code: 'en-US', label: 'English (US)' },
+];
+
+const VOICES = [
+  { id: 'Polly.Raveena', label: 'Raveena — Indian English, Female',  lang: ['en-IN'] },
+  { id: 'Polly.Kajal',   label: 'Kajal — Hindi Neural, Female (best)', lang: ['hi-IN', 'en-IN'] },
+  { id: 'Polly.Aditi',   label: 'Aditi — Multi-lingual Indian, Female', lang: ['hi-IN', 'en-IN', 'te-IN', 'ta-IN', 'kn-IN', 'mr-IN'] },
+  { id: 'Polly.Joanna',  label: 'Joanna — US English, Female',       lang: ['en-US', 'en-IN'] },
+  { id: 'Polly.Joey',    label: 'Joey — US English, Male',            lang: ['en-US', 'en-IN'] },
+];
+
 // ─── Bot metadata ─────────────────────────────────────────────────────────────
 
 const BOT_META: Record<string, { color: string; bg: string; border: string }> = {
@@ -46,12 +66,17 @@ function BotVoiceRow({ bot }: { bot: BotVoiceConfigRow }) {
   const cfg = bot.voice_config ?? {};
   const meta = BOT_META[bot.product_slug] ?? { color: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' };
 
-  const [enabled,          setEnabled]          = useState(cfg.enabled ?? false);
-  const [autoDispatch,     setAutoDispatch]      = useState(cfg.auto_dispatch_on_escalation ?? false);
-  const [escalationDelay,  setEscalationDelay]   = useState(cfg.escalation_voice_delay_seconds ?? 0);
-  const [saved,            setSaved]             = useState(false);
-  const [error,            setError]             = useState<string | null>(null);
-  const [isPending,        startTransition]       = useTransition();
+  const [enabled,         setEnabled]        = useState(cfg.enabled ?? false);
+  const [autoDispatch,    setAutoDispatch]    = useState(cfg.auto_dispatch_on_escalation ?? false);
+  const [escalationDelay, setEscalationDelay] = useState(cfg.escalation_voice_delay_seconds ?? 0);
+  const [greeting,        setGreeting]        = useState(cfg.greeting_message ?? '');
+  const [language,        setLanguage]        = useState(cfg.language ?? 'en-IN');
+  const [ttsVoice,        setTtsVoice]        = useState(cfg.tts_voice ?? '');
+  const [saved,           setSaved]           = useState(false);
+  const [error,           setError]           = useState<string | null>(null);
+  const [isPending,       startTransition]    = useTransition();
+
+  const filteredVoices = VOICES.filter(v => v.lang.includes(language));
 
   function handleSave() {
     setError(null);
@@ -61,6 +86,9 @@ function BotVoiceRow({ bot }: { bot: BotVoiceConfigRow }) {
         enabled,
         auto_dispatch_on_escalation:    autoDispatch,
         escalation_voice_delay_seconds: escalationDelay,
+        greeting_message:               greeting.trim() || null,
+        language,
+        tts_voice:                      ttsVoice || null,
       });
       if (result.error) setError(result.error);
       else { setSaved(true); setTimeout(() => setSaved(false), 3000); }
@@ -138,6 +166,54 @@ function BotVoiceRow({ bot }: { bot: BotVoiceConfigRow }) {
                 </div>
               </div>
             )}
+
+            {/* Language + Voice */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 flex items-center gap-1 mb-1">
+                  <Mic size={11} /> Language
+                </label>
+                <select
+                  value={language}
+                  onChange={e => { setLanguage(e.target.value); setTtsVoice(''); }}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white"
+                >
+                  {LANGUAGES.map(l => (
+                    <option key={l.code} value={l.code}>{l.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 flex items-center gap-1 mb-1">
+                  <Phone size={11} /> Voice
+                </label>
+                <select
+                  value={ttsVoice}
+                  onChange={e => setTtsVoice(e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white"
+                >
+                  <option value="">Auto (by language)</option>
+                  {filteredVoices.map(v => (
+                    <option key={v.id} value={v.id}>{v.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Greeting message */}
+            <div>
+              <label className="text-xs font-medium text-gray-500 flex items-center gap-1 mb-1">
+                <MessageSquare size={11} /> Opening greeting
+              </label>
+              <textarea
+                value={greeting}
+                onChange={e => setGreeting(e.target.value)}
+                rows={2}
+                placeholder="Hello! This is Elma Water Industries. How can I help you today?"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none"
+              />
+              <p className="text-[11px] text-gray-400 mt-0.5">Spoken by the bot when the customer picks up. Leave blank to use system default.</p>
+            </div>
           </>
         )}
 
