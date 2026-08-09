@@ -139,22 +139,24 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
         const voiceCfg  = ((bcRowsRespond?.[0] as { voice_config?: BotVoiceConfig } | null)?.voice_config ?? {}) as BotVoiceConfig;
         const providers = await resolveVoiceProviders(voiceCfg);
 
-        // Twilio recordings require Basic auth — load token from DB (not env var) since
-        // the token is stored in voice_provider_configs after platform setup.
-        let twilioAuthToken = process.env['TWILIO_AUTH_TOKEN'] ?? '';
-        if (!twilioAuthToken && providers.telephony.name === 'twilio') {
+        // Twilio recordings require Basic auth using the platform account_sid + auth_token.
+        // Always load both from voice_provider_configs (env var is not set on Render).
+        // Use DB account_sid rather than body['AccountSid'] to avoid any mismatch.
+        let twilioCreds = '';
+        if (providers.telephony.name === 'twilio') {
           const { data: twRow } = await db
             .from('voice_provider_configs')
             .select('credentials_json')
             .eq('component', 'telephony')
             .eq('provider_name', 'twilio')
             .single();
-          twilioAuthToken = (twRow?.credentials_json as { auth_token?: string } | null)?.auth_token ?? '';
+          const creds = twRow?.credentials_json as { account_sid?: string; auth_token?: string } | null;
+          const sid   = creds?.account_sid ?? process.env['TWILIO_ACCOUNT_SID'] ?? body['AccountSid'] ?? '';
+          const token = creds?.auth_token  ?? process.env['TWILIO_AUTH_TOKEN']  ?? '';
+          if (sid && token) {
+            twilioCreds = `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`;
+          }
         }
-
-        const twilioCreds = providers.telephony.name === 'twilio'
-          ? `Basic ${Buffer.from(`${body['AccountSid'] ?? body['account_sid'] ?? ''}:${twilioAuthToken}`).toString('base64')}`
-          : '';  // Exotel: no auth needed
 
         const apiBase    = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
         const respondUrl = `${apiBase}/api/voice/respond/${voiceCallId}`;
