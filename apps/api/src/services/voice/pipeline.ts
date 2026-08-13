@@ -103,7 +103,7 @@ async function loadPreviousContext(
 // getBotContext requires a matching whatsapp_numbers row — voice calls have none.
 // This helper fetches bot_config + guardrails directly without that dependency.
 
-interface VoiceBotCtx {
+export interface VoiceBotCtx {
   voiceCfg:            BotVoiceConfig;
   baseSystemPrompt:    string | null;
   guardrails_json:     Record<string, unknown> | null;
@@ -112,7 +112,7 @@ interface VoiceBotCtx {
   tenant_guardrails:   LayeredGuardrailsConfig | null;
 }
 
-async function loadVoiceBotContextCached(
+export async function loadVoiceBotContextCached(
   db:          ReturnType<typeof getServerClient>,
   tenantId:    string,
   productSlug: ProductSlug,
@@ -125,7 +125,7 @@ async function loadVoiceBotContextCached(
   return ctx;
 }
 
-async function loadPreviousContextCached(
+export async function loadPreviousContextCached(
   db:          ReturnType<typeof getServerClient>,
   voiceCallId: string,
   tenantId:    string,
@@ -197,7 +197,7 @@ function pauseTag(sec = 1): string {
 
 // ─── System prompt assembly for voice ────────────────────────────────────────
 
-function buildVoiceSystemPrompt(
+export function buildVoiceSystemPrompt(
   basePrompt:      string,
   voiceConfig:     BotVoiceConfig,
   globalG:         PlatformGuardrails | null,

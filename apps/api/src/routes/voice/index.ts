@@ -13,9 +13,8 @@
 import type { FastifyInstance } from 'fastify';
 import { getServerClient } from '@alphabot/database';
 import { dispatchCall, finaliseCall } from '../../services/voice/call-manager.js';
-import { buildGreetingTwiml, processTurn, buildVoicemailTwiml, appendTranscript } from '../../services/voice/pipeline.js';
 import { resolveVoiceProviders, bustProviderCache, estimateCostPerMin } from '../../services/voice/registry.js';
-import type { BotVoiceConfig, DispatchCallRequest, ProductSlug } from '@alphabot/shared';
+import type { DispatchCallRequest } from '@alphabot/shared';
 
 export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
 
@@ -37,45 +36,34 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // ─── POST /api/voice/twiml/:voiceCallId ──────────────────────────────────
-  // Twilio POSTs to this when the customer answers. Returns TwiML greeting + first Record.
-  fastify.post<{ Params: { voiceCallId: string }; Querystring: Record<string, string> }>(
+  // Twilio POSTs to this when the customer answers.
+  // Returns TwiML that opens a Media Streams WebSocket — streaming STT+TTS pipeline.
+  fastify.post<{ Params: { voiceCallId: string } }>(
     '/twiml/:voiceCallId',
     async (request, reply) => {
       const { voiceCallId } = request.params;
-      const callContext = request.query as Record<string, string>;
 
       try {
         const db = getServerClient();
         const { data: callRow } = await db
           .from('voice_calls')
-          .select('tenant_id, product_slug, stt_provider, tts_provider')
+          .select('id')
           .eq('id', voiceCallId)
           .single();
 
         if (!callRow) return reply.status(404).type('text/xml').send('<Response><Hangup/></Response>');
 
-        const call = callRow as { tenant_id: string; product_slug: string; stt_provider: string; tts_provider: string };
-
-        // Load providers — query bot_configs directly (getBotContext needs a WA number)
-        const { data: bcRowsTwiml } = await db
-          .from('bot_configs')
-          .select('voice_config')
-          .eq('tenant_id', call.tenant_id)
-          .eq('product_slug', call.product_slug)
-          .order('updated_at', { ascending: false })
-          .limit(1);
-        const voiceCfg  = ((bcRowsTwiml?.[0] as { voice_config?: BotVoiceConfig } | null)?.voice_config ?? {}) as BotVoiceConfig;
-        const providers = await resolveVoiceProviders(voiceCfg);
-
+        // Build the wss:// URL for Twilio to connect to our Media Streams handler.
+        // API_BASE_URL is https://... — swap https for wss.
         const apiBase   = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
-        const respondUrl = `${apiBase}/api/voice/respond/${voiceCallId}`;
+        const streamUrl = apiBase.replace(/^https/, 'wss') + `/api/voice/stream/${voiceCallId}`;
 
-        const twiml = await buildGreetingTwiml(
-          { voiceCallId, tenantId: call.tenant_id, productSlug: call.product_slug as ProductSlug, respondUrl, stt: providers.stt, tts: providers.tts },
-          callContext,
-        );
-
-        await db.from('voice_calls').update({ status: 'in_progress' }).eq('id', voiceCallId);
+        const twiml = [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Response>',
+          `  <Connect><Stream url="${streamUrl}"/></Connect>`,
+          '</Response>',
+        ].join('');
 
         return reply.status(200).type('text/xml').send(twiml);
       } catch (err) {
@@ -88,103 +76,14 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // ─── POST /api/voice/respond/:voiceCallId ─────────────────────────────────
-  // Twilio hits this after each voice recording. Transcribes, calls AI, returns next TwiML.
-  fastify.post<{ Params: { voiceCallId: string }; Body: Record<string, string> }>(
+  // Legacy batch Record/Respond route — superseded by the streaming WebSocket pipeline.
+  // Kept so old Twilio webhooks don't 404 during the transition.
+  fastify.post<{ Params: { voiceCallId: string } }>(
     '/respond/:voiceCallId',
-    async (request, reply) => {
-      const { voiceCallId } = request.params;
-      const body = request.body as Record<string, string>;
-
-      // Always respond 200 immediately; Twilio retries on non-2xx
-      const db = getServerClient();
-
-      try {
-        const { data: callRow } = await db
-          .from('voice_calls')
-          .select('tenant_id, product_slug, stt_provider, tts_provider, transcript, turn_count')
-          .eq('id', voiceCallId)
-          .single();
-
-        if (!callRow) return reply.status(200).type('text/xml').send('<Response><Hangup/></Response>');
-
-        const call = callRow as {
-          tenant_id:    string;
-          product_slug: string;
-          stt_provider: string;
-          tts_provider: string;
-          transcript:   string | null;
-          turn_count:   number;
-        };
-
-        const recordingUrl  = body['RecordingUrl'];
-        const callSid       = body['CallSid'];
-        const recordingAuth = body['_recording_auth'] ?? '';  // set by Twilio auth for recordings
-
-        if (!recordingUrl) {
-          return reply.status(200).type('text/xml').send(
-            '<Response><Say>I did not catch that, please try again.</Say><Record action="' +
-            `${process.env['API_BASE_URL']}/api/voice/respond/${voiceCallId}` +
-            '" maxLength="10" timeout="2" playBeep="false"/></Response>',
-          );
-        }
-
-        // Load providers — query bot_configs directly (getBotContext needs a WA number)
-        const { data: bcRowsRespond } = await db
-          .from('bot_configs')
-          .select('voice_config')
-          .eq('tenant_id', call.tenant_id)
-          .eq('product_slug', call.product_slug)
-          .order('updated_at', { ascending: false })
-          .limit(1);
-        const voiceCfg  = ((bcRowsRespond?.[0] as { voice_config?: BotVoiceConfig } | null)?.voice_config ?? {}) as BotVoiceConfig;
-        const providers = await resolveVoiceProviders(voiceCfg);
-
-        // Twilio recordings require Basic auth using the platform account_sid + auth_token.
-        // Always load both from voice_provider_configs (env var is not set on Render).
-        // Use DB account_sid rather than body['AccountSid'] to avoid any mismatch.
-        let twilioCreds = '';
-        if (providers.telephony.name === 'twilio') {
-          const { data: twRow } = await db
-            .from('voice_provider_configs')
-            .select('credentials_json')
-            .eq('component', 'telephony')
-            .eq('provider_name', 'twilio')
-            .single();
-          const creds = twRow?.credentials_json as { account_sid?: string; auth_token?: string } | null;
-          const sid   = creds?.account_sid ?? process.env['TWILIO_ACCOUNT_SID'] ?? body['AccountSid'] ?? '';
-          const token = creds?.auth_token  ?? process.env['TWILIO_AUTH_TOKEN']  ?? '';
-          if (sid && token) {
-            twilioCreds = `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`;
-          }
-        }
-
-        const apiBase    = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
-        const respondUrl = `${apiBase}/api/voice/respond/${voiceCallId}`;
-
-        const { twiml, transcriptLine, shouldEnd } = await processTurn(
-          { voiceCallId, tenantId: call.tenant_id, productSlug: call.product_slug as ProductSlug, respondUrl, stt: providers.stt, tts: providers.tts },
-          recordingUrl,
-          twilioCreds,
-          call.turn_count,
-          call.transcript ?? '',
-        );
-
-        // Persist transcript turn non-blocking
-        if (transcriptLine) {
-          void appendTranscript(voiceCallId, transcriptLine);
-        }
-
-        if (shouldEnd) {
-          void finaliseCall(voiceCallId, callSid ?? '', 'completed', null);
-        }
-
-        return reply.status(200).type('text/xml').send(twiml);
-      } catch (err) {
-        fastify.log.error({ err: err instanceof Error ? err.message : err, voiceCallId }, '[Voice] Respond failed');
-        return reply.status(200).type('text/xml').send(
-          '<Response><Say>I am having trouble processing your request. Please try again.</Say><Hangup/></Response>',
-        );
-      }
+    async (_request, reply) => {
+      return reply.status(200).type('text/xml').send(
+        '<?xml version="1.0" encoding="UTF-8"?><Response><Say>This call is using the new streaming pipeline. Please redial.</Say><Hangup/></Response>',
+      );
     },
   );
 

@@ -1,4 +1,6 @@
 import Fastify, { type FastifyError } from 'fastify';
+import { WebSocketServer } from 'ws';
+import { handleStreamSession } from './services/voice/stream-pipeline.js';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -117,6 +119,20 @@ const host = '0.0.0.0';
 try {
   await server.listen({ port, host });
   server.log.info(`Alphabot API listening on ${host}:${port}`);
+
+  // Attach WebSocket server for Twilio Media Streams on the same port.
+  // Twilio connects to wss://<host>/api/voice/stream/<voiceCallId>
+  const wss = new WebSocketServer({ server: server.server });
+  wss.on('connection', (ws, req) => {
+    const match = req.url?.match(/\/api\/voice\/stream\/([^/?#]+)/);
+    if (!match) { ws.close(); return; }
+    const voiceCallId = match[1]!;
+    handleStreamSession(ws, voiceCallId, server.log).catch(err => {
+      server.log.error({ err, voiceCallId }, '[Stream] Unhandled error in stream session');
+      ws.close();
+    });
+  });
+  server.log.info('Voice Media Streams WebSocket server attached');
 
   startScheduler();
 } catch (err) {
