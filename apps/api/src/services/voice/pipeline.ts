@@ -324,27 +324,37 @@ export async function processTurn(
   const kbResults = await lookupKB(ctx.tenantId, ctx.productSlug, customerText);
 
   // 5. Build history as Message array for Claude
+  // Past turns come from the stored transcript; current user turn is appended last
+  // so the array always ends with a user message (Anthropic API requirement).
+  const makeMsg = (role: 'user' | 'assistant', content: string): Message => ({
+    id:               '',
+    conversation_id:  ctx.voiceCallId,
+    role,
+    content,
+    media_url:        null,
+    media_type:       null,
+    whatsapp_msg_id:  null,
+    confidence_score: null,
+    delivery_status:  null,
+    timestamp:        new Date().toISOString(),
+  });
+
   const historyMessages: Message[] = conversationHistory
     .split('\n')
     .filter(Boolean)
     .map(line => {
       const isCaller = line.startsWith('CALLER:');
-      return {
-        id:               '',
-        conversation_id:  ctx.voiceCallId,
-        role:             isCaller ? 'user' as const : 'assistant' as const,
-        content:          line.replace(/^(CALLER:|BOT:)\s*/,''),
-        media_url:        null,
-        media_type:       null,
-        whatsapp_msg_id:  null,
-        confidence_score: null,
-        delivery_status:  null,
-        timestamp:        new Date().toISOString(),
-      };
+      return makeMsg(
+        isCaller ? 'user' : 'assistant',
+        line.replace(/^(CALLER:|BOT:)\s*/, ''),
+      );
     });
 
+  // Always append current user speech as the final message
+  const allMessages: Message[] = [...historyMessages, makeMsg('user', customerText)];
+
   // 6. Call Claude Haiku — same function as WhatsApp bot
-  const aiResult = await getAIResponse(systemPrompt, historyMessages, kbResults);
+  const aiResult = await getAIResponse(systemPrompt, allMessages, kbResults);
   const rawContent = aiResult.content;
 
   const shouldEnd =
