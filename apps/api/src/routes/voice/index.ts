@@ -124,7 +124,7 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
           return reply.status(200).type('text/xml').send(
             '<Response><Say>I did not catch that, please try again.</Say><Record action="' +
             `${process.env['API_BASE_URL']}/api/voice/respond/${voiceCallId}` +
-            '" maxLength="10" timeout="5" playBeep="false"/></Response>',
+            '" maxLength="10" timeout="2" playBeep="false"/></Response>',
           );
         }
 

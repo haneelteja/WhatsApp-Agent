@@ -22,7 +22,21 @@ import type {
 } from '@alphabot/shared';
 
 const MAX_TURNS   = 20;
-const RECORD_SEC  = 10;   // max silence detection window per turn
+const RECORD_SEC  = 10;   // max recording length per turn
+const SILENCE_SEC = 2;    // seconds of silence before Twilio stops recording (was 5)
+
+// ─── Per-call context caches ──────────────────────────────────────────────────
+// loadVoiceBotContext (4 DB queries) and loadPreviousContext (2-3 DB queries)
+// are called on every turn but their data never changes mid-call.
+// Cache them in memory to cut ~300-600ms of DB round-trips per turn.
+
+interface CachedVoiceCtx {
+  ctx:       VoiceBotCtx;
+  expiresAt: number;  // epoch ms
+}
+
+const voiceCtxCache = new Map<string, CachedVoiceCtx>();  // key: tenantId:productSlug
+const prevCtxCache  = new Map<string, string>();           // key: voiceCallId
 
 // ─── Previous context loader ──────────────────────────────────────────────────
 
@@ -98,6 +112,30 @@ interface VoiceBotCtx {
   tenant_guardrails:   LayeredGuardrailsConfig | null;
 }
 
+async function loadVoiceBotContextCached(
+  db:          ReturnType<typeof getServerClient>,
+  tenantId:    string,
+  productSlug: ProductSlug,
+): Promise<VoiceBotCtx> {
+  const key    = `${tenantId}:${productSlug}`;
+  const cached = voiceCtxCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.ctx;
+  const ctx = await loadVoiceBotContext(db, tenantId, productSlug);
+  voiceCtxCache.set(key, { ctx, expiresAt: Date.now() + 5 * 60_000 });
+  return ctx;
+}
+
+async function loadPreviousContextCached(
+  db:          ReturnType<typeof getServerClient>,
+  voiceCallId: string,
+  tenantId:    string,
+): Promise<string> {
+  if (prevCtxCache.has(voiceCallId)) return prevCtxCache.get(voiceCallId)!;
+  const ctx = await loadPreviousContext(db, voiceCallId, tenantId);
+  prevCtxCache.set(voiceCallId, ctx);
+  return ctx;
+}
+
 async function loadVoiceBotContext(
   db:          ReturnType<typeof getServerClient>,
   tenantId:    string,
@@ -145,8 +183,8 @@ function sayTag(snippet: string): string {
   return snippet;
 }
 
-function recordTag(actionUrl: string, timeout = 5): string {
-  return `<Record action="${actionUrl}" maxLength="${RECORD_SEC}" timeout="${timeout}" playBeep="false" trim="trim-silence" transcribe="false"/>`;
+function recordTag(actionUrl: string, timeout = SILENCE_SEC): string {
+  return `<Record action="${actionUrl}" maxLength="${RECORD_SEC}" timeout="${timeout}" playBeep="false" transcribe="false"/>`;
 }
 
 function hangupTag(): string {
@@ -231,7 +269,7 @@ export interface PipelineContext {
  */
 export async function buildGreetingTwiml(ctx: PipelineContext, callContext?: Record<string, string>): Promise<string> {
   const db = getServerClient();
-  const { voiceCfg } = await loadVoiceBotContext(db, ctx.tenantId, ctx.productSlug);
+  const { voiceCfg } = await loadVoiceBotContextCached(db, ctx.tenantId, ctx.productSlug);
 
   const greeting =
     callContext?.['greeting_override'] ??
@@ -269,10 +307,10 @@ export async function processTurn(
 ): Promise<{ twiml: string; transcriptLine: string; shouldEnd: boolean }> {
   const db = getServerClient();
 
-  // 1. Load bot context + previous customer history in parallel
+  // 1. Load bot context + previous customer history (both cached after first turn)
   const [vbCtx, previousContext] = await Promise.all([
-    loadVoiceBotContext(db, ctx.tenantId, ctx.productSlug),
-    loadPreviousContext(db, ctx.voiceCallId, ctx.tenantId),
+    loadVoiceBotContextCached(db, ctx.tenantId, ctx.productSlug),
+    loadPreviousContextCached(db, ctx.voiceCallId, ctx.tenantId),
   ]);
   const voiceCfg = vbCtx.voiceCfg;
   const language = voiceCfg.language ?? 'en-IN';
