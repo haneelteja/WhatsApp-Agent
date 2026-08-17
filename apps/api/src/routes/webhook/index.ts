@@ -818,10 +818,13 @@ To update state, append these markers at the VERY END of your response (they are
     const totalTokens = aiResult.inputTokens + aiResult.outputTokens;
     fireForget(
       db.from('usage_events').insert({
-        tenant_id: tenantId,
-        product_type: productType,
-        event_type: 'ai_token_used',
-        token_count: totalTokens,
+        tenant_id:     tenantId,
+        product_type:  productType,
+        event_type:    'ai_token_used',
+        token_count:   totalTokens,
+        input_tokens:  aiResult.inputTokens,
+        output_tokens: aiResult.outputTokens,
+        cost_inr:      aiResult.costInr,
       }),
       'track-token-usage',
       fastify.log,

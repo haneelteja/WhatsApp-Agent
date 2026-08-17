@@ -1,7 +1,7 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
-import { CreditCard, Check, Clock, MessageSquare, Bot, AlertCircle, Zap } from 'lucide-react';
+import { CreditCard, Check, Clock, MessageSquare, Bot, AlertCircle, Zap, IndianRupee } from 'lucide-react';
 import UpgradePlanSection from '@/components/billing/UpgradePlanSection';
 
 const PLAN_META = {
@@ -119,7 +119,7 @@ export default async function BillingPage() {
     admin.from('free_trials').select('product_slug, ends_at, status, allowed_model').eq('tenant_id', tenantId).eq('status', 'active'),
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
       .gte('created_at', monthStart.toISOString()),
-    admin.from('tenant_token_usage_monthly').select('tokens_used').eq('tenant_id', tenantId).eq('month', monthDate).maybeSingle(),
+    admin.from('tenant_token_usage_monthly').select('tokens_used, cost_inr_month').eq('tenant_id', tenantId).eq('month', monthDate).maybeSingle(),
   ]);
 
   const plan = (tenant?.plan as PlanKey) ?? 'starter';
@@ -141,6 +141,7 @@ export default async function BillingPage() {
   const isSuspended   = tenant?.status === 'suspended';
 
   const tokensUsed     = tokenRow?.tokens_used ?? 0;
+  const costInrMonth   = parseFloat((tokenRow as { cost_inr_month?: string | number } | null)?.cost_inr_month as string ?? '0') || 0;
   const planTokenLimit = PLAN_TOKEN_LIMITS[plan];
   const tokenPercent   = isFinite(planTokenLimit) ? Math.round((tokensUsed / planTokenLimit) * 100) : 0;
   const tokenOverLimit = isFinite(planTokenLimit) && tokensUsed >= planTokenLimit;
@@ -239,7 +240,7 @@ export default async function BillingPage() {
       </div>
 
       {/* Usage this month */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Conversations */}
         <div className="bg-white border border-green-100 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -298,6 +299,18 @@ export default async function BillingPage() {
           </div>
           <p className="text-2xl font-bold text-slate-800 tabular-nums">{activeBots.length}</p>
           <p className="text-[11px] text-slate-400 mt-0.5">of {meta.bots} on {meta.name}</p>
+        </div>
+
+        {/* LLM Cost this month */}
+        <div className="bg-white border border-green-100 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <IndianRupee size={14} className="text-emerald-500" />
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">AI Cost</p>
+          </div>
+          <p className="text-2xl font-bold text-slate-800 tabular-nums">
+            ₹{costInrMonth < 1 ? costInrMonth.toFixed(4) : costInrMonth.toFixed(2)}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">This month · LLM tokens only</p>
         </div>
       </div>
 

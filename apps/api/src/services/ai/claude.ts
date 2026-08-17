@@ -20,6 +20,7 @@ export interface AIResponseResult {
   confidenceScore: number;
   inputTokens:     number;
   outputTokens:    number;
+  costInr:         number;
 }
 
 /**
@@ -55,7 +56,7 @@ export async function getAIResponse(
     content: m.content,
   }));
 
-  const { content, inputTokens, outputTokens } = await routedChatCompletion({
+  const { content, inputTokens, outputTokens, costInr } = await routedChatCompletion({
     messages,
     system:     fullSystemPrompt,
     max_tokens: 560,
@@ -70,7 +71,7 @@ export async function getAIResponse(
   // Extract and strip the CONFIDENCE marker from the response
   const { cleanContent, confidenceScore } = extractConfidence(content);
 
-  return { content: cleanContent, confidenceScore, inputTokens, outputTokens };
+  return { content: cleanContent, confidenceScore, inputTokens, outputTokens, costInr };
 }
 
 /**

@@ -8,6 +8,7 @@
 
 import { chatCompletion as anthropicCompletion, REPLY_MODEL } from './anthropic.js';
 import type { AnthropicMessage } from './anthropic.js';
+import { calcCostInr } from './llm-cost.js';
 
 export interface LlmOverride {
   provider?: string;
@@ -20,6 +21,7 @@ export interface CompletionResult {
   content:      string;
   inputTokens:  number;
   outputTokens: number;
+  costInr:      number;
 }
 
 // Detect context-length overflow errors across all supported providers.
@@ -48,7 +50,7 @@ export async function routedChatCompletion(params: {
 
   // Inner call — provider dispatch with the given message list.
   // Extracted so the overflow retry can call it with a trimmed list.
-  async function call(msgs: AnthropicMessage[]): Promise<CompletionResult> {
+  async function call(msgs: AnthropicMessage[]): Promise<Omit<CompletionResult, 'costInr'>> {
     switch (provider) {
       // ── Anthropic native API ──────────────────────────────────────────────
       case 'anthropic':
@@ -165,16 +167,21 @@ export async function routedChatCompletion(params: {
     }
   }
 
+  // Attach cost to a raw CompletionResult (which lacks costInr).
+  function withCost(r: Omit<CompletionResult, 'costInr'>): CompletionResult {
+    return { ...r, costInr: calcCostInr(r.inputTokens, r.outputTokens, model) };
+  }
+
   // First attempt with full message list.
   // On context-length overflow: trim to the most recent half and retry once.
   // If the retry also overflows (system prompt alone is too large), rethrow clearly.
   try {
-    return await call(messages);
+    return withCost(await call(messages));
   } catch (err) {
     if (isContextOverflow(err) && messages.length > 1) {
       const trimmed = messages.slice(Math.ceil(messages.length / 2));
       try {
-        return await call(trimmed);
+        return withCost(await call(trimmed));
       } catch (retryErr) {
         if (isContextOverflow(retryErr)) {
           throw new Error(
