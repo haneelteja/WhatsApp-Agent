@@ -125,6 +125,53 @@ function buildMessages(voiceCallId: string, history: string, customerText: strin
   return [...past, makeMsg('user', customerText)];
 }
 
+// ─── Start Twilio call recording via REST API ─────────────────────────────────
+
+async function startTwilioRecording(
+  db:          ReturnType<typeof getServerClient>,
+  callSid:     string,
+  accountSid:  string,
+  log:         FastifyBaseLogger,
+  voiceCallId: string,
+): Promise<void> {
+  try {
+    const { data } = await db
+      .from('voice_provider_configs')
+      .select('credentials_json')
+      .eq('provider_name', 'twilio')
+      .eq('component', 'telephony')
+      .limit(1)
+      .maybeSingle();
+
+    const creds     = data?.credentials_json as Record<string, string> | null;
+    const authToken = creds?.['auth_token'];
+    if (!authToken) {
+      log.warn({ voiceCallId }, '[Stream] No Twilio auth_token — skipping recording');
+      return;
+    }
+
+    const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const res  = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls/${callSid}/Recordings.json`,
+      {
+        method:  'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    'RecordingChannels=mono',
+        signal:  AbortSignal.timeout(5_000),
+      },
+    );
+
+    if (!res.ok) {
+      const body = await res.text();
+      log.warn({ voiceCallId, status: res.status, body: body.slice(0, 200) }, '[Stream] Twilio recording start failed');
+    } else {
+      log.info({ voiceCallId, callSid }, '[Stream] Twilio recording started');
+    }
+  } catch (err) {
+    log.error({ err, voiceCallId }, '[Stream] Failed to start Twilio recording');
+  }
+}
+
 // ─── Main stream session handler ──────────────────────────────────────────────
 
 export async function handleStreamSession(
@@ -305,19 +352,30 @@ export async function handleStreamSession(
   twilioWs.on('message', async (raw) => {
     try {
       const msg = JSON.parse(raw.toString()) as {
-        event:     string;
+        event:      string;
         streamSid?: string;
-        start?:    { streamSid: string };
-        media?:    { payload: string };
-        mark?:     { name: string };
+        start?:     { streamSid: string; callSid?: string; accountSid?: string };
+        media?:     { payload: string };
+        mark?:      { name: string };
       };
 
       switch (msg.event) {
         case 'start': {
           streamSid = msg.start?.streamSid ?? msg.streamSid ?? null;
-          log.info({ voiceCallId, streamSid }, '[Stream] Twilio stream started');
+          const callSid    = msg.start?.callSid    ?? null;
+          const accountSid = msg.start?.accountSid ?? null;
 
-          void db.from('voice_calls').update({ status: 'in_progress' }).eq('id', voiceCallId);
+          log.info({ voiceCallId, streamSid, callSid }, '[Stream] Twilio stream started');
+
+          void db.from('voice_calls').update({
+            status: 'in_progress',
+            ...(callSid ? { telephony_call_sid: callSid } : {}),
+          }).eq('id', voiceCallId);
+
+          // Start recording so the client portal can play it back later
+          if (callSid && accountSid) {
+            void startTwilioRecording(db, callSid, accountSid, log, voiceCallId);
+          }
 
           // Open STT first, then synthesise + play greeting
           openSttWs();

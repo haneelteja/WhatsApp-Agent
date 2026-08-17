@@ -214,6 +214,68 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  // ─── GET /api/voice/recording/:voiceCallId ───────────────────────────────
+  // Server-side proxy that fetches the Twilio recording with Basic Auth and
+  // streams it back to the caller. Keeps Twilio credentials off the browser.
+  fastify.get<{ Params: { voiceCallId: string } }>(
+    '/recording/:voiceCallId',
+    async (request, reply) => {
+      const { voiceCallId } = request.params;
+      const db = getServerClient();
+
+      const { data: callRow } = await db
+        .from('voice_calls')
+        .select('recording_url')
+        .eq('id', voiceCallId)
+        .single();
+
+      if (!callRow?.recording_url) {
+        return reply.status(404).send({ error: 'No recording available for this call' });
+      }
+
+      // Parse AccountSid embedded in the Twilio URL:
+      // https://api.twilio.com/2010-04-01/Accounts/{accountSid}/Recordings/{recordingSid}
+      const sidMatch  = callRow.recording_url.match(/\/Accounts\/([^/]+)\//);
+      const accountSid = sidMatch?.[1];
+
+      const { data: providerRow } = await db
+        .from('voice_provider_configs')
+        .select('credentials_json')
+        .eq('provider_name', 'twilio')
+        .eq('component', 'telephony')
+        .limit(1)
+        .maybeSingle();
+
+      const creds     = providerRow?.credentials_json as Record<string, string> | null;
+      const authToken = creds?.['auth_token'];
+
+      if (!authToken || !accountSid) {
+        return reply.status(503).send({ error: 'Recording credentials not configured' });
+      }
+
+      const mp3Url = callRow.recording_url.endsWith('.mp3')
+        ? callRow.recording_url
+        : `${callRow.recording_url}.mp3`;
+
+      const auth     = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+      const upstream = await fetch(mp3Url, {
+        headers: { Authorization: `Basic ${auth}` },
+        signal:  AbortSignal.timeout(15_000),
+      });
+
+      if (!upstream.ok) {
+        fastify.log.warn({ voiceCallId, status: upstream.status }, '[Voice] Twilio recording fetch failed');
+        return reply.status(upstream.status).send({ error: 'Recording fetch failed' });
+      }
+
+      const audio = Buffer.from(await upstream.arrayBuffer());
+      reply.header('Content-Type', 'audio/mpeg');
+      reply.header('Cache-Control', 'private, max-age=3600');
+      reply.header('Content-Length', audio.length);
+      return reply.send(audio);
+    },
+  );
+
   // ─── GET /api/voice/cost-estimate ────────────────────────────────────────
   fastify.get<{ Querystring: { telephony?: string; stt?: string; tts?: string } }>(
     '/cost-estimate',

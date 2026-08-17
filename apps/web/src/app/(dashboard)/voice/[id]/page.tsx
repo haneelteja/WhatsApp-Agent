@@ -233,7 +233,7 @@ export default async function VoiceCallDetailPage({
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
             <Volume2 size={12} /> Call Recording
           </p>
-          <RecordingPlayer url={call.recording_url!} />
+          <RecordingPlayer url={`/api/voice/recording/${call.id}`} />
         </div>
       )}
 
