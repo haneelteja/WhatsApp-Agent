@@ -66,7 +66,8 @@ export async function chatCompletion(params: {
   const json = await res.json() as AnthropicResponse;
   return {
     content:      json.content.find(b => b.type === 'text')?.text ?? '',
-    inputTokens:  json.usage.input_tokens,
-    outputTokens: json.usage.output_tokens,
+    // Zero-clamp: streaming rounding can produce phantom negative deltas that corrupt billing counters
+    inputTokens:  Math.max(0, json.usage.input_tokens),
+    outputTokens: Math.max(0, json.usage.output_tokens),
   };
 }
