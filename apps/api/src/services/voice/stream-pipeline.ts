@@ -30,6 +30,17 @@ const MAX_TURNS = 20;
 const DEFAULT_VOICE_ID = 'meher';
 const DEFAULT_TTS_MODEL = 'lightning_v3.1_pro';
 
+// Valid Smallest.ai voice IDs — anything else (e.g. legacy Polly.* IDs) falls back to default
+const SMALLEST_AI_VOICES = new Set([
+  'meher', 'ananya', 'arya', 'rahul', 'zara',
+  'kavya', 'riya', 'aditya', 'deepak', 'ishaan',
+]);
+
+function resolveVoiceId(voiceId: string | null | undefined): string {
+  if (voiceId && SMALLEST_AI_VOICES.has(voiceId)) return voiceId;
+  return DEFAULT_VOICE_ID;
+}
+
 function getApiKey(): string {
   return process.env['SMALLEST_AI_API_KEY'] ?? '';
 }
@@ -56,7 +67,7 @@ async function synthesiseSpeech(
     },
     body: JSON.stringify({
       text,
-      voice_id:      voiceId ?? DEFAULT_VOICE_ID,
+      voice_id:      resolveVoiceId(voiceId),
       model:         DEFAULT_TTS_MODEL,
       language:      langCode,
       output_format: 'ulaw',

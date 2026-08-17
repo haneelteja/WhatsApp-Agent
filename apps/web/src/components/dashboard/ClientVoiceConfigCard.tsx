@@ -44,12 +44,17 @@ const LANGUAGES = [
   { code: 'en-US', label: 'English (US)' },
 ];
 
+// Smallest.ai voice IDs (current TTS provider)
 const VOICES = [
-  { id: 'Polly.Raveena', label: 'Raveena — Indian English, Female',  lang: ['en-IN'] },
-  { id: 'Polly.Kajal',   label: 'Kajal — Hindi Neural, Female (best)', lang: ['hi-IN', 'en-IN'] },
-  { id: 'Polly.Aditi',   label: 'Aditi — Multi-lingual Indian, Female', lang: ['hi-IN', 'en-IN', 'te-IN', 'ta-IN', 'kn-IN', 'mr-IN'] },
-  { id: 'Polly.Joanna',  label: 'Joanna — US English, Female',       lang: ['en-US', 'en-IN'] },
-  { id: 'Polly.Joey',    label: 'Joey — US English, Male',            lang: ['en-US', 'en-IN'] },
+  { id: 'meher',   label: 'Meher — Indian English + Hindi, Female (recommended)', lang: ['en-IN', 'hi-IN', 'te-IN', 'ta-IN', 'kn-IN', 'mr-IN'] },
+  { id: 'ananya',  label: 'Ananya — Indian English, Female',                      lang: ['en-IN'] },
+  { id: 'arya',    label: 'Arya — Indian English, Female',                        lang: ['en-IN'] },
+  { id: 'rahul',   label: 'Rahul — Indian English, Male',                         lang: ['en-IN'] },
+  { id: 'zara',    label: 'Zara — Indian English, Female',                        lang: ['en-IN'] },
+  { id: 'kavya',   label: 'Kavya — Hindi, Female',                                lang: ['hi-IN'] },
+  { id: 'riya',    label: 'Riya — Hindi, Female',                                 lang: ['hi-IN'] },
+  { id: 'aditya',  label: 'Aditya — Hindi, Male',                                 lang: ['hi-IN'] },
+  { id: 'deepak',  label: 'Deepak — Hindi, Male',                                 lang: ['hi-IN'] },
 ];
 
 // ─── Bot metadata ─────────────────────────────────────────────────────────────
