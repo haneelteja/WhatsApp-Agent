@@ -34,7 +34,7 @@ export async function lookupKB(
   if (cached) return cached;
 
   const results = await _lookupKBFromDb(tenantId, productSlug, query, limit);
-  await cacheSet(cacheKey, results, KB_CACHE_TTL);
+  if (results.length > 0) await cacheSet(cacheKey, results, KB_CACHE_TTL);
   return results;
 }
 

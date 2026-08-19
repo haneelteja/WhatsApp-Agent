@@ -14,6 +14,8 @@ import { calcLeadScore, generateLeadSummary } from '../../lib/lead-scoring.js';
 import { formatContactMemory } from '../../services/contact/memory.js';
 import { cacheGet, cacheSet } from '../../lib/redis.js';
 import { detectSentimentText } from '../../services/sentiment/detector.js';
+import { isWithinBusinessHours } from '../../lib/business-hours.js';
+import { dispatchCall } from '../../services/voice/call-manager.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -136,24 +138,6 @@ function buildEscalationContext(stage: string, aiVars: Record<string, string>): 
 
 // ─── Call Trigger Helpers ─────────────────────────────────────────────────────
 
-function isWithinBusinessHours(cfg: {
-  business_hours_only?: boolean;
-  business_hours_start?: string;
-  business_hours_end?: string;
-  business_hours_timezone?: string;
-  business_hours_days?: number[];
-}): boolean {
-  if (!cfg.business_hours_only) return true;
-  const tz = cfg.business_hours_timezone || 'Asia/Kolkata';
-  const tzDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-  const day = tzDate.getDay();
-  const minutes = tzDate.getHours() * 60 + tzDate.getMinutes();
-  const [sh = 9, sm = 0] = (cfg.business_hours_start ?? '09:00').split(':').map(Number);
-  const [eh = 18, em = 0] = (cfg.business_hours_end ?? '18:00').split(':').map(Number);
-  const days = (cfg.business_hours_days?.length ?? 0) > 0 ? cfg.business_hours_days! : [1, 2, 3, 4, 5];
-  return days.includes(day) && minutes >= sh * 60 + sm && minutes < eh * 60 + em;
-}
-
 async function dispatchCallTrigger(
   tenantId: string,
   productType: string,
@@ -175,7 +159,6 @@ async function dispatchCallTrigger(
 
   const doDispatch = async () => {
     try {
-      const { dispatchCall } = await import('../../services/voice/call-manager.js');
       await dispatchCall({
         tenant_id:       tenantId,
         product_slug:    productType,

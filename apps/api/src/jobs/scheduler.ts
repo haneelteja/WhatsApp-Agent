@@ -3,6 +3,7 @@ import { getServerClient } from '@alphabot/database';
 import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
 import { dispatchPendingVoiceCalls, processCampaignContacts } from '../services/campaign/index.js';
+import { isWithinBusinessHours } from '../lib/business-hours.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -134,18 +135,6 @@ async function processFollowUps(): Promise<void> {
       console.error(`[FollowUp] Failed processing config ${config.id}:`, configErr);
     }
   }
-}
-
-function isWithinBusinessHours(cfg: BotVoiceConfig): boolean {
-  if (!cfg.business_hours_only) return true;
-  const tz = cfg.business_hours_timezone || 'Asia/Kolkata';
-  const tzDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-  const day = tzDate.getDay();
-  const minutes = tzDate.getHours() * 60 + tzDate.getMinutes();
-  const [sh = 9, sm = 0] = (cfg.business_hours_start ?? '09:00').split(':').map(Number);
-  const [eh = 18, em = 0] = (cfg.business_hours_end ?? '18:00').split(':').map(Number);
-  const days = (cfg.business_hours_days?.length ?? 0) > 0 ? cfg.business_hours_days : [1, 2, 3, 4, 5];
-  return days.includes(day) && minutes >= sh * 60 + sm && minutes < eh * 60 + em;
 }
 
 /**

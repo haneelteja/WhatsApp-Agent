@@ -465,19 +465,8 @@ function buildBase64AudioUrl(base64: string, mimeType: string): string {
 /** Store a completed call turn's transcript line back to voice_calls. */
 export async function appendTranscript(voiceCallId: string, line: string): Promise<void> {
   const db = getServerClient();
-  // Fetch current transcript and append
-  const { data } = await db
-    .from('voice_calls')
-    .select('transcript, turn_count')
-    .eq('id', voiceCallId)
-    .single();
-
-  const current   = (data as { transcript: string | null; turn_count: number } | null);
-  const newText   = [current?.transcript, line].filter(Boolean).join('\n');
-  const turnCount = (current?.turn_count ?? 0) + 1;
-
-  await db
-    .from('voice_calls')
-    .update({ transcript: newText, turn_count: turnCount })
-    .eq('id', voiceCallId);
+  await db.rpc('append_voice_transcript', {
+    p_voice_call_id: voiceCallId,
+    p_line:          line,
+  });
 }
