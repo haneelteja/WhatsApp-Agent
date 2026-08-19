@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
   Building2, Phone, Bot, Link2, Bell, CreditCard, ChevronRight,
-  Users, Mail, Clock, Trash2, RefreshCw, Info, Cpu,
+  Users, Mail, Clock, Trash2, Info, Cpu,
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
@@ -12,14 +12,9 @@ import { BotProductsSection }    from '@/components/dashboard/BotProductsSection
 import { WhatsAppNumbersManager} from '@/components/dashboard/WhatsAppNumbersManager';
 import { TeamInviteForm }        from '@/components/dashboard/TeamInviteForm';
 import { removeTeamMemberAction } from '@/app/actions/tenant-team';
-import { CollapsibleCard }       from '@/components/CollapsibleCard';
-import { FollowUpForm }          from '@/components/dashboard/FollowUpForm';
-import type { FollowUpScope }    from '@/app/actions/follow-up';
 import { LlmConfigCard }         from '@/components/LlmConfigCard';
 import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { ClientVoiceConfigCard, type BotVoiceConfigRow, type ExotelConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
-import { SalesFollowUpForm } from '@/components/dashboard/SalesFollowUpForm';
-import type { SalesConfig } from '@alphabot/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,17 +32,6 @@ type RawLlmConfig = {
   created_at: string;
 };
 
-type FollowUpConfig = {
-  enabled:          boolean;
-  idle_days:        number;
-  message_template: string;
-  max_follow_ups:   number;
-  scope:            FollowUpScope;
-  contact_ids:      string[];
-};
-
-type ContactRow = { id: string; phone: string; name: string | null };
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -56,12 +40,6 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   supervisor:     { label: 'Supervisor', color: 'bg-sky-50 text-sky-700' },
   client_admin:   { label: 'Supervisor', color: 'bg-sky-50 text-sky-700' },
   agent:          { label: 'Agent',      color: 'bg-slate-100 text-slate-600' },
-};
-
-const BOT_META_FU: Record<string, { name: string; desc: string; color: string; bg: string; border: string }> = {
-  support_bot:   { name: 'Support Bot',   desc: 'Customer Q&A and issue resolution', color: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200'    },
-  sales_bot:     { name: 'Sales Bot',     desc: 'Lead qualification & warm handoff', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
-  lifecycle_bot: { name: 'Lifecycle Bot', desc: 'Orders, invoicing, payments',       color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
 };
 
 const BOT_META_LLM: Record<string, { name: string; badge: string }> = {
@@ -88,7 +66,6 @@ function maskLlmConfig(row: RawLlmConfig): LlmConfigCardProps['initial'] {
 const TABS = [
   { key: 'workspace',    label: 'Workspace'     },
   { key: 'team',         label: 'Team'          },
-  { key: 'follow-ups',   label: 'Follow-ups'    },
   { key: 'models',       label: 'AI Models'     },
   { key: 'voice',        label: 'Voice'         },
   { key: 'notifications',label: 'Notifications' },
@@ -359,144 +336,6 @@ export default async function SettingsPage({
               </div>
             </div>
           )}
-        </div>
-      </SettingsShell>
-    );
-  }
-
-  // ── Follow-ups data ─────────────────────────────────────────────────────────
-  if (activeTab === 'follow-ups') {
-    const [{ data: fuProducts }, { data: configs }, { data: convRows }, { data: salesBotCfg }] = await Promise.all([
-      admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
-      admin.from('follow_up_configs').select('product_slug, enabled, idle_days, message_template, max_follow_ups, scope, contact_ids').eq('tenant_id', tenantId),
-      admin.from('conversations').select('product_type, contact_id, contacts(id, phone, name)').eq('tenant_id', tenantId),
-      admin.from('bot_configs').select('sales_config').eq('tenant_id', tenantId).eq('product_slug', 'sales_bot').maybeSingle(),
-    ]);
-
-    const salesConfig = (salesBotCfg?.sales_config ?? null) as Partial<SalesConfig> | null;
-
-    const configMap = new Map<string, FollowUpConfig>(
-      (configs ?? []).map(c => [c.product_slug, c as FollowUpConfig])
-    );
-
-    const contactsByProduct = new Map<string, ContactRow[]>();
-    for (const row of convRows ?? []) {
-      const rawContact = row.contacts;
-      const contact = (Array.isArray(rawContact) ? rawContact[0] : rawContact) as ContactRow | null;
-      if (!contact) continue;
-      const slug = row.product_type as string;
-      const existing = contactsByProduct.get(slug) ?? [];
-      if (!existing.some(c => c.id === contact.id)) existing.push(contact);
-      contactsByProduct.set(slug, existing);
-    }
-
-    const activeSlugs = (fuProducts ?? []).map(p => p.product_type);
-
-    return (
-      <SettingsShell activeTab={activeTab}>
-        <div className="space-y-5">
-          <p className="text-sm text-gray-500">
-            Automatically message customers who stop responding. Expand a bot card below to enable follow-ups and set the timing, message, and target contacts.
-          </p>
-
-          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 space-y-2">
-            <div className="flex items-center gap-2">
-              <Info size={13} className="text-emerald-600 shrink-0" />
-              <p className="text-xs font-semibold text-emerald-800">How it works</p>
-            </div>
-            <ul className="list-disc ml-4 space-y-1 text-xs text-emerald-700">
-              <li>When a customer goes silent for the configured idle days, the bot sends your follow-up message</li>
-              <li>Each follow-up resets the idle clock — the customer won&apos;t be messaged again until the same period passes</li>
-              <li>Max follow-ups limits how many times a single conversation is followed up before the bot stops</li>
-              <li>Only <strong>open</strong> conversations are eligible — resolved or escalated ones are skipped</li>
-            </ul>
-          </div>
-
-          {activeSlugs.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-green-100 shadow-sm flex flex-col items-center justify-center py-12 text-center">
-              <RefreshCw size={24} className="text-gray-300 mb-3" />
-              <p className="text-sm font-semibold text-gray-500">No active bots</p>
-              <p className="text-xs text-gray-400 mt-1">Activate bots from the Workspace tab to configure follow-ups.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activeSlugs.map(slug => {
-                const meta = BOT_META_FU[slug];
-                if (!meta) return null;
-                const cfg        = configMap.get(slug);
-                const isEnabled  = cfg?.enabled ?? false;
-                const idleDays   = cfg?.idle_days ?? 3;
-                const template   = cfg?.message_template ?? '';
-                const maxSends   = cfg?.max_follow_ups ?? 1;
-                const scope      = (cfg?.scope ?? 'all') as FollowUpScope;
-                const contactIds = (cfg?.contact_ids ?? []) as string[];
-                const contacts   = contactsByProduct.get(slug) ?? [];
-                const scopeLabel = scope === 'include' ? `${contactIds.length} contacts` : scope === 'exclude' ? `All except ${contactIds.length}` : 'All';
-                const header = (
-                  <div className="flex items-center gap-3 w-full min-w-0">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${meta.bg} border ${meta.border}`}>
-                      <RefreshCw size={13} className={meta.color} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-sm font-semibold ${meta.color}`}>{meta.name}</span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isEnabled ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
-                          {isEnabled ? `On · ${idleDays}d · ${scopeLabel}` : 'Off'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{meta.desc}</p>
-                    </div>
-                  </div>
-                );
-                return (
-                  <CollapsibleCard key={slug} header={header} borderClass={meta.border} defaultOpen={false}>
-                    <FollowUpForm
-                      productSlug={slug}
-                      productName={meta.name}
-                      contacts={contacts}
-                      initialEnabled={isEnabled}
-                      initialIdleDays={idleDays}
-                      initialTemplate={template}
-                      initialMaxSends={maxSends}
-                      initialScope={scope}
-                      initialContactIds={contactIds}
-                    />
-                  </CollapsibleCard>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ── Sales Lead Follow-ups ─────────────────────────────────────────── */}
-          <div className="pt-2">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="h-px flex-1 bg-slate-100" />
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-2">Sales Lead Follow-ups</span>
-              <div className="h-px flex-1 bg-slate-100" />
-            </div>
-            <p className="text-xs text-slate-500 mb-4">
-              Send timed follow-up messages specifically to contacts flagged as <strong>sales leads</strong> — separate from the general follow-up above.
-            </p>
-            <div className="bg-white rounded-2xl border border-violet-100 shadow-sm overflow-hidden">
-              <div className="flex items-center gap-3 px-5 py-4 border-b border-violet-50">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-50 border border-violet-200">
-                  <RefreshCw size={13} className="text-violet-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-violet-600">Sales Bot — Lead Follow-ups</span>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${salesConfig?.lead_follow_up_enabled ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
-                      {salesConfig?.lead_follow_up_enabled ? `On · ${salesConfig.lead_follow_up_delay_hours ?? 4}h delay` : 'Off'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Automatically follow up with qualified sales leads who go quiet</p>
-                </div>
-              </div>
-              <div className="p-5">
-                <SalesFollowUpForm initial={salesConfig} />
-              </div>
-            </div>
-          </div>
         </div>
       </SettingsShell>
     );

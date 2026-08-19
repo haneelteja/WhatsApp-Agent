@@ -30,7 +30,7 @@ const BASE_NAV = [
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
   // slot: Orders (lifecycle_bot only)
-  { href: '/call-triggers',  label: 'Call Triggers',  icon: Zap             },
+  { href: '/call-triggers',  label: 'Triggers',       icon: Zap             },
   { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/billing',        label: 'Billing',        icon: CreditCard      },

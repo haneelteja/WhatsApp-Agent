@@ -54,6 +54,6 @@ export async function saveFollowUpConfigAction(productSlug: string, config: Foll
     if (error) return { error: error.message };
   }
 
-  revalidatePath('/follow-ups');
+  revalidatePath('/call-triggers');
   return { ok: true };
 }
