@@ -377,6 +377,10 @@ export interface Conversation {
   stage: ConversationStage;
   /** AI-extracted entities (name, email, issue_type, etc.) captured across turns. */
   ai_vars: Record<string, string>;
+  /** Heuristic quality score 0-100 for sales leads. Updated per turn by calcLeadScore(). */
+  lead_score: number;
+  /** Number of automated follow-up messages sent for this lead. */
+  lead_follow_up_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -401,8 +405,25 @@ export interface Escalation {
   trigger_reason: string;
   agent_id: string | null;
   status: EscalationStatus;
+  /** Claude-generated 5-line lead summary for warm handoffs (sales_bot only). */
+  ai_summary: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface LeadNote {
+  id: string;
+  conversation_id: string;
+  tenant_id: string;
+  author_name: string | null;
+  note: string;
+  created_at: string;
+}
+
+export interface SalesConfig {
+  lead_follow_up_enabled: boolean;
+  lead_follow_up_delay_hours: number;
+  lead_follow_up_messages: string[];
 }
 
 export interface KnowledgeBase {

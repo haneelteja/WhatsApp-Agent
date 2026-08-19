@@ -3,7 +3,7 @@ import { getServerClient } from '@alphabot/database';
 import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
 import { dispatchPendingVoiceCalls, processCampaignContacts } from '../services/campaign/index.js';
-import type { BotVoiceConfig, WhatsAppProvider } from '@alphabot/shared';
+import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
@@ -206,6 +206,106 @@ async function processNoReplyTriggers(): Promise<void> {
   }
 }
 
+async function processLeadFollowUps(): Promise<void> {
+  const db = getServerClient();
+
+  // Load sales_bot configs that have follow-up enabled
+  const { data: botCfgs } = await db
+    .from('bot_configs')
+    .select('tenant_id, product_slug, sales_config')
+    .eq('product_slug', 'sales_bot');
+
+  if (!botCfgs?.length) return;
+
+  for (const row of botCfgs) {
+    const salesCfg = (row.sales_config ?? {}) as Partial<SalesConfig>;
+    if (!salesCfg.lead_follow_up_enabled) continue;
+
+    const delayHours = salesCfg.lead_follow_up_delay_hours ?? 4;
+    const messages   = salesCfg.lead_follow_up_messages ?? [
+      'Hi! Just checking in — do you have any questions about our products? We\'d love to help.',
+      'Following up on your enquiry. Our team is ready. Can we schedule a quick call?',
+      'Last follow-up from us — our offer still stands. Let us know if you\'d like to proceed!',
+    ];
+
+    const cutoff = new Date(Date.now() - delayHours * 3_600_000).toISOString();
+
+    // Open sales_bot conversations that are stale and haven't hit the follow-up cap
+    const { data: convs } = await db
+      .from('conversations')
+      .select('id, contact_id, lead_follow_up_count')
+      .eq('tenant_id', row.tenant_id)
+      .eq('product_type', 'sales_bot')
+      .eq('status', 'open')
+      .lt('lead_follow_up_count', 3)
+      .lt('updated_at', cutoff)
+      // Only conversations that were escalated as a sales lead
+      .in('id', db
+        .from('escalations')
+        .select('conversation_id')
+        .eq('tenant_id', row.tenant_id)
+        .ilike('trigger_reason', '%sales lead%') as unknown as string[],
+      );
+
+    if (!convs?.length) continue;
+
+    const { data: wn } = await db
+      .from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', row.tenant_id)
+      .eq('product_slug', row.product_slug)
+      .eq('active', true)
+      .limit(1)
+      .single();
+
+    if (!wn) continue;
+
+    const gateway  = new WhatsAppGateway(wn.provider as WhatsAppProvider);
+    const wnConfig = wn.config_json as { phone_number_id: string; access_token: string };
+
+    const contactIds = [...new Set(convs.map(c => c.contact_id))];
+    const { data: contacts } = await db
+      .from('contacts')
+      .select('id, phone, name')
+      .in('id', contactIds);
+    const contactMap = new Map(
+      (contacts ?? []).map(c => [(c as { id: string }).id, c as { id: string; phone: string; name: string | null }]),
+    );
+
+    for (const conv of convs) {
+      try {
+        const contact = contactMap.get(conv.contact_id);
+        if (!contact?.phone) continue;
+
+        const followUpIdx = (conv.lead_follow_up_count as number) ?? 0;
+        const template    = messages[followUpIdx] ?? messages[messages.length - 1]!;
+        const name        = contact.name?.split(' ')[0] ?? 'there';
+        const message     = template.replace(/\{name\}/gi, name);
+
+        await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+          type: 'text',
+          to:   contact.phone,
+          text: message,
+        });
+
+        await db.from('messages').insert({
+          conversation_id: conv.id,
+          role:            'assistant',
+          content:         message,
+        });
+        await db.from('conversations').update({
+          lead_follow_up_count: followUpIdx + 1,
+          updated_at:           new Date().toISOString(),
+        }).eq('id', conv.id);
+
+        console.log(`[LeadFollowUp] Sent follow-up #${followUpIdx + 1} to conversation ${conv.id}`);
+      } catch (err) {
+        console.error(`[LeadFollowUp] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+}
+
 export function startScheduler(): void {
   // Keep Supabase alive (free tier pauses after 7 days inactivity)
   void pingSupabase();
@@ -236,6 +336,13 @@ export function startScheduler(): void {
   cron.schedule('*/30 * * * *', () => {
     void processNoReplyTriggers().catch(err =>
       console.error('[Scheduler] No-reply trigger failed:', (err as Error).message)
+    );
+  });
+
+  // Sales lead follow-up sequences — every 2 hours
+  cron.schedule('0 */2 * * *', () => {
+    void processLeadFollowUps().catch(err =>
+      console.error('[Scheduler] Lead follow-up failed:', (err as Error).message)
     );
   });
 

@@ -1,9 +1,14 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useTransition } from 'react';
 import Link from 'next/link';
-import { Phone, LayoutList, Columns, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
+import {
+  Phone, LayoutList, Columns, ChevronRight, CheckCircle2, Loader2,
+  MessageSquare, IndianRupee, StickyNote, Plus, ChevronDown, ChevronUp,
+} from 'lucide-react';
 import { updateLeadStageAction } from '@/app/actions/leads';
+import { getLeadNotesAction, addLeadNoteAction } from '@/app/actions/lead-notes';
+import type { LeadNote } from '@alphabot/shared';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -13,6 +18,8 @@ export interface LeadData {
   ai_vars: Record<string, string> | null;
   status: string;
   updated_at: string;
+  lead_score: number;
+  lead_follow_up_count: number;
   contacts: {
     id: string;
     phone: string | null;
@@ -24,6 +31,7 @@ export interface LeadData {
     trigger_reason: string;
     status: string;
     created_at: string;
+    ai_summary: string | null;
   }[];
 }
 
@@ -120,6 +128,121 @@ function entities(lead: LeadData) {
     .map(([k, v]) => ({ key: k.replace(/_/g, ' '), value: String(v).slice(0, 30) }));
 }
 
+function extractBudget(aiVars: Record<string, string> | null): string | null {
+  if (!aiVars) return null;
+  const entry = Object.entries(aiVars).find(([k]) =>
+    k.toLowerCase().match(/budget|price|cost|value|spend|inr|rupee/),
+  );
+  return entry ? String(entry[1]).slice(0, 20) : null;
+}
+
+function daysInPipeline(escalations: LeadData['escalations']): number {
+  const earliest = escalations
+    .map(e => new Date(e.created_at).getTime())
+    .sort((a, b) => a - b)[0];
+  if (!earliest) return 0;
+  return Math.floor((Date.now() - earliest) / 86_400_000);
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const { text, bg } =
+    score >= 70 ? { text: 'text-emerald-700', bg: 'bg-emerald-50 ring-emerald-200' }
+    : score >= 40 ? { text: 'text-amber-700', bg: 'bg-amber-50 ring-amber-200' }
+    : { text: 'text-red-600', bg: 'bg-red-50 ring-red-200' };
+  return (
+    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold ring-1 ${bg} ${text}`}>
+      {score >= 70 ? '●' : score >= 40 ? '◐' : '○'} {score}
+    </span>
+  );
+}
+
+// ── Notes drawer ───────────────────────────────────────────────────────────────
+
+function NotesPanel({ conversationId }: { conversationId: string }) {
+  const [open, setOpen]     = useState(false);
+  const [notes, setNotes]   = useState<LeadNote[] | null>(null);
+  const [text, setText]     = useState('');
+  const [, startTransition] = useTransition();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving]   = useState(false);
+
+  async function expand() {
+    setOpen(o => !o);
+    if (notes === null && !open) {
+      setLoading(true);
+      const result = await getLeadNotesAction(conversationId);
+      setNotes(result.notes);
+      setLoading(false);
+    }
+  }
+
+  async function submit() {
+    if (!text.trim()) return;
+    setSaving(true);
+    const result = await addLeadNoteAction(conversationId, text);
+    if (!result.error) {
+      const newNote: LeadNote = {
+        id: crypto.randomUUID(),
+        conversation_id: conversationId,
+        tenant_id: '',
+        author_name: 'You',
+        note: text.trim(),
+        created_at: new Date().toISOString(),
+      };
+      startTransition(() => setNotes(n => [newNote, ...(n ?? [])]));
+      setText('');
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="border-t border-slate-100 pt-2">
+      <button
+        type="button"
+        onClick={expand}
+        className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-violet-600 transition-colors w-full"
+      >
+        <StickyNote size={11} />
+        Notes {notes !== null ? `(${notes.length})` : ''}
+        {open ? <ChevronUp size={10} className="ml-auto" /> : <ChevronDown size={10} className="ml-auto" />}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          {loading && <p className="text-[10px] text-slate-400">Loading…</p>}
+          {notes?.map(n => (
+            <div key={n.id} className="bg-slate-50 rounded-lg px-2 py-1.5">
+              <p className="text-[10px] text-slate-500 mb-0.5">{n.author_name} · {formatRel(n.created_at)}</p>
+              <p className="text-xs text-slate-700 whitespace-pre-wrap">{n.note}</p>
+            </div>
+          ))}
+          {notes?.length === 0 && !loading && (
+            <p className="text-[10px] text-slate-400 italic">No notes yet</p>
+          )}
+          <div className="flex gap-1 mt-1">
+            <input
+              type="text"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }}
+              placeholder="Add a note…"
+              className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white min-w-0"
+            />
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={saving || !text.trim()}
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition-colors"
+            >
+              {saving ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Lead card ──────────────────────────────────────────────────────────────────
 
 function LeadCard({
@@ -133,13 +256,20 @@ function LeadCard({
   onStageChange: (id: string, col: ColKey) => void;
   moving: boolean;
 }) {
-  const name = displayName(lead.contacts);
-  const tags = entities(lead);
-  const col  = STAGE_COLUMNS.find(c => c.key === colKey)!;
+  const name   = displayName(lead.contacts);
+  const tags   = entities(lead);
+  const col    = STAGE_COLUMNS.find(c => c.key === colKey)!;
+  const budget = extractBudget(lead.ai_vars);
+  const days   = daysInPipeline(lead.escalations);
 
   const NEXT_STAGES: ColKey[] = ['qualifying', 'resolving', 'following_up', 'closing', 'converted'];
   const currentIdx = NEXT_STAGES.indexOf(colKey);
   const nextStage  = NEXT_STAGES[currentIdx + 1] as ColKey | undefined;
+
+  // Best escalation summary
+  const summary = lead.escalations
+    .filter(e => e.ai_summary)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]?.ai_summary;
 
   return (
     <div
@@ -162,13 +292,40 @@ function LeadCard({
           </div>
           <span className="text-sm font-semibold text-slate-900 truncate">{name}</span>
         </div>
-        <span className="text-[11px] text-slate-400 shrink-0">{formatRel(lead.updated_at)}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          <ScoreBadge score={lead.lead_score ?? 0} />
+          <span className="text-[11px] text-slate-400">{formatRel(lead.updated_at)}</span>
+        </div>
       </div>
 
       {lead.contacts?.phone && (
         <div className="flex items-center gap-1 text-xs text-slate-400">
           <Phone size={10} /> {lead.contacts.phone}
         </div>
+      )}
+
+      {/* Chips row: budget + days in pipeline */}
+      {(budget || days > 0) && (
+        <div className="flex flex-wrap gap-1">
+          {budget && (
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px]">
+              <IndianRupee size={9} /> {budget}
+            </span>
+          )}
+          {days > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px]">
+              {days}d in pipeline
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* AI summary (collapsed, 1 line) */}
+      {summary && (
+        <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed bg-violet-50 rounded px-2 py-1 flex gap-1">
+          <MessageSquare size={9} className="shrink-0 mt-0.5 text-violet-400" />
+          {summary.split('\n')[0]}
+        </p>
       )}
 
       {/* Entity chips */}
@@ -182,7 +339,7 @@ function LeadCard({
         </div>
       )}
 
-      {/* Stage badge + stage indicator */}
+      {/* Stage badge + controls */}
       <div className="flex items-center justify-between gap-2">
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${col.badge}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />
@@ -190,7 +347,6 @@ function LeadCard({
         </span>
 
         <div className="flex items-center gap-1.5">
-          {/* Stage dropdown */}
           {colKey !== 'converted' && (
             <select
               aria-label="Move to stage"
@@ -205,7 +361,6 @@ function LeadCard({
             </select>
           )}
 
-          {/* Quick-advance arrow */}
           {nextStage && colKey !== 'converted' && (
             <button
               type="button"
@@ -230,6 +385,8 @@ function LeadCard({
       >
         View chat →
       </Link>
+
+      <NotesPanel conversationId={lead.id} />
     </div>
   );
 }
@@ -252,29 +409,21 @@ function KanbanColumn({
   const [dragOver, setDragOver] = useState(false);
 
   return (
-    <div className="flex flex-col min-w-[220px] w-[220px] shrink-0">
-      {/* Column header */}
+    <div className="flex flex-col min-w-[240px] w-[240px] shrink-0">
       <div className={`flex items-center justify-between px-3 py-2 rounded-t-xl border ${col.header} mb-0`}>
         <span className="text-xs font-semibold">{col.label}</span>
         <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${col.badge}`}>{leads.length}</span>
       </div>
 
-      {/* Drop area */}
       <div
-        onDragOver={e => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          setDragOver(true);
-        }}
+        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={e => {
           e.preventDefault();
           setDragOver(false);
-          const leadId = e.dataTransfer.getData('leadId');
+          const leadId  = e.dataTransfer.getData('leadId');
           const fromCol = e.dataTransfer.getData('fromCol') as ColKey;
-          if (leadId && fromCol !== col.key) {
-            onDrop(leadId, fromCol, col.key);
-          }
+          if (leadId && fromCol !== col.key) onDrop(leadId, fromCol, col.key);
         }}
         className={`flex-1 min-h-[200px] rounded-b-xl border-x border-b p-2 space-y-2 transition-colors ${
           dragOver ? `${col.drop} border-dashed` : 'border-slate-200 bg-slate-50/40'
@@ -285,15 +434,17 @@ function KanbanColumn({
             {dragOver ? 'Drop here' : 'No leads'}
           </div>
         )}
-        {leads.map(lead => (
-          <LeadCard
-            key={lead.id}
-            lead={lead}
-            colKey={col.key}
-            onStageChange={onStageChange}
-            moving={movingIds.has(lead.id)}
-          />
-        ))}
+        {leads
+          .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0))
+          .map(lead => (
+            <LeadCard
+              key={lead.id}
+              lead={lead}
+              colKey={col.key}
+              onStageChange={onStageChange}
+              moving={movingIds.has(lead.id)}
+            />
+          ))}
       </div>
     </div>
   );
@@ -314,10 +465,14 @@ function LeadListRow({
   const colKey  = getColumnKey(lead);
   const col     = STAGE_COLUMNS.find(c => c.key === colKey)!;
   const tags    = entities(lead);
+  const budget  = extractBudget(lead.ai_vars);
+  const days    = daysInPipeline(lead.escalations);
 
   const salesEsc = [...(lead.escalations ?? [])]
     .filter(e => e.trigger_reason?.toLowerCase().includes('sales lead'))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+  const summary = salesEsc?.ai_summary;
 
   return (
     <div className={`flex items-start gap-4 px-5 py-4 hover:bg-slate-50/70 transition-colors ${moving ? 'opacity-40' : ''}`}>
@@ -332,16 +487,29 @@ function LeadListRow({
             <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />
             {col.label}
           </span>
+          <ScoreBadge score={lead.lead_score ?? 0} />
         </div>
 
         {lead.contacts?.phone && (
           <div className="flex items-center gap-1.5 mt-0.5">
             <Phone size={11} className="text-slate-400" />
             <span className="text-xs text-slate-500">{lead.contacts.phone}</span>
+            {budget && (
+              <span className="flex items-center gap-0.5 text-xs text-emerald-700">
+                <IndianRupee size={10} /> {budget}
+              </span>
+            )}
+            {days > 0 && (
+              <span className="text-xs text-slate-400">{days}d in pipeline</span>
+            )}
           </div>
         )}
 
-        {salesEsc && (
+        {summary ? (
+          <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
+            {summary.split('\n').slice(0, 2).join(' · ')}
+          </p>
+        ) : salesEsc && (
           <p className="text-xs text-slate-500 mt-1 line-clamp-1">
             <span className="text-slate-400">Lead reason: </span>
             {salesEsc.trigger_reason
@@ -360,6 +528,10 @@ function LeadListRow({
             ))}
           </div>
         )}
+
+        <div className="mt-2">
+          <NotesPanel conversationId={lead.id} />
+        </div>
       </div>
 
       <div className="shrink-0 flex flex-col items-end gap-2">
@@ -391,12 +563,87 @@ function LeadListRow({
   );
 }
 
+// ── Filter bar ─────────────────────────────────────────────────────────────────
+
+type ScoreFilter = 'all' | 'hot' | 'warm' | 'cold';
+
+function FilterBar({
+  search, onSearch,
+  scoreFilter, onScoreFilter,
+  sort, onSort,
+}: {
+  search: string; onSearch: (v: string) => void;
+  scoreFilter: ScoreFilter; onScoreFilter: (v: ScoreFilter) => void;
+  sort: 'score' | 'recent'; onSort: (v: 'score' | 'recent') => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="search"
+        value={search}
+        onChange={e => onSearch(e.target.value)}
+        placeholder="Search by name or phone…"
+        className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white w-44"
+      />
+      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
+        {(['all', 'hot', 'warm', 'cold'] as ScoreFilter[]).map(f => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => onScoreFilter(f)}
+            className={`text-[11px] px-2 py-0.5 rounded-md font-medium transition-colors capitalize ${
+              scoreFilter === f
+                ? f === 'hot' ? 'bg-emerald-600 text-white'
+                : f === 'warm' ? 'bg-amber-500 text-white'
+                : f === 'cold' ? 'bg-red-500 text-white'
+                : 'bg-violet-600 text-white'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {f === 'hot' ? '● 70+' : f === 'warm' ? '◐ 40-69' : f === 'cold' ? '○ <40' : 'All'}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
+        {(['score', 'recent'] as const).map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onSort(s)}
+            className={`text-[11px] px-2 py-0.5 rounded-md font-medium transition-colors capitalize ${
+              sort === s ? 'bg-violet-600 text-white' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {s === 'score' ? 'By score' : 'Recent'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main board component ───────────────────────────────────────────────────────
 
 export function LeadsBoard({ initialLeads }: { initialLeads: LeadData[] }) {
-  const [leads,     setLeads]     = useState<LeadData[]>(initialLeads);
-  const [view,      setView]      = useState<'list' | 'kanban'>('list');
-  const [movingIds, setMovingIds] = useState<Set<string>>(new Set());
+  const [leads,       setLeads]       = useState<LeadData[]>(initialLeads);
+  const [view,        setView]        = useState<'list' | 'kanban'>('list');
+  const [movingIds,   setMovingIds]   = useState<Set<string>>(new Set());
+  const [search,      setSearch]      = useState('');
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all');
+  const [sort,        setSort]        = useState<'score' | 'recent'>('recent');
+
+  const filtered = leads.filter(l => {
+    const q = search.toLowerCase();
+    if (q && !displayName(l.contacts).toLowerCase().includes(q) && !(l.contacts?.phone ?? '').includes(q)) return false;
+    const s = l.lead_score ?? 0;
+    if (scoreFilter === 'hot'  && s < 70) return false;
+    if (scoreFilter === 'warm' && (s < 40 || s >= 70)) return false;
+    if (scoreFilter === 'cold' && s >= 40) return false;
+    return true;
+  }).sort((a, b) => {
+    if (sort === 'score') return (b.lead_score ?? 0) - (a.lead_score ?? 0);
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  });
 
   const moveToStage = useCallback(async (leadId: string, toCol: ColKey) => {
     const lead = leads.find(l => l.id === leadId);
@@ -408,69 +655,73 @@ export function LeadsBoard({ initialLeads }: { initialLeads: LeadData[] }) {
     const isConverted = toCol === 'converted';
     const dbStage = isConverted ? 'closing' : toCol;
 
-    // Optimistic update
     setMovingIds(s => new Set([...s, leadId]));
     setLeads(prev => prev.map(l => {
       if (l.id !== leadId) return l;
-      return {
-        ...l,
-        stage:      dbStage,
-        status:     isConverted ? 'resolved' : l.status,
-        updated_at: new Date().toISOString(),
-      };
+      return { ...l, stage: dbStage, status: isConverted ? 'resolved' : l.status, updated_at: new Date().toISOString() };
     }));
 
     const result = await updateLeadStageAction(leadId, dbStage as Parameters<typeof updateLeadStageAction>[1], isConverted);
-
-    if (result.error) {
-      // Revert on failure
-      setLeads(prev => prev.map(l => l.id === leadId ? lead : l));
-    }
+    if (result.error) setLeads(prev => prev.map(l => l.id === leadId ? lead : l));
 
     setMovingIds(s => { const n = new Set(s); n.delete(leadId); return n; });
   }, [leads]);
 
-  const handleDrop = useCallback((leadId: string, _fromCol: ColKey, toCol: ColKey) => {
-    void moveToStage(leadId, toCol);
-  }, [moveToStage]);
+  const handleDrop        = useCallback((leadId: string, _fromCol: ColKey, toCol: ColKey) => void moveToStage(leadId, toCol), [moveToStage]);
+  const handleStageChange = useCallback((id: string, col: ColKey) => void moveToStage(id, col), [moveToStage]);
 
-  const handleStageChange = useCallback((id: string, col: ColKey) => {
-    void moveToStage(id, col);
-  }, [moveToStage]);
+  const avgScore = filtered.length
+    ? Math.round(filtered.reduce((s, l) => s + (l.lead_score ?? 0), 0) / filtered.length)
+    : 0;
 
   return (
     <div className="space-y-4">
-      {/* View toggle */}
-      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 w-fit shadow-sm">
-        <button
-          type="button"
-          onClick={() => setView('list')}
-          className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-            view === 'list' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <LayoutList size={13} /> List
-        </button>
-        <button
-          type="button"
-          onClick={() => setView('kanban')}
-          className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-            view === 'kanban' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <Columns size={13} /> Pipeline
-        </button>
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <FilterBar
+          search={search} onSearch={setSearch}
+          scoreFilter={scoreFilter} onScoreFilter={setScoreFilter}
+          sort={sort} onSort={setSort}
+        />
+        <div className="flex items-center gap-2">
+          {filtered.length > 0 && (
+            <span className="text-xs text-slate-400">
+              Avg score: <span className="font-semibold text-slate-600">{avgScore}</span>
+            </span>
+          )}
+          {/* View toggle */}
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                view === 'list' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <LayoutList size={13} /> List
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('kanban')}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                view === 'kanban' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Columns size={13} /> Pipeline
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ── LIST VIEW ── */}
       {view === 'list' && (
-        leads.length === 0 ? (
+        filtered.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-            <p className="text-slate-400 text-sm">No leads yet</p>
+            <p className="text-slate-400 text-sm">{leads.length === 0 ? 'No leads yet' : 'No leads match your filter'}</p>
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-            {leads.map(lead => (
+            {filtered.map(lead => (
               <LeadListRow
                 key={lead.id}
                 lead={lead}
@@ -490,7 +741,7 @@ export function LeadsBoard({ initialLeads }: { initialLeads: LeadData[] }) {
               <KanbanColumn
                 key={col.key}
                 col={col}
-                leads={leads.filter(l => getColumnKey(l) === col.key)}
+                leads={filtered.filter(l => getColumnKey(l) === col.key)}
                 onDrop={handleDrop}
                 onStageChange={handleStageChange}
                 movingIds={movingIds}
@@ -501,7 +752,8 @@ export function LeadsBoard({ initialLeads }: { initialLeads: LeadData[] }) {
       )}
 
       <p className="text-xs text-slate-400 text-center">
-        {leads.length} lead{leads.length !== 1 ? 's' : ''}
+        {filtered.length} lead{filtered.length !== 1 ? 's' : ''}
+        {filtered.length !== leads.length && ` (filtered from ${leads.length})`}
         {view === 'kanban' ? ' · drag cards between columns or use the stage selector' : ' · use the stage selector to move leads'}
       </p>
     </div>

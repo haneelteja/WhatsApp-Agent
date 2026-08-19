@@ -6,6 +6,7 @@ import {
   TrendingUp,
   CheckCircle,
   Clock,
+  Zap,
 } from 'lucide-react';
 import { LeadsBoard } from '@/components/leads/LeadsBoard';
 import type { LeadData } from '@/components/leads/LeadsBoard';
@@ -111,8 +112,9 @@ export default async function LeadsPage() {
     .from('conversations')
     .select(`
       id, stage, ai_vars, status, updated_at, product_type,
+      lead_score, lead_follow_up_count,
       contacts(id, phone, name, memory_json),
-      escalations(id, trigger_reason, status, created_at)
+      escalations(id, trigger_reason, status, created_at, ai_summary)
     `)
     .eq('tenant_id', tenantId)
     .eq('product_type', 'sales_bot')
@@ -133,6 +135,9 @@ export default async function LeadsPage() {
   const active    = leads.filter(c => c.status !== 'resolved').length;
   const converted = leads.filter(c => c.status === 'resolved').length;
   const convRate  = total > 0 ? Math.round((converted / total) * 100) : 0;
+  const avgScore  = total > 0
+    ? Math.round(leads.reduce((s, l) => s + ((l as unknown as { lead_score: number }).lead_score ?? 0), 0) / total)
+    : 0;
 
   const analyticsData = buildAnalytics(leads);
 
@@ -147,11 +152,12 @@ export default async function LeadsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard icon={<Target size={18} className="text-violet-600" />}       label="Total Leads"     value={total}          bg="bg-violet-50" />
         <StatCard icon={<TrendingUp size={18} className="text-blue-600" />}     label="Active"          value={active}         bg="bg-blue-50" />
         <StatCard icon={<CheckCircle size={18} className="text-emerald-600" />} label="Converted"       value={converted}      bg="bg-emerald-50" />
         <StatCard icon={<Clock size={18} className="text-amber-500" />}         label="Conversion Rate" value={`${convRate}%`} bg="bg-amber-50" />
+        <StatCard icon={<Zap size={18} className="text-orange-500" />}          label="Avg Lead Score"  value={`${avgScore}/100`} bg="bg-orange-50" />
       </div>
 
       {/* Analytics */}

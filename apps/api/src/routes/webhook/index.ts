@@ -10,6 +10,7 @@ import { checkTokenQuota, incrementTokenCounter } from '../../services/ai/token-
 import { assembleHistory } from '../../services/ai/history-assembler.js';
 import { fireForget } from '../../lib/fire-forget.js';
 import { getBotContext } from '../../services/bot-context.js';
+import { calcLeadScore, generateLeadSummary } from '../../lib/lead-scoring.js';
 import { formatContactMemory } from '../../services/contact/memory.js';
 import { cacheGet, cacheSet } from '../../lib/redis.js';
 import { detectSentimentText } from '../../services/sentiment/detector.js';
@@ -791,11 +792,30 @@ To update state, append these markers at the VERY END of your response (they are
       );
     }
 
+    // ── Lead scoring (sales_bot only, per-turn, non-blocking) ─────────────────
+    if (productType === 'sales_bot') {
+      const latestStage = (stageMatch ? stageMatch[1] : convStage) ?? 'greeting';
+      const latestVars  = entityMatches.length > 0
+        ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
+        : convAiVars;
+      const newScore = calcLeadScore(latestVars, latestStage);
+      fireForget(
+        db.from('conversations').update({ lead_score: newScore }).eq('id', conversation.id),
+        'update-lead-score',
+        fastify.log,
+      );
+    }
+
     // Guard: if AI only emitted markers with no actual reply content, skip reply entirely
     if (!cleanContent.trim()) {
       fastify.log.warn({ tenantId, conversationId: conversation.id }, '[Webhook] AI returned empty content after stripping tags — skipping reply');
       if (isSalesLead && conversation.status === 'open') {
-        await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
+        const escalationResult = await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
+        const latestVars = entityMatches.length > 0
+          ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
+          : convAiVars;
+        const latestStage = (stageMatch ? stageMatch[1] : convStage) ?? 'greeting';
+        void generateLeadSummary(escalationResult.escalationId, conversation.id, latestVars, latestStage, fastify.log);
       }
       fireForget(db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id), 'release-ai-lock-empty', fastify.log);
       return;
@@ -835,7 +855,12 @@ To update state, append these markers at the VERY END of your response (they are
     // ── Auto-escalate on sales lead detection ────────────────────────────
     if (isSalesLead && conversation.status === 'open') {
       fastify.log.info({ tenantId, conversationId: conversation.id }, '[Webhook] Sales lead detected — escalating');
-      await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
+      const escalationResult = await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
+      const latestVars2 = entityMatches.length > 0
+        ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
+        : convAiVars;
+      const latestStage2 = (stageMatch ? stageMatch[1] : convStage) ?? 'greeting';
+      void generateLeadSummary(escalationResult.escalationId, conversation.id, latestVars2, latestStage2, fastify.log);
     }
     // ── Feature: Escalation Policy — confidence-based reprompt ladder ──────
     // Replaces the old single-threshold hardcut with configurable per-bot policy:
