@@ -104,15 +104,12 @@ export async function lookupKBByCollections(
     try {
       const queryEmbedding = await generateEmbedding(query, 'query');
 
-      // Set probes=10 so IVFFlat searches 10% of clusters (vs default 1%).
-      // Improves recall from ~10% to ~70% with negligible latency cost.
-      await db.rpc('set_ivfflat_probes', { probes: 10 });
-
       const { data: semanticResults, error } = await db.rpc('match_knowledge_base', {
-        query_embedding: queryEmbedding,
-        collection_ids: collectionIds,
-        match_count: limit,
-        match_threshold: 0.5,
+        query_embedding:  queryEmbedding,
+        collection_ids:   collectionIds,
+        match_count:      limit,
+        match_threshold:  0.5,
+        probes:           10,  // applied via set_config inside the RPC (PgBouncer-safe)
       });
 
       if (!error && semanticResults && (semanticResults as RAGResult[]).length > 0) {

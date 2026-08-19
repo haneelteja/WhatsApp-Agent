@@ -230,6 +230,20 @@ async function processLeadFollowUps(): Promise<void> {
 
     const cutoff = new Date(Date.now() - delayHours * 3_600_000).toISOString();
 
+    // Pre-fetch escalation conversation IDs into a plain array.
+    // Passing a query builder object to .in() was the bug — PostgREST
+    // coerced it to "[object Object]" so no rows ever matched.
+    const { data: escalationRows } = await db
+      .from('escalations')
+      .select('conversation_id')
+      .eq('tenant_id', row.tenant_id)
+      .ilike('trigger_reason', '%sales lead%');
+
+    const escalatedConvIds = (escalationRows ?? []).map(
+      e => (e as { conversation_id: string }).conversation_id,
+    );
+    if (!escalatedConvIds.length) continue;
+
     // Open sales_bot conversations that are stale and haven't hit the follow-up cap
     const { data: convs } = await db
       .from('conversations')
@@ -239,13 +253,7 @@ async function processLeadFollowUps(): Promise<void> {
       .eq('status', 'open')
       .lt('lead_follow_up_count', 3)
       .lt('updated_at', cutoff)
-      // Only conversations that were escalated as a sales lead
-      .in('id', db
-        .from('escalations')
-        .select('conversation_id')
-        .eq('tenant_id', row.tenant_id)
-        .ilike('trigger_reason', '%sales lead%') as unknown as string[],
-      );
+      .in('id', escalatedConvIds);
 
     if (!convs?.length) continue;
 
@@ -272,6 +280,9 @@ async function processLeadFollowUps(): Promise<void> {
       (contacts ?? []).map(c => [(c as { id: string }).id, c as { id: string; phone: string; name: string | null }]),
     );
 
+    const newMessages:    object[] = [];
+    const convUpdates:    { id: string; count: number }[] = [];
+
     for (const conv of convs) {
       try {
         const contact = contactMap.get(conv.contact_id);
@@ -288,20 +299,22 @@ async function processLeadFollowUps(): Promise<void> {
           text: message,
         });
 
-        await db.from('messages').insert({
-          conversation_id: conv.id,
-          role:            'assistant',
-          content:         message,
-        });
-        await db.from('conversations').update({
-          lead_follow_up_count: followUpIdx + 1,
-          updated_at:           new Date().toISOString(),
-        }).eq('id', conv.id);
+        newMessages.push({ conversation_id: conv.id, role: 'assistant', content: message });
+        convUpdates.push({ id: conv.id, count: followUpIdx + 1 });
 
         console.log(`[LeadFollowUp] Sent follow-up #${followUpIdx + 1} to conversation ${conv.id}`);
       } catch (err) {
         console.error(`[LeadFollowUp] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
       }
+    }
+
+    // Batch inserts — replaces N×2 sequential round-trips with 1+N updates
+    if (newMessages.length) await db.from('messages').insert(newMessages);
+    const now = new Date().toISOString();
+    for (const u of convUpdates) {
+      await db.from('conversations')
+        .update({ lead_follow_up_count: u.count, updated_at: now })
+        .eq('id', u.id);
     }
   }
 }

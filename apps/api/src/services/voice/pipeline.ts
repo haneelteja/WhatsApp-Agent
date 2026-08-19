@@ -35,8 +35,13 @@ interface CachedVoiceCtx {
   expiresAt: number;  // epoch ms
 }
 
+interface CachedPrevCtx {
+  value:     string;
+  expiresAt: number;  // epoch ms
+}
+
 const voiceCtxCache = new Map<string, CachedVoiceCtx>();  // key: tenantId:productSlug
-const prevCtxCache  = new Map<string, string>();           // key: voiceCallId
+const prevCtxCache  = new Map<string, CachedPrevCtx>();   // key: voiceCallId
 
 // ─── Previous context loader ──────────────────────────────────────────────────
 
@@ -130,10 +135,12 @@ export async function loadPreviousContextCached(
   voiceCallId: string,
   tenantId:    string,
 ): Promise<string> {
-  if (prevCtxCache.has(voiceCallId)) return prevCtxCache.get(voiceCallId)!;
-  const ctx = await loadPreviousContext(db, voiceCallId, tenantId);
-  prevCtxCache.set(voiceCallId, ctx);
-  return ctx;
+  const cached = prevCtxCache.get(voiceCallId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = await loadPreviousContext(db, voiceCallId, tenantId);
+  // 30-min TTL — longer than any realistic call; expired entries evicted automatically
+  prevCtxCache.set(voiceCallId, { value, expiresAt: Date.now() + 30 * 60_000 });
+  return value;
 }
 
 async function loadVoiceBotContext(
