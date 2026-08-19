@@ -18,6 +18,8 @@ import type { FollowUpScope }    from '@/app/actions/follow-up';
 import { LlmConfigCard }         from '@/components/LlmConfigCard';
 import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { ClientVoiceConfigCard, type BotVoiceConfigRow, type ExotelConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
+import { SalesFollowUpForm } from '@/components/dashboard/SalesFollowUpForm';
+import type { SalesConfig } from '@alphabot/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -364,11 +366,14 @@ export default async function SettingsPage({
 
   // ── Follow-ups data ─────────────────────────────────────────────────────────
   if (activeTab === 'follow-ups') {
-    const [{ data: fuProducts }, { data: configs }, { data: convRows }] = await Promise.all([
+    const [{ data: fuProducts }, { data: configs }, { data: convRows }, { data: salesBotCfg }] = await Promise.all([
       admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
       admin.from('follow_up_configs').select('product_slug, enabled, idle_days, message_template, max_follow_ups, scope, contact_ids').eq('tenant_id', tenantId),
       admin.from('conversations').select('product_type, contact_id, contacts(id, phone, name)').eq('tenant_id', tenantId),
+      admin.from('bot_configs').select('sales_config').eq('tenant_id', tenantId).eq('product_slug', 'sales_bot').maybeSingle(),
     ]);
+
+    const salesConfig = (salesBotCfg?.sales_config ?? null) as Partial<SalesConfig> | null;
 
     const configMap = new Map<string, FollowUpConfig>(
       (configs ?? []).map(c => [c.product_slug, c as FollowUpConfig])
@@ -461,6 +466,37 @@ export default async function SettingsPage({
               })}
             </div>
           )}
+
+          {/* ── Sales Lead Follow-ups ─────────────────────────────────────────── */}
+          <div className="pt-2">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1 bg-slate-100" />
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-2">Sales Lead Follow-ups</span>
+              <div className="h-px flex-1 bg-slate-100" />
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Send timed follow-up messages specifically to contacts flagged as <strong>sales leads</strong> — separate from the general follow-up above.
+            </p>
+            <div className="bg-white rounded-2xl border border-violet-100 shadow-sm overflow-hidden">
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-violet-50">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-50 border border-violet-200">
+                  <RefreshCw size={13} className="text-violet-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-violet-600">Sales Bot — Lead Follow-ups</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${salesConfig?.lead_follow_up_enabled ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                      {salesConfig?.lead_follow_up_enabled ? `On · ${salesConfig.lead_follow_up_delay_hours ?? 4}h delay` : 'Off'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Automatically follow up with qualified sales leads who go quiet</p>
+                </div>
+              </div>
+              <div className="p-5">
+                <SalesFollowUpForm initial={salesConfig} />
+              </div>
+            </div>
+          </div>
         </div>
       </SettingsShell>
     );
