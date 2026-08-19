@@ -112,7 +112,7 @@ export function SalesFollowUpForm({ initial }: Props) {
           Follow-up messages (sent in order, max 3)
         </label>
         <p className="text-[11px] text-slate-400 -mt-1">
-          Use <code className="bg-slate-100 px-1 rounded text-[10px]">{'{name}'}</code> to insert the customer's first name
+          Use <code className="bg-slate-100 px-1 rounded text-[10px]">{'{name}'}</code> to insert the customer&apos;s first name
         </p>
 
         {[0, 1, 2].map(idx => (
