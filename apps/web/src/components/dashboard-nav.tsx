@@ -66,8 +66,8 @@ export function DashboardNav({
     const items = [...BASE_NAV];
     // Contacts goes after Voice Calls (index 2), visible to all
     items.splice(3, 0, CONTACTS_ITEM);
-    // Leads goes after Contacts (index 4), sales_bot only
-    if (hasSalesBot) items.splice(4, 0, LEADS_ITEM);
+    // Leads goes after Contacts (index 4) — always visible
+    items.splice(4, 0, LEADS_ITEM);
     // Orders goes after Guardrails, lifecycle_bot only — use findIndex for robustness
     if (hasLifecycleBot) {
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
