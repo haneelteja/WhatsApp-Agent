@@ -333,7 +333,7 @@ function LeadDrawer({
           {/* Notes */}
           <section>
             <h4 className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2">Notes</h4>
-            <NotesPanel conversationId={lead.id} />
+            <NotesPanel conversationId={lead.id} noBorder />
           </section>
 
         </div>
@@ -368,7 +368,7 @@ function LeadDrawer({
 
 // ── Notes drawer ───────────────────────────────────────────────────────────────
 
-function NotesPanel({ conversationId }: { conversationId: string }) {
+function NotesPanel({ conversationId, noBorder }: { conversationId: string; noBorder?: boolean }) {
   const [open, setOpen]     = useState(false);
   const [notes, setNotes]   = useState<LeadNote[] | null>(null);
   const [text, setText]     = useState('');
@@ -406,7 +406,7 @@ function NotesPanel({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <div className="border-t border-slate-100 pt-2">
+    <div className={noBorder ? '' : 'border-t border-slate-100 pt-2'}>
       <button
         type="button"
         onClick={expand}
@@ -494,7 +494,7 @@ function LeadCard({
       onClick={() => onOpen(lead)}
       className={`bg-white rounded-xl border p-3.5 space-y-2.5 shadow-sm select-none transition-all
         ${stale ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200'}
-        ${colKey !== 'converted' ? 'cursor-pointer hover:shadow-md hover:border-violet-200' : 'opacity-75 cursor-default'}
+        ${colKey !== 'converted' ? 'cursor-pointer hover:shadow-md hover:border-violet-200' : 'opacity-80 cursor-pointer hover:shadow-sm'}
         ${moving ? 'opacity-40 pointer-events-none' : ''}
       `}
     >
