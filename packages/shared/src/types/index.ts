@@ -426,6 +426,21 @@ export interface SalesConfig {
   lead_follow_up_messages: string[];
 }
 
+export interface ProductCatalogueItem {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  price_inr: number | null;
+  category: string | null;
+  sku: string | null;
+  image_url: string | null;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface KnowledgeBase {
   id: string;
   tenant_id: string;

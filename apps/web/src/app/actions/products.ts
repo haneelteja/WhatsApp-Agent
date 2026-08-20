@@ -1,8 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import type { ProductCatalogueItem } from '@alphabot/shared';
+
+// ── Platform admin actions (used by /platform pages) ─────────────────────────
 
 export async function saveProductDefaultsAction(
   slug: string,
@@ -10,17 +13,11 @@ export async function saveProductDefaultsAction(
   defaultModel: string,
 ) {
   const admin = getSupabaseAdminClient();
-
   const { error } = await admin
     .from('products')
-    .update({
-      default_prompt: defaultPrompt.trim(),
-      default_model:  defaultModel.trim(),
-    })
+    .update({ default_prompt: defaultPrompt.trim(), default_model: defaultModel.trim() })
     .eq('slug', slug);
-
   if (error) return { error: error.message };
-
   revalidatePath('/platform/products');
   return { success: true };
 }
@@ -35,7 +32,6 @@ export async function toggleClientProductAction(
   if (!user) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
-
   const { data: platformUser } = await admin
     .from('platform_users')
     .select('id')
@@ -44,15 +40,10 @@ export async function toggleClientProductAction(
   if (!platformUser) return { error: 'Unauthorized' };
 
   if (active) {
-    // Enable: upsert tenant_product row
     await admin.from('tenant_products').upsert({
-      tenant_id:    tenantId,
-      product_type: productSlug,
-      tier:         'base',
-      active:       true,
+      tenant_id: tenantId, product_type: productSlug, tier: 'base', active: true,
     }, { onConflict: 'tenant_id,product_type' });
 
-    // Ensure a bot_config row exists (ignore if already there)
     const { data: existing } = await admin
       .from('bot_configs')
       .select('id')
@@ -62,16 +53,9 @@ export async function toggleClientProductAction(
 
     if (!existing) {
       await admin.from('bot_configs').insert({
-        tenant_id:            tenantId,
-        product_slug:         productSlug,
-        system_prompt:        null,
-        ai_model:             null,
-        confidence_threshold: 0.6,
-        kb_only_mode:         false,
-        escalation_triggers: [
-          'speak to human', 'talk to agent', 'human please', 'escalate',
-          'complaint', 'refund', 'dispute', 'urgent',
-        ],
+        tenant_id: tenantId, product_slug: productSlug,
+        system_prompt: null, ai_model: null, confidence_threshold: 0.6, kb_only_mode: false,
+        escalation_triggers: ['speak to human', 'talk to agent', 'human please', 'escalate', 'complaint', 'refund', 'dispute', 'urgent'],
         guardrails_json: {
           blocked_topics: [], blocked_keywords: [], max_response_length: 1000,
           tone: 'professional',
@@ -81,14 +65,114 @@ export async function toggleClientProductAction(
       });
     }
   } else {
-    // Disable: set active=false (preserves config)
-    await admin
-      .from('tenant_products')
-      .update({ active: false })
-      .eq('tenant_id', tenantId)
-      .eq('product_type', productSlug);
+    await admin.from('tenant_products').update({ active: false })
+      .eq('tenant_id', tenantId).eq('product_type', productSlug);
   }
 
   revalidatePath(`/platform/clients/${tenantId}`);
   return { success: true };
+}
+
+async function getTenantId(): Promise<string | null> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const admin = getSupabaseAdminClient();
+  const { data: tu } = await admin
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single();
+  return tu?.tenant_id ?? null;
+}
+
+export async function getProductsAction(): Promise<{ products: ProductCatalogueItem[]; error?: string }> {
+  const tenantId = await getTenantId();
+  if (!tenantId) return { products: [], error: 'Unauthorized' };
+
+  const admin = getSupabaseAdminClient();
+  const { data, error } = await admin
+    .from('product_catalogue')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) return { products: [], error: error.message };
+  return { products: (data ?? []) as ProductCatalogueItem[] };
+}
+
+export async function createProductAction(input: {
+  name: string;
+  description?: string;
+  price_inr?: number | null;
+  category?: string;
+  sku?: string;
+}): Promise<{ product?: ProductCatalogueItem; error?: string }> {
+  if (!input.name?.trim()) return { error: 'Name is required' };
+
+  const tenantId = await getTenantId();
+  if (!tenantId) return { error: 'Unauthorized' };
+
+  const admin = getSupabaseAdminClient();
+  const { data, error } = await admin
+    .from('product_catalogue')
+    .insert({
+      tenant_id:   tenantId,
+      name:        input.name.trim(),
+      description: input.description?.trim() || null,
+      price_inr:   input.price_inr ?? null,
+      category:    input.category?.trim() || null,
+      sku:         input.sku?.trim() || null,
+    })
+    .select()
+    .single();
+
+  if (error) return { error: error.message };
+  return { product: data as ProductCatalogueItem };
+}
+
+export async function updateProductAction(
+  id: string,
+  input: Partial<{
+    name: string;
+    description: string | null;
+    price_inr: number | null;
+    category: string | null;
+    sku: string | null;
+    active: boolean;
+  }>,
+): Promise<{ error?: string }> {
+  if (!id) return { error: 'Missing id' };
+
+  const tenantId = await getTenantId();
+  if (!tenantId) return { error: 'Unauthorized' };
+
+  const admin = getSupabaseAdminClient();
+  const { error } = await admin
+    .from('product_catalogue')
+    .update({ ...input, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function deleteProductAction(id: string): Promise<{ error?: string }> {
+  if (!id) return { error: 'Missing id' };
+
+  const tenantId = await getTenantId();
+  if (!tenantId) return { error: 'Unauthorized' };
+
+  const admin = getSupabaseAdminClient();
+  const { error } = await admin
+    .from('product_catalogue')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
+
+  if (error) return { error: error.message };
+  return {};
 }

@@ -30,3 +30,5 @@ MASTER_PROMPT.md
 Content/
 docs/generate_user_guide.py
 amicorp-live.jsx
+
+.vercel

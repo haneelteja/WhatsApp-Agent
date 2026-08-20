@@ -16,6 +16,7 @@ import { cacheGet, cacheSet } from '../../lib/redis.js';
 import { detectSentimentText } from '../../services/sentiment/detector.js';
 import { isWithinBusinessHours } from '../../lib/business-hours.js';
 import { dispatchCall } from '../../services/voice/call-manager.js';
+import { getProductCatalogue } from '../../lib/product-cache.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -635,6 +636,26 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       systemPrompt += `\nThe customer is writing in ${langHint}. Respond in the same language and script.`;
     }
 
+    // ── Inject product catalogue (sales_bot only) ────────────────────────────
+    // Active products are fetched from the product_catalogue table (Redis-cached,
+    // 5 min TTL) and appended to the system prompt so the bot can quote exact prices.
+    if (productType === 'sales_bot') {
+      const catalogue = await getProductCatalogue(tenantId);
+      if (catalogue.length > 0) {
+        const catalogueText = catalogue.map(p => {
+          const lines = [`• ${p.name}`];
+          if (p.sku)         lines.push(`  SKU: ${p.sku}`);
+          if (p.category)    lines.push(`  Category: ${p.category}`);
+          if (p.description) lines.push(`  ${p.description}`);
+          if (p.price_inr !== null) {
+            lines.push(`  Price: ₹${Number(p.price_inr).toLocaleString('en-IN')}`);
+          }
+          return lines.join('\n');
+        }).join('\n\n');
+        systemPrompt += `\n\n---\nPRODUCT CATALOGUE (always use these exact prices when customers ask):\n${catalogueText}\n\nWhen a customer asks to see all products or the full price list, append [SEND_CATALOGUE] on the very last line of your response.`;
+      }
+    }
+
     // ── Feature: AI Conversation State Machine ────────────────────────────
     // Inject the current conversation stage and AI-extracted entities into the
     // system prompt. The AI can advance the stage or capture new info by appending
@@ -743,8 +764,9 @@ To update state, append these markers at the VERY END of your response (they are
     }
 
     // ── Parse AI response markers ─────────────────────────────────────────
-    const rawContent  = aiResult.content;
-    const isSalesLead = rawContent.includes('[SALES_LEAD]');
+    const rawContent    = aiResult.content;
+    const isSalesLead   = rawContent.includes('[SALES_LEAD]');
+    const sendCatalogue = rawContent.includes('[SEND_CATALOGUE]');
 
     // Feature: State Machine — extract [STAGE:x] and [ENTITY:key=value] markers
     const stageMatch    = rawContent.match(/\[STAGE:(\w+)\]/);
@@ -753,6 +775,7 @@ To update state, append these markers at the VERY END of your response (they are
     // Strip all control markers before sending to customer
     const cleanContent = rawContent
       .replace(/\[SALES_LEAD\]/g, '')
+      .replace(/\[SEND_CATALOGUE\]/g, '')
       .replace(/\[STAGE:\w+\]/g, '')
       .replace(/\[ENTITY:[^\]]+\]/g, '')
       .trimEnd();
@@ -980,6 +1003,33 @@ To update state, append these markers at the VERY END of your response (they are
         'update-delivery-status-sent',
         fastify.log,
       );
+    }
+
+    // ── Send formatted product catalogue if requested ────────────────────
+    if (sendCatalogue && productType === 'sales_bot') {
+      const catalogue = await getProductCatalogue(tenantId); // already in Redis
+      if (catalogue.length > 0) {
+        const lines: string[] = ['📦 *Our Products*\n'];
+        for (const p of catalogue) {
+          lines.push(`*${p.name}*${p.sku ? ` (SKU: ${p.sku})` : ''}`);
+          if (p.category)    lines.push(`🏷 ${p.category}`);
+          if (p.description) lines.push(p.description);
+          if (p.price_inr !== null) {
+            lines.push(`💰 ₹${Number(p.price_inr).toLocaleString('en-IN')}`);
+          }
+          lines.push('');
+        }
+        lines.push('_Reply with a product name for details or to place an order._');
+        fireForget(
+          gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text',
+            to:   incoming.from,
+            text: lines.join('\n').trimEnd(),
+          }),
+          'send-catalogue-message',
+          fastify.log,
+        );
+      }
     }
 
     // ── Check call triggers (keyword / sentiment) ─────────────────────────

@@ -18,6 +18,7 @@ import {
   Zap,
   Users,
   Target,
+  Package,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -37,9 +38,10 @@ const BASE_NAV = [
   { href: '/settings',       label: 'Settings',       icon: Settings        },
 ];
 
-const CONTACTS_ITEM = { href: '/contacts', label: 'Contacts', icon: Users };
-const LEADS_ITEM    = { href: '/leads',    label: 'Leads',    icon: Target };
-const ORDERS_ITEM   = { href: '/orders',   label: 'Orders',   icon: ShoppingCart };
+const CONTACTS_ITEM   = { href: '/contacts',  label: 'Contacts',  icon: Users       };
+const LEADS_ITEM      = { href: '/leads',     label: 'Leads',     icon: Target      };
+const CATALOGUE_ITEM  = { href: '/catalogue', label: 'Catalogue', icon: Package     };
+const ORDERS_ITEM     = { href: '/orders',    label: 'Orders',    icon: ShoppingCart};
 
 export function DashboardNav({
   tenantName,
@@ -58,7 +60,7 @@ export function DashboardNav({
 
   // Items visible to each role (most-restrictive first)
   const AGENT_HREFS      = new Set(['/dashboard', '/conversations', '/contacts']);
-  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/contacts', '/leads', '/orders', '/analytics', '/settings']);
+  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/contacts', '/leads', '/catalogue', '/orders', '/analytics', '/settings']);
   // admin / client_manager — no filter (see everything)
 
   // Build nav dynamically — insert gated items at their correct positions
@@ -68,6 +70,11 @@ export function DashboardNav({
     items.splice(3, 0, CONTACTS_ITEM);
     // Leads goes after Contacts (index 4) — always visible
     items.splice(4, 0, LEADS_ITEM);
+    // Catalogue goes after Leads — only for sales_bot tenants
+    if (hasSalesBot) {
+      const leadsIdx = items.findIndex(i => i.href === '/leads');
+      items.splice(leadsIdx + 1, 0, CATALOGUE_ITEM);
+    }
     // Orders goes after Guardrails, lifecycle_bot only — use findIndex for robustness
     if (hasLifecycleBot) {
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
