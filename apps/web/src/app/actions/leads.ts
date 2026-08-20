@@ -11,6 +11,8 @@ export async function updateLeadStageAction(
   stage: LeadStage,
   markConverted = false,
 ): Promise<{ error?: string }> {
+  if (!VALID_STAGES.includes(stage as LeadStage)) return { error: 'Invalid stage' };
+
   const supabase = await getSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'Unauthorized' };

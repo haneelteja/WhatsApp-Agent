@@ -233,13 +233,15 @@ async function processLeadFollowUps(): Promise<void> {
     );
     if (!escalatedConvIds.length) continue;
 
-    // Open sales_bot conversations that are stale and haven't hit the follow-up cap
+    // Sales lead conversations that are stale and haven't hit the follow-up cap.
+    // Include 'escalated' (human notified but not yet claimed) and 'open'.
+    // Exclude 'bot_paused' (agent actively working it) and 'resolved'.
     const { data: convs } = await db
       .from('conversations')
       .select('id, contact_id, lead_follow_up_count')
       .eq('tenant_id', row.tenant_id)
       .eq('product_type', 'sales_bot')
-      .eq('status', 'open')
+      .in('status', ['open', 'escalated'])
       .lt('lead_follow_up_count', 3)
       .lt('updated_at', cutoff)
       .in('id', escalatedConvIds);
