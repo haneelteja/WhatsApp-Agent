@@ -17,6 +17,7 @@ import { orderRoutes, razorpayWebhookRoute, phonePeWebhookRoute } from './routes
 import { settingsRoutes } from './routes/settings/index.js';
 import { voiceRoutes } from './routes/voice/index.js';
 import { campaignRoutes } from './routes/campaigns/index.js';
+import { inboundRoutes } from './routes/inbound/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { getServerClient } from '@alphabot/database';
 import { connectRedis, getRedis } from './lib/redis.js';
@@ -90,6 +91,7 @@ await server.register(phonePeWebhookRoute,  { prefix: '/api/payments' });
 await server.register(settingsRoutes,       { prefix: '/api/settings' });
 await server.register(voiceRoutes,          { prefix: '/api/voice' });
 await server.register(campaignRoutes,       { prefix: '/api/campaigns' });
+await server.register(inboundRoutes,        { prefix: '/api/inbound' });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 server.get('/health', async () => {

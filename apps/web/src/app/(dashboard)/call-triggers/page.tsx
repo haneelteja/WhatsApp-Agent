@@ -1,12 +1,13 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, Info, RefreshCw, MessageSquare, Phone, Target } from 'lucide-react';
+import { Zap, Info, RefreshCw, MessageSquare, Phone, Target, Share2 } from 'lucide-react';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { CallTriggersCard }  from '@/components/dashboard/CallTriggersCard';
 import { CollapsibleCard }   from '@/components/CollapsibleCard';
 import { FollowUpForm }      from '@/components/dashboard/FollowUpForm';
 import { SalesFollowUpForm } from '@/components/dashboard/SalesFollowUpForm';
+import { InboundLeadsTab }   from '@/components/dashboard/InboundLeadsTab';
 import type { BotVoiceConfig, SalesConfig } from '@alphabot/shared';
 import type { FollowUpScope } from '@/app/actions/follow-up';
 
@@ -30,6 +31,7 @@ const TABS = [
   { key: 'follow-ups',      label: 'Message Follow-ups', icon: MessageSquare },
   { key: 'lead-follow-ups', label: 'Lead Follow-ups',    icon: Target        },
   { key: 'voice',           label: 'Voice Triggers',     icon: Phone         },
+  { key: 'inbound',         label: 'Inbound Leads',      icon: Share2        },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
@@ -59,7 +61,7 @@ export default async function TriggersPage({
   const tenantId = tenantUser.tenant_id;
 
   // Single parallel fetch for all data regardless of tab
-  const [{ data: products }, { data: fuConfigs }, { data: convRows }, { data: botCfgs }] = await Promise.all([
+  const [{ data: products }, { data: fuConfigs }, { data: convRows }, { data: botCfgs }, { data: tenantRow }] = await Promise.all([
     admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
     admin.from('follow_up_configs')
       .select('product_slug, enabled, idle_days, message_template, max_follow_ups, scope, contact_ids')
@@ -70,7 +72,13 @@ export default async function TriggersPage({
     admin.from('bot_configs')
       .select('product_slug, voice_config, sales_config')
       .eq('tenant_id', tenantId),
+    admin.from('tenants')
+      .select('inbound_webhook_key')
+      .eq('id', tenantId)
+      .single(),
   ]);
+
+  const inboundWebhookKey = (tenantRow as { inbound_webhook_key?: string | null } | null)?.inbound_webhook_key ?? null;
 
   const activeSlugs = (products ?? []).map(p => (p as { product_type: string }).product_type);
 
@@ -106,6 +114,7 @@ export default async function TriggersPage({
     const vc = voiceCfgMap.get(slug);
     return vc?.trigger_on_call_request || vc?.trigger_on_negative_sentiment || vc?.trigger_on_no_reply;
   });
+  const inboundConfigured = !!inboundWebhookKey;
 
   const noActiveBots = activeSlugs.length === 0;
 
@@ -130,8 +139,9 @@ export default async function TriggersPage({
         {TABS.map(t => {
           const isActive = activeTab === t.key;
           const dotOn =
-            t.key === 'follow-ups'      ? anyFollowUpEnabled :
-            t.key === 'lead-follow-ups' ? leadFollowUpEnabled :
+            t.key === 'follow-ups'      ? anyFollowUpEnabled  :
+            t.key === 'lead-follow-ups' ? leadFollowUpEnabled  :
+            t.key === 'inbound'         ? inboundConfigured    :
             anyVoiceTriggerOn;
           return (
             <Link
@@ -251,6 +261,11 @@ export default async function TriggersPage({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Tab: Inbound Leads ─────────────────────────────────────────────── */}
+      {activeTab === 'inbound' && (
+        <InboundLeadsTab initialKey={inboundWebhookKey} />
       )}
 
       {/* ── Tab: Voice Call Triggers ────────────────────────────────────────── */}
