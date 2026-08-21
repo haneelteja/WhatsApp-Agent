@@ -101,8 +101,20 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
       // Twilio: CallStatus + CallDuration  |  Exotel: Status + Duration
       const callStatus = body['CallStatus'] ?? body['Status']   ?? '';
       const duration   = parseInt(body['CallDuration'] ?? body['Duration'] ?? '0', 10) || null;
-      // Twilio: RecordingUrl  |  Exotel: RecordingUrl (same field name)
-      const recordingUrl = body['RecordingUrl'] ?? body['recording_url'] ?? null;
+      // Twilio sends RecordingUrl in both the main status callback and a separate
+      // recording-specific callback (RecordingStatusCallback). Handle both.
+      const recordingUrl  = body['RecordingUrl'] ?? body['recording_url'] ?? null;
+      const recordingStatus = body['RecordingStatus'] ?? null;
+
+      // Recording-only callback — Twilio fires this separately when the recording is ready.
+      // No CallStatus present, just save the URL and bail.
+      if (recordingStatus === 'completed' && recordingUrl && !callStatus) {
+        void getServerClient()
+          .from('voice_calls')
+          .update({ recording_url: recordingUrl })
+          .eq('id', voiceCallId);
+        return;
+      }
 
       if (callStatus && callStatus !== 'in-progress') {
         void finaliseCall(voiceCallId, callSid, callStatus, duration, recordingUrl ?? undefined);

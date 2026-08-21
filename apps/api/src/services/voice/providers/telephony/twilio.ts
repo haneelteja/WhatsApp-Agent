@@ -64,7 +64,10 @@ export function createTwilioProvider(config: TwilioConfig): TelephonyProvider {
         StatusCallback: statusCallback,
         StatusCallbackMethod: 'POST',
         StatusCallbackEvent: 'initiated ringing answered completed',
-        Record:         'false',
+        // Enable recording — Twilio sends RecordingUrl in the status callback when done
+        Record:                  'true',
+        RecordingStatusCallback: statusCallback,
+        RecordingStatusCallbackMethod: 'POST',
         Timeout:        '30',   // ring for 30s before no-answer
       }) as { sid: string; status: string };
 
