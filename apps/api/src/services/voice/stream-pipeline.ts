@@ -190,7 +190,20 @@ export async function handleStreamSession(
   voiceCallId: string,
   log:         FastifyBaseLogger,
 ): Promise<void> {
+  // ⚠ Buffer messages that arrive while we're doing async setup.
+  // Twilio sends 'start' within ~100ms of WS open; DB queries on Render take
+  // 200-500ms. Without buffering the 'start' event is silently dropped and the
+  // entire call pipeline never initialises.
+  const messageBuffer: WebSocket.RawData[] = [];
+  const bufferMessage = (raw: WebSocket.RawData) => messageBuffer.push(raw);
+  twilioWs.on('message', bufferMessage);
+
   const db = getServerClient();
+
+  // Warn early if Smallest.ai key is missing — saves a confusing silent failure
+  if (!getApiKey()) {
+    log.error({ voiceCallId }, '[Stream] SMALLEST_AI_API_KEY is not set — calls will fail');
+  }
 
   const { data: callRow } = await db
     .from('voice_calls')
@@ -200,6 +213,7 @@ export async function handleStreamSession(
 
   if (!callRow) {
     log.warn({ voiceCallId }, '[Stream] Call not found');
+    twilioWs.off('message', bufferMessage);
     twilioWs.close();
     return;
   }
@@ -287,6 +301,8 @@ export async function handleStreamSession(
         : transcriptLine;
       turnCount++;
       void appendTranscript(voiceCallId, transcriptLine);
+      // Persist turn count to DB so the call detail page shows progress
+      void db.from('voice_calls').update({ turn_count: turnCount }).eq('id', voiceCallId);
 
       if (shouldEnd) {
         setTimeout(() => {
@@ -360,7 +376,11 @@ export async function handleStreamSession(
   }
 
   // ─── Twilio Media Streams events ────────────────────────────────────────
-  twilioWs.on('message', async (raw) => {
+  // Swap the buffer listener for the real one, then drain any messages that
+  // arrived during async setup (most importantly the 'start' event).
+  twilioWs.off('message', bufferMessage);
+
+  const handleTwilioMessage = async (raw: WebSocket.RawData) => {
     try {
       const msg = JSON.parse(raw.toString()) as {
         event:      string;
@@ -378,10 +398,13 @@ export async function handleStreamSession(
 
           log.info({ voiceCallId, streamSid, callSid }, '[Stream] Twilio stream started');
 
-          void db.from('voice_calls').update({
+          // Update status — log on failure so silent DB errors are visible
+          db.from('voice_calls').update({
             status: 'in_progress',
             ...(callSid ? { telephony_call_sid: callSid } : {}),
-          }).eq('id', voiceCallId);
+          }).eq('id', voiceCallId).then(({ error }) => {
+            if (error) log.error({ error, voiceCallId }, '[Stream] Failed to update status to in_progress');
+          });
 
           // Start recording so the client portal can play it back later
           if (callSid && accountSid) {
@@ -436,7 +459,14 @@ export async function handleStreamSession(
     } catch (err) {
       log.error({ err, voiceCallId }, '[Stream] Twilio message parse error');
     }
-  });
+  };
+
+  twilioWs.on('message', handleTwilioMessage);
+
+  // Drain buffered messages (captured during async setup above)
+  for (const raw of messageBuffer) {
+    void handleTwilioMessage(raw);
+  }
 
   twilioWs.on('close', () => {
     log.info({ voiceCallId }, '[Stream] Twilio WS closed — cleaning up');
