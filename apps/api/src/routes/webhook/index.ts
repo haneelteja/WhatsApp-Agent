@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getServerClient } from '@alphabot/database';
-import type { BotConfig, Contact, Conversation, LayeredGuardrailsConfig, PlatformGuardrails, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
+import type { BotConfig, Contact, Conversation, LayeredGuardrailsConfig, OutgoingInteractiveMessage, PlatformGuardrails, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKB } from '../../services/kb/lookup.js';
@@ -53,6 +53,64 @@ function detectLanguageHint(text: string): string | null {
 }
 
 // ─── Status ladder for delivery receipts ─────────────────────────────────────
+// ─── Button template helper ───────────────────────────────────────────────────
+
+interface ButtonTemplate {
+  name:             string;
+  description:      string | null;
+  type:             'quick_reply' | 'list' | 'cta_url';
+  template_json:    Record<string, unknown>;
+  trigger_keywords: string[];
+}
+
+/** Map a stored template row + the AI reply text into an OutgoingInteractiveMessage. */
+function buildInteractiveFromTemplate(
+  tmpl:     ButtonTemplate,
+  to:       string,
+  bodyText: string,
+): OutgoingInteractiveMessage {
+  const j = tmpl.template_json;
+
+  if (tmpl.type === 'quick_reply') {
+    const rawButtons = (j['buttons'] ?? []) as Array<{ id: string; title: string }>;
+    return {
+      type:            'interactive',
+      interactiveType: 'button',
+      to,
+      body:    bodyText.slice(0, 1024),
+      buttons: rawButtons.slice(0, 3).map(b => ({ type: 'reply' as const, reply: { id: b.id, title: b.title.slice(0, 20) } })),
+    };
+  }
+
+  if (tmpl.type === 'list') {
+    const rawSections = (j['sections'] ?? []) as Array<{
+      title: string;
+      rows:  Array<{ id: string; title: string; description?: string }>;
+    }>;
+    return {
+      type:            'interactive',
+      interactiveType: 'list',
+      to,
+      body:            bodyText.slice(0, 4096),
+      listButtonLabel: (j['button_label'] as string | undefined) ?? 'Choose an option',
+      listSections:    rawSections.map(s => ({
+        title: s.title,
+        rows:  s.rows.slice(0, 10).map(r => ({ id: r.id, title: r.title.slice(0, 24), description: r.description })),
+      })),
+    };
+  }
+
+  // cta_url
+  return {
+    type:            'interactive',
+    interactiveType: 'cta_url',
+    to,
+    body:          bodyText.slice(0, 1024),
+    ctaButtonText: (j['button_text'] as string | undefined) ?? 'Open',
+    ctaUrl:        (j['url']         as string | undefined) ?? '',
+  };
+}
+
 // Only accept updates that move the status forward (sent→delivered→read).
 // `failed` is always accepted regardless of current status.
 const STATUS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
@@ -592,6 +650,15 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     const contactMemory = formatContactMemory(contactData.memory_json as unknown as Record<string, unknown> | null);
 
+    // Fetch active button templates for this bot (null product_slug = all bots)
+    const { data: buttonTemplatesRaw } = await db
+      .from('interactive_button_templates')
+      .select('name, description, type, template_json, trigger_keywords')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .or(`product_slug.eq.${productType},product_slug.is.null`);
+    const buttonTemplates = (buttonTemplatesRaw ?? []) as ButtonTemplate[];
+
     // ── Build effective system prompt with guardrails injected ───────────
     // Always append SALES_LEAD_INSTRUCTION so it applies even when the DB
     // has a custom system_prompt that doesn't include it.
@@ -671,6 +738,30 @@ ${aiVarPairs.length > 0 ? `Captured info: ${aiVarPairs.map(([k, v]) => `${k}=${v
 To update state, append these markers at the VERY END of your response (they are stripped before reaching the customer):
 [STAGE:<new_stage>] — advance when the conversation naturally moves to a new phase
 [ENTITY:<key>=<value>] — capture extracted customer info (e.g. [ENTITY:email=alice@example.com] [ENTITY:order_id=ORD-123])`;
+
+    // ── Inject interactive button templates ───────────────────────────────────
+    if (buttonTemplates.length > 0) {
+      const templateList = buttonTemplates
+        .map(t => `  • "${t.name}" (${t.type})${t.description ? ` — ${t.description}` : ''}`)
+        .join('\n');
+
+      systemPrompt += `\n\n---\nINTERACTIVE BUTTONS
+You can send a WhatsApp button or menu by appending [BUTTONS:name] at the VERY END of your response (stripped before the customer sees it).
+Available templates:\n${templateList}
+
+Rules: use buttons when the customer faces a clear multiple-choice decision. Append at most ONE [BUTTONS:name] tag.`;
+
+      // Rule-based: if user's message contains a template's trigger keywords, suggest it
+      const lowerMsg = incoming.text?.toLowerCase() ?? '';
+      if (lowerMsg) {
+        const triggered = buttonTemplates.find(t =>
+          t.trigger_keywords.some(kw => kw && lowerMsg.includes(kw.toLowerCase())),
+        );
+        if (triggered) {
+          systemPrompt += `\n\nSUGGESTED: The customer's message matches the "${triggered.name}" template — append [BUTTONS:${triggered.name}] at the end of your reply.`;
+        }
+      }
+    }
 
     // ── Resolve LLM config — 6-level hierarchy (most specific wins) ─────
     // 1. llm_configs Client Bot      (validated API key + model)
@@ -772,12 +863,17 @@ To update state, append these markers at the VERY END of your response (they are
     const stageMatch    = rawContent.match(/\[STAGE:(\w+)\]/);
     const entityMatches = [...rawContent.matchAll(/\[ENTITY:(\w+)=([^\]]+)\]/g)];
 
+    // Interactive buttons — extract [BUTTONS:template_name] marker
+    const buttonsMatch       = rawContent.match(/\[BUTTONS:([^\]]+)\]/);
+    const buttonTemplateName = buttonsMatch?.[1]?.trim().toLowerCase() ?? null;
+
     // Strip all control markers before sending to customer
     const cleanContent = rawContent
       .replace(/\[SALES_LEAD\]/g, '')
       .replace(/\[SEND_CATALOGUE\]/g, '')
       .replace(/\[STAGE:\w+\]/g, '')
       .replace(/\[ENTITY:[^\]]+\]/g, '')
+      .replace(/\[BUTTONS:[^\]]+\]/g, '')
       .trimEnd();
 
     // Persist stage/entity updates non-blocking (after lock, before reply send)
@@ -986,6 +1082,21 @@ To update state, append these markers at the VERY END of your response (they are
         'kb-media-send-count',
         fastify.log,
       );
+    } else if (buttonTemplateName && buttonTemplates.length > 0) {
+      // AI requested a button template — send interactive message
+      const tmpl = buttonTemplates.find(t => t.name === buttonTemplateName);
+      if (tmpl) {
+        fastify.log.info({ buttonTemplateName, type: tmpl.type }, '[Webhook] sending interactive button template');
+        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token,
+          buildInteractiveFromTemplate(tmpl, incoming.from, replyText),
+        );
+      } else {
+        // Template name from AI doesn't match any saved template — fall back to text
+        fastify.log.warn({ buttonTemplateName }, '[Webhook] Button template not found, falling back to text');
+        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'text', to: incoming.from, text: replyText,
+        });
+      }
     } else {
       sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
         type: 'text', to: incoming.from, text: replyText,

@@ -19,6 +19,7 @@ import {
   Users,
   Target,
   Package,
+  MessageSquareMore,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -31,7 +32,8 @@ const BASE_NAV = [
   { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
   { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
   // slot: Orders (lifecycle_bot only)
-  { href: '/call-triggers',  label: 'Triggers',       icon: Zap             },
+  { href: '/call-triggers',    label: 'Triggers',       icon: Zap             },
+  { href: '/button-templates', label: 'Buttons',        icon: MessageSquareMore },
   { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
   { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
   { href: '/billing',        label: 'Billing',        icon: CreditCard      },

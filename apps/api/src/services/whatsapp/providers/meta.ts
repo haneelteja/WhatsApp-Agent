@@ -122,6 +122,20 @@ export class MetaCloudProvider implements IWhatsAppProvider {
     if (raw.type === 'video' && raw.video) {
       return { ...base, type: 'video', mediaId: raw.video.id, mimeType: raw.video.mime_type };
     }
+    // Button tap or list-row selection — treat as text so the pipeline sees the reply
+    if (raw.type === 'interactive' && raw.interactive) {
+      const ir  = raw.interactive;
+      const rep = ir.type === 'list_reply' ? ir.list_reply : ir.button_reply;
+      if (rep) {
+        return {
+          ...base,
+          type:                 'interactive',
+          text:                 rep.title,   // feed the label into the AI as user text
+          interactiveReplyId:   rep.id,
+          interactiveReplyTitle: rep.title,
+        };
+      }
+    }
 
     return { ...base, type: 'unsupported' };
   }
@@ -255,14 +269,22 @@ export class MetaCloudProvider implements IWhatsAppProvider {
 
   private buildInteractive(base: Record<string, unknown>, m: OutgoingInteractiveMessage) {
     const interactive: Record<string, unknown> = {
-      type: m.interactiveType,
+      type: m.interactiveType === 'cta_url' ? 'cta_url' : m.interactiveType,
       body: { text: m.body },
     };
 
     if (m.interactiveType === 'button' && m.buttons) {
       interactive['action'] = { buttons: m.buttons };
     } else if (m.interactiveType === 'list' && m.listSections) {
-      interactive['action'] = { sections: m.listSections, button: 'Choose an option' };
+      interactive['action'] = {
+        button:   m.listButtonLabel ?? 'Choose an option',
+        sections: m.listSections,
+      };
+    } else if (m.interactiveType === 'cta_url') {
+      interactive['action'] = {
+        name:       'cta_url',
+        parameters: { display_text: m.ctaButtonText ?? 'Open', url: m.ctaUrl ?? '' },
+      };
     }
 
     return { ...base, to: m.to, type: 'interactive', interactive };

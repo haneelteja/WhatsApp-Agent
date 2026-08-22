@@ -22,12 +22,15 @@ export interface IncomingWhatsAppMessage {
   from: string;
   messageId: string;
   timestamp: number;
-  type: 'text' | 'image' | 'audio' | 'document' | 'video' | 'unsupported';
+  type: 'text' | 'image' | 'audio' | 'document' | 'video' | 'interactive' | 'unsupported';
   text?: string;
   mediaId?: string;
   mediaUrl?: string;
   mimeType?: string;
   contactName?: string;
+  /** Set when type = 'interactive' — the button/list row the user tapped */
+  interactiveReplyId?: string;
+  interactiveReplyTitle?: string;
 }
 
 export interface OutgoingTextMessage {
@@ -48,10 +51,14 @@ export interface OutgoingTemplateMessage {
 export interface OutgoingInteractiveMessage {
   type: 'interactive';
   to: string;
-  interactiveType: 'button' | 'list';
+  interactiveType: 'button' | 'list' | 'cta_url';
   body: string;
   buttons?: InteractiveButton[];
   listSections?: ListSection[];
+  listButtonLabel?: string;
+  /** CTA URL button fields */
+  ctaButtonText?: string;
+  ctaUrl?: string;
 }
 
 export interface OutgoingMediaMessage {
@@ -130,6 +137,11 @@ export interface MetaMessage {
   audio?: { id: string; mime_type: string; voice: boolean };
   document?: { id: string; mime_type: string; filename: string; caption?: string };
   video?: { id: string; mime_type: string; caption?: string };
+  interactive?: {
+    type: 'button_reply' | 'list_reply';
+    button_reply?: { id: string; title: string };
+    list_reply?:   { id: string; title: string; description?: string };
+  };
 }
 
 export interface MetaStatus {
