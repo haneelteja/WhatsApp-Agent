@@ -56,7 +56,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
-      <DashboardNav tenantName={ctx.tenantName} userRole={ctx.userRole} hasLifecycleBot={ctx.hasLifecycleBot} hasSalesBot={ctx.hasSalesBot} />
+      <DashboardNav tenantName={ctx.tenantName} userRole={ctx.userRole} hasLifecycleBot={ctx.hasLifecycleBot} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar email={ctx.user.email ?? ''} tenantName={ctx.tenantName} />
         <main className="flex-1 overflow-auto">{children}</main>

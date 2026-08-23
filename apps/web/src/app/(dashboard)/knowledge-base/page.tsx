@@ -6,9 +6,12 @@ import {
   Plus, BookOpen, Trash2, ChevronRight, X,
   Sparkles, ChevronLeft, CheckSquare, Square,
   Loader2, AlertCircle, Check, Pencil,
-  ImageIcon, FileText, Upload, Eye, EyeOff, Send,
+  ImageIcon, FileText, Upload, Eye, EyeOff, Send, Package,
 } from 'lucide-react';
 import { kbFetch, kbUpload } from '@/lib/kb-client';
+import { ProductCatalogueManager } from '@/app/(dashboard)/catalogue/ProductCatalogueManager';
+import { getProductsAction } from '@/app/actions/products';
+import type { ProductCatalogueItem } from '@alphabot/shared';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -100,7 +103,7 @@ function StepIndicator({ current }: { current: WizardStep }) {
 export default function KnowledgeBasePage() {
 
   // ── Collections tab state ──────────────────────────────────────────────────
-  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media'>('collections');
+  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media' | 'catalogue'>('collections');
   const [collections,  setCollections]  = useState<CollectionRow[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [showNew,      setShowNew]      = useState(false);
@@ -155,6 +158,10 @@ export default function KnowledgeBasePage() {
   const [uploading,        setUploading]         = useState(false);
   const [dragOver,         setDragOver]          = useState(false);
 
+  // ── Catalogue tab state ────────────────────────────────────────────────────
+  const [catalogueProducts,  setCatalogueProducts]  = useState<ProductCatalogueItem[] | null>(null);
+  const [catalogueLoading,   setCatalogueLoading]   = useState(false);
+
   // ── Load collections ───────────────────────────────────────────────────────
   const loadCollections = useCallback(async () => {
     setLoading(true);
@@ -202,6 +209,16 @@ export default function KnowledgeBasePage() {
   }, []);
 
   useEffect(() => { if (activeTab === 'media') void loadMedia(); }, [activeTab, loadMedia]);
+
+  useEffect(() => {
+    if (activeTab === 'catalogue' && catalogueProducts === null && !catalogueLoading) {
+      setCatalogueLoading(true);
+      void getProductsAction().then(({ products }) => {
+        setCatalogueProducts(products);
+        setCatalogueLoading(false);
+      });
+    }
+  }, [activeTab, catalogueProducts, catalogueLoading]);
 
   function addFilesToQueue(files: FileList | File[]) {
     const arr = Array.from(files);
@@ -406,8 +423,14 @@ export default function KnowledgeBasePage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Knowledge Base</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Collections of Q&amp;A entries that power your AI bots</p>
+          <h2 className="text-xl font-bold text-gray-900">
+            {activeTab === 'catalogue' ? 'Product Catalogue' : 'Knowledge Base'}
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {activeTab === 'catalogue'
+              ? 'Active products are injected into the sales bot — it can quote exact prices and send a formatted product list on request.'
+              : 'Collections of Q&A entries that power your AI bots'}
+          </p>
         </div>
         {activeTab === 'collections' && (
           <button type="button" onClick={() => setShowNew(true)}
@@ -441,6 +464,12 @@ export default function KnowledgeBasePage() {
             activeTab === 'media' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}>
           <ImageIcon size={14} /> File Library
+        </button>
+        <button type="button" onClick={() => setActiveTab('catalogue')}
+          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'catalogue' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}>
+          <Package size={14} /> Catalogue
         </button>
       </div>
 
@@ -1102,6 +1131,19 @@ export default function KnowledgeBasePage() {
                 })}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CATALOGUE TAB ────────────────────────────────────────────────────── */}
+      {activeTab === 'catalogue' && (
+        <div>
+          {catalogueLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <ProductCatalogueManager initialProducts={catalogueProducts ?? []} />
           )}
         </div>
       )}
