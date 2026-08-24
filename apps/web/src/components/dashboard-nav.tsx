@@ -13,10 +13,8 @@ import {
   ShieldCheck,
   CreditCard,
   ShoppingCart,
-  Phone,
   Megaphone,
   Zap,
-  Users,
   Target,
   MessageSquareMore,
 } from 'lucide-react';
@@ -25,23 +23,21 @@ import { useRouter } from 'next/navigation';
 
 // Always-visible nav items (all bot types)
 const BASE_NAV = [
-  { href: '/dashboard',      label: 'Overview',       icon: LayoutDashboard },
-  { href: '/conversations',  label: 'Conversations',  icon: MessageSquare   },
-  { href: '/voice',          label: 'Voice Calls',    icon: Phone           },
-  { href: '/knowledge-base', label: 'Knowledge Base', icon: BookOpen        },
-  { href: '/guardrails',     label: 'Guardrails',     icon: ShieldCheck     },
+  { href: '/dashboard',        label: 'Overview',       icon: LayoutDashboard  },
+  { href: '/conversations',    label: 'Conversations',  icon: MessageSquare    },
+  { href: '/knowledge-base',   label: 'Knowledge Base', icon: BookOpen         },
+  { href: '/guardrails',       label: 'Guardrails',     icon: ShieldCheck      },
   // slot: Orders (lifecycle_bot only)
-  { href: '/call-triggers',    label: 'Triggers',       icon: Zap             },
+  { href: '/call-triggers',    label: 'Triggers',       icon: Zap              },
   { href: '/button-templates', label: 'Buttons',        icon: MessageSquareMore },
-  { href: '/campaigns',      label: 'Campaigns',      icon: Megaphone       },
-  { href: '/analytics',      label: 'Analytics',      icon: BarChart2       },
-  { href: '/billing',        label: 'Billing',        icon: CreditCard      },
-  { href: '/settings',       label: 'Settings',       icon: Settings        },
+  { href: '/campaigns',        label: 'Campaigns',      icon: Megaphone        },
+  { href: '/analytics',        label: 'Analytics',      icon: BarChart2        },
+  { href: '/billing',          label: 'Billing',        icon: CreditCard       },
+  { href: '/settings',         label: 'Settings',       icon: Settings         },
 ];
 
-const CONTACTS_ITEM   = { href: '/contacts',  label: 'Contacts',  icon: Users       };
-const LEADS_ITEM      = { href: '/leads',     label: 'Leads',     icon: Target      };
-const ORDERS_ITEM     = { href: '/orders',    label: 'Orders',    icon: ShoppingCart};
+const LEADS_ITEM  = { href: '/leads',  label: 'Leads',  icon: Target      };
+const ORDERS_ITEM = { href: '/orders', label: 'Orders', icon: ShoppingCart };
 
 export function DashboardNav({
   tenantName,
@@ -57,18 +53,17 @@ export function DashboardNav({
   const supabase = getSupabaseBrowserClient();
 
   // Items visible to each role (most-restrictive first)
-  const AGENT_HREFS      = new Set(['/dashboard', '/conversations', '/contacts']);
-  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/contacts', '/leads', '/knowledge-base', '/orders', '/analytics', '/settings']);
+  const AGENT_HREFS      = new Set(['/dashboard', '/conversations']);
+  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/knowledge-base', '/orders', '/analytics', '/settings']);
   // admin / client_manager — no filter (see everything)
 
   // Build nav dynamically — insert gated items at their correct positions
   const navItems = (() => {
     const items = [...BASE_NAV];
-    // Contacts goes after Voice Calls (index 2), visible to all
-    items.splice(3, 0, CONTACTS_ITEM);
-    // Leads goes after Contacts (index 4) — always visible
-    items.splice(4, 0, LEADS_ITEM);
-    // Orders goes after Guardrails, lifecycle_bot only — use findIndex for robustness
+    // Leads goes after Conversations — always visible
+    const convsIdx = items.findIndex(i => i.href === '/conversations');
+    items.splice(convsIdx + 1, 0, LEADS_ITEM);
+    // Orders goes after Guardrails, lifecycle_bot only
     if (hasLifecycleBot) {
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
       items.splice(guardrailsIdx + 1, 0, ORDERS_ITEM);
