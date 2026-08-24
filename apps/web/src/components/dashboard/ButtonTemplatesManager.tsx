@@ -493,20 +493,31 @@ function TemplateCard({
   row,
   onEdit,
   onDelete,
+  onToggleActive,
 }: {
-  row:      ButtonTemplateRow;
-  onEdit:   () => void;
-  onDelete: () => void;
+  row:            ButtonTemplateRow;
+  onEdit:         () => void;
+  onDelete:       () => void;
+  onToggleActive: (active: boolean) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [expanded,   setExpanded]   = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [toggling,   setToggling]   = useState(false);
 
   async function handleDelete() {
     if (!confirmDel) { setConfirmDel(true); return; }
     setDeleting(true);
     await deleteButtonTemplateAction(row.id);
     onDelete();
+  }
+
+  async function handleToggle() {
+    setToggling(true);
+    const next = !row.is_active;
+    await updateButtonTemplateAction(row.id, { is_active: next });
+    onToggleActive(next);
+    setToggling(false);
   }
 
   const j = row.template_json;
@@ -523,7 +534,18 @@ function TemplateCard({
           {row.description && <p className="text-xs text-slate-500 truncate">{row.description}</p>}
         </div>
         <span className="text-[11px] text-slate-400 shrink-0">{scopeLabel}</span>
-        {!row.is_active && <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full shrink-0">inactive</span>}
+        {/* Active toggle */}
+        <button
+          type="button"
+          onClick={() => void handleToggle()}
+          disabled={toggling}
+          title={row.is_active ? 'Click to deactivate' : 'Click to activate'}
+          className={`relative w-9 h-5 rounded-full transition-colors shrink-0 focus:outline-none ${
+            row.is_active ? 'bg-emerald-500' : 'bg-slate-200'
+          } ${toggling ? 'opacity-50' : ''}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${row.is_active ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
         <button type="button" onClick={() => setExpanded(e => !e)} className="text-slate-400 hover:text-slate-600">
           {expanded ? <ChevronUp size={15}/> : <ChevronDown size={15}/>}
         </button>
@@ -606,6 +628,10 @@ export function ButtonTemplatesManager({ initialTemplates }: { initialTemplates:
     setTemplates(ts => ts.filter(t => t.id !== id));
   }
 
+  function handleToggled(id: string, active: boolean) {
+    setTemplates(ts => ts.map(t => t.id === id ? { ...t, is_active: active } : t));
+  }
+
   if (mode === 'new') {
     return <TemplateForm onSave={handleSaved} onCancel={() => setMode('list')} />;
   }
@@ -645,6 +671,7 @@ export function ButtonTemplatesManager({ initialTemplates }: { initialTemplates:
                 row={row}
                 onEdit={() => setMode({ edit: row })}
                 onDelete={() => handleDeleted(row.id)}
+                onToggleActive={(active) => handleToggled(row.id, active)}
               />
             ))}
           </div>
