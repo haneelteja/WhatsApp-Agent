@@ -651,13 +651,17 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const contactMemory = formatContactMemory(contactData.memory_json as unknown as Record<string, unknown> | null);
 
     // Fetch active button templates for this bot (null product_slug = all bots)
-    const { data: buttonTemplatesRaw } = await db
+    const { data: buttonTemplatesRaw, error: btnTplError } = await db
       .from('interactive_button_templates')
       .select('name, description, type, template_json, trigger_keywords')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .or(`product_slug.eq.${productType},product_slug.is.null`);
+    if (btnTplError) {
+      fastify.log.error({ btnTplError, tenantId }, '[Webhook] Failed to fetch button templates');
+    }
     const buttonTemplates = (buttonTemplatesRaw ?? []) as ButtonTemplate[];
+    fastify.log.info({ count: buttonTemplates.length, tenantId }, '[Webhook] button templates loaded');
 
     // ── Build effective system prompt with guardrails injected ───────────
     // Always append SALES_LEAD_INSTRUCTION so it applies even when the DB
@@ -866,6 +870,7 @@ Rules: use buttons when the customer faces a clear multiple-choice decision. App
     // Interactive buttons — extract [BUTTONS:template_name] marker
     const buttonsMatch       = rawContent.match(/\[BUTTONS:([^\]]+)\]/);
     const buttonTemplateName = buttonsMatch?.[1]?.trim().toLowerCase() ?? null;
+    fastify.log.info({ buttonTemplateName, rawSnippet: rawContent.slice(-120) }, '[Webhook] AI response tail + buttons marker');
 
     // Strip all control markers before sending to customer
     const cleanContent = rawContent
@@ -1084,7 +1089,7 @@ Rules: use buttons when the customer faces a clear multiple-choice decision. App
       );
     } else if (buttonTemplateName && buttonTemplates.length > 0) {
       // AI requested a button template — send interactive message
-      const tmpl = buttonTemplates.find(t => t.name === buttonTemplateName);
+      const tmpl = buttonTemplates.find(t => t.name.toLowerCase() === buttonTemplateName);
       if (tmpl) {
         fastify.log.info({ buttonTemplateName, type: tmpl.type }, '[Webhook] sending interactive button template');
         sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token,
