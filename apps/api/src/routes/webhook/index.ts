@@ -750,19 +750,19 @@ To update state, append these markers at the VERY END of your response (they are
         .join('\n');
 
       systemPrompt += `\n\n---\nINTERACTIVE BUTTONS
-You can send a WhatsApp button or menu by appending [BUTTONS:name] at the VERY END of your response (stripped before the customer sees it).
+You can send a WhatsApp interactive button message by appending [BUTTONS:name] on the VERY LAST LINE of your response. It is invisible to the customer — they will see clickable buttons instead.
 Available templates:\n${templateList}
 
-Rules: use buttons when the customer faces a clear multiple-choice decision. Append at most ONE [BUTTONS:name] tag.`;
+General rule: append [BUTTONS:name] when the customer faces a clear multiple-choice decision. Use at most ONE tag per reply.`;
 
-      // Rule-based: if user's message contains a template's trigger keywords, suggest it
+      // Rule-based: if user's message contains a template's trigger keywords, force it
       const lowerMsg = incoming.text?.toLowerCase() ?? '';
       if (lowerMsg) {
         const triggered = buttonTemplates.find(t =>
           t.trigger_keywords.some(kw => kw && lowerMsg.includes(kw.toLowerCase())),
         );
         if (triggered) {
-          systemPrompt += `\n\nSUGGESTED: The customer's message matches the "${triggered.name}" template — append [BUTTONS:${triggered.name}] at the end of your reply.`;
+          systemPrompt += `\n\nMANDATORY INSTRUCTION: The customer's message matched a trigger keyword. You MUST end your reply with [BUTTONS:${triggered.name}] as the very last thing — on its own line, after your message text. Do not omit it. Example:\n\nHey! How can I help?\n[BUTTONS:${triggered.name}]`;
         }
       }
     }
