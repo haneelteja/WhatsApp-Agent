@@ -1041,7 +1041,7 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
 
     // Priority: interactive buttons > KB attachment > plain text.
     // Buttons take highest priority because they represent an explicit AI decision.
-    // If a KB attachment also exists, send it as a follow-up after the interactive message.
+    // KB attachment is skipped when buttons fire — the two are mutually exclusive.
     if (buttonTemplateName && buttonTemplates.length > 0) {
       const tmpl = buttonTemplates.find(t => t.name.toLowerCase() === buttonTemplateName);
       if (tmpl) {
@@ -1049,26 +1049,6 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
         sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token,
           buildInteractiveFromTemplate(tmpl, incoming.from, replyText),
         );
-        // Send KB media attachment as a follow-up if one matched
-        if (kbAttachment) {
-          fireForget(
-            gateway.sendMessage(config.phone_number_id, config.access_token, {
-              type: 'media', to: incoming.from,
-              mediaType: kbAttachment.file_type === 'image' ? 'image' : 'document',
-              mediaUrl: kbAttachment.public_url,
-              ...(kbAttachment.file_type !== 'image' ? { filename: kbAttachment.original_filename } : {}),
-            }),
-            'kb-media-after-buttons',
-            fastify.log,
-          );
-          fireForget(
-            db.from('kb_media_attachments')
-              .update({ send_count: kbAttachment.send_count + 1 })
-              .eq('id', kbAttachment.id),
-            'kb-media-send-count',
-            fastify.log,
-          );
-        }
       } else {
         // Template name from AI doesn't match any saved template — fall back to text
         fastify.log.warn({ buttonTemplateName }, '[Webhook] Button template not found, falling back to text');
