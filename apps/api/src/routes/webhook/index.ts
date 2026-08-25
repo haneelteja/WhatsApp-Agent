@@ -1033,7 +1033,44 @@ Rules: use buttons when the customer faces a clear multiple-choice decision. App
     const CAPTION_MAX = 1024;
     let sendResult;
 
-    if (kbAttachment) {
+    // Priority: interactive buttons > KB attachment > plain text.
+    // Buttons take highest priority because they represent an explicit AI decision.
+    // If a KB attachment also exists, send it as a follow-up after the interactive message.
+    if (buttonTemplateName && buttonTemplates.length > 0) {
+      const tmpl = buttonTemplates.find(t => t.name.toLowerCase() === buttonTemplateName);
+      if (tmpl) {
+        fastify.log.info({ buttonTemplateName, type: tmpl.type }, '[Webhook] sending interactive button template');
+        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token,
+          buildInteractiveFromTemplate(tmpl, incoming.from, replyText),
+        );
+        // Send KB media attachment as a follow-up if one matched
+        if (kbAttachment) {
+          fireForget(
+            gateway.sendMessage(config.phone_number_id, config.access_token, {
+              type: 'media', to: incoming.from,
+              mediaType: kbAttachment.file_type === 'image' ? 'image' : 'document',
+              mediaUrl: kbAttachment.public_url,
+              ...(kbAttachment.file_type !== 'image' ? { filename: kbAttachment.original_filename } : {}),
+            }),
+            'kb-media-after-buttons',
+            fastify.log,
+          );
+          fireForget(
+            db.from('kb_media_attachments')
+              .update({ send_count: kbAttachment.send_count + 1 })
+              .eq('id', kbAttachment.id),
+            'kb-media-send-count',
+            fastify.log,
+          );
+        }
+      } else {
+        // Template name from AI doesn't match any saved template — fall back to text
+        fastify.log.warn({ buttonTemplateName }, '[Webhook] Button template not found, falling back to text');
+        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'text', to: incoming.from, text: replyText,
+        });
+      }
+    } else if (kbAttachment) {
       fastify.log.info({ attachmentId: kbAttachment.id, fileType: kbAttachment.file_type }, '[Webhook] sending KB media attachment');
 
       if (kbAttachment.file_type === 'image') {
@@ -1087,21 +1124,6 @@ Rules: use buttons when the customer faces a clear multiple-choice decision. App
         'kb-media-send-count',
         fastify.log,
       );
-    } else if (buttonTemplateName && buttonTemplates.length > 0) {
-      // AI requested a button template — send interactive message
-      const tmpl = buttonTemplates.find(t => t.name.toLowerCase() === buttonTemplateName);
-      if (tmpl) {
-        fastify.log.info({ buttonTemplateName, type: tmpl.type }, '[Webhook] sending interactive button template');
-        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token,
-          buildInteractiveFromTemplate(tmpl, incoming.from, replyText),
-        );
-      } else {
-        // Template name from AI doesn't match any saved template — fall back to text
-        fastify.log.warn({ buttonTemplateName }, '[Webhook] Button template not found, falling back to text');
-        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
-          type: 'text', to: incoming.from, text: replyText,
-        });
-      }
     } else {
       sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
         type: 'text', to: incoming.from, text: replyText,
