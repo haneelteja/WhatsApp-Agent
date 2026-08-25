@@ -87,16 +87,22 @@ function buildInteractiveFromTemplate(
       title: string;
       rows:  Array<{ id: string; title: string; description?: string }>;
     }>;
+    const sections = rawSections
+      .map(s => ({
+        title: s.title,
+        rows:  s.rows
+          .filter(r => r.title?.trim())  // Meta requires non-empty row titles
+          .slice(0, 10)
+          .map(r => ({ id: r.id, title: r.title.slice(0, 24), description: r.description })),
+      }))
+      .filter(s => s.rows.length > 0);  // drop sections with no valid rows
     return {
       type:            'interactive',
       interactiveType: 'list',
       to,
       body:            bodyText.slice(0, 4096),
       listButtonLabel: (j['button_label'] as string | undefined) ?? 'Choose an option',
-      listSections:    rawSections.map(s => ({
-        title: s.title,
-        rows:  s.rows.slice(0, 10).map(r => ({ id: r.id, title: r.title.slice(0, 24), description: r.description })),
-      })),
+      listSections:    sections,
     };
   }
 
