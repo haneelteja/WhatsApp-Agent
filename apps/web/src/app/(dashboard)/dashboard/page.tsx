@@ -8,6 +8,8 @@ import {
   User, Phone, ChevronRight, Sparkles,
 } from 'lucide-react';
 import { RecentConversations } from '@/components/dashboard/RecentConversations';
+import { AiInsightsPanel } from '@/components/dashboard/AiInsightsPanel';
+import { getLatestInsightsAction } from '@/app/actions/insights';
 import type { RecentConv } from '@/app/actions/recent-conversations';
 
 // ─── Per-bot colour tokens ────────────────────────────────────────────────────
@@ -122,6 +124,7 @@ export default async function DashboardPage() {
     { data: botConfigs },
     { data: collectionBots },
     { data: tenantGuardrailsRow },
+    insightRow,
   ] = await Promise.all([
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tid).eq('status', 'open'),
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tid).eq('status', 'escalated'),
@@ -147,6 +150,7 @@ export default async function DashboardPage() {
       .select('guardrails_json')
       .eq('tenant_id', tid)
       .maybeSingle(),
+    getLatestInsightsAction(tid),
   ]);
 
   // ── Fetch last 5 messages per recent conversation ─────────────────────────
@@ -442,6 +446,9 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ── AI Coach ─────────────────────────────────────────────────────── */}
+      <AiInsightsPanel insight={insightRow} />
 
       {/* ── Recent Conversations ─────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

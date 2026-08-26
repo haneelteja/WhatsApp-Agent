@@ -4,6 +4,7 @@ import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
 import { dispatchPendingVoiceCalls, processCampaignContacts } from '../services/campaign/index.js';
 import { isWithinBusinessHours } from '../lib/business-hours.js';
+import { runInsightsForAllTenants } from '../services/insights/generator.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -357,6 +358,24 @@ export function startScheduler(): void {
     void recoverStaleCampaigns().catch(err =>
       console.error('[Scheduler] Campaign recovery failed:', (err as Error).message)
     );
+  });
+
+  // AI Insights — run once a day at the platform-configured hour (default 9 AM UTC)
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const db = getServerClient();
+      const { data: setting } = await db
+        .from('platform_settings')
+        .select('value')
+        .eq('key', 'insights')
+        .maybeSingle();
+      const scheduleHour = ((setting?.value as Record<string, unknown> | null)?.['schedule_hour'] as number | null) ?? 9;
+      if (new Date().getUTCHours() === scheduleHour) {
+        await runInsightsForAllTenants();
+      }
+    } catch (err) {
+      console.error('[Scheduler] AI Insights failed:', (err as Error).message);
+    }
   });
 }
 
