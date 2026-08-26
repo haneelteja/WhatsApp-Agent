@@ -17,7 +17,7 @@ import {
 
 type TemplateType = 'quick_reply' | 'list' | 'cta_url';
 
-interface QuickReplyButton { id: string; title: string }
+interface QuickReplyButton { id: string; title: string; escalate?: boolean }
 interface ListRow          { id: string; title: string; description: string }
 interface ListSection      { title: string; rows: ListRow[] }
 
@@ -62,9 +62,9 @@ function QuickReplyEditor({ buttons, onChange }: {
   function add() {
     if (buttons.length >= 3) return;
     const id = `btn_${Date.now()}`;
-    onChange([...buttons, { id, title: '' }]);
+    onChange([...buttons, { id, title: '', escalate: false }]);
   }
-  function update(idx: number, field: keyof QuickReplyButton, val: string) {
+  function update(idx: number, field: keyof QuickReplyButton, val: string | boolean) {
     const next = [...buttons];
     next[idx] = { ...next[idx]!, [field]: val };
     onChange(next);
@@ -74,16 +74,27 @@ function QuickReplyEditor({ buttons, onChange }: {
   return (
     <div className="space-y-2">
       {buttons.map((b, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <input
-            value={b.title}
-            onChange={e => update(i, 'title', e.target.value)}
-            maxLength={20}
-            placeholder={`Button ${i + 1} label (max 20 chars)`}
-            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-emerald-400 outline-none"
-          />
-          <span className="text-[10px] text-slate-400 shrink-0">{b.title.length}/20</span>
-          <button type="button" onClick={() => remove(i)} className="text-slate-400 hover:text-red-500"><X size={14}/></button>
+        <div key={i} className="space-y-1">
+          <div className="flex items-center gap-2">
+            <input
+              value={b.title}
+              onChange={e => update(i, 'title', e.target.value)}
+              maxLength={20}
+              placeholder={`Button ${i + 1} label (max 20 chars)`}
+              className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-emerald-400 outline-none"
+            />
+            <span className="text-[10px] text-slate-400 shrink-0">{b.title.length}/20</span>
+            <button type="button" onClick={() => remove(i)} className="text-slate-400 hover:text-red-500"><X size={14}/></button>
+          </div>
+          <label className="flex items-center gap-1.5 cursor-pointer w-fit pl-1">
+            <input
+              type="checkbox"
+              checked={!!b.escalate}
+              onChange={e => update(i, 'escalate', e.target.checked)}
+              className="w-3 h-3 accent-orange-500"
+            />
+            <span className="text-[10px] text-slate-500">Escalate to agent when tapped</span>
+          </label>
         </div>
       ))}
       {buttons.length < 3 && (

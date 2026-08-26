@@ -532,6 +532,40 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       return;
     }
 
+    // ── Button-tap escalation check ───────────────────────────────────────────
+    // When a customer taps a quick-reply button marked escalate:true, skip AI
+    // and hand the conversation off to a human agent immediately.
+    if (incoming.type === 'interactive' && incoming.interactiveReplyId && conversation.status === 'open') {
+      const { data: tapTemplates } = await db
+        .from('interactive_button_templates')
+        .select('template_json')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+
+      const tappedId = incoming.interactiveReplyId;
+      const shouldEscalate = (tapTemplates ?? []).some(tmpl => {
+        type BtnRow = { id: string; title: string; escalate?: boolean };
+        const btns = (tmpl.template_json as Record<string, unknown>)?.['buttons'] as BtnRow[] | undefined;
+        return btns?.some(b => b.id === tappedId && b.escalate === true);
+      });
+
+      if (shouldEscalate) {
+        fastify.log.info({ tappedId, conversationId: conversation.id }, '[Webhook] Escalating via button tap');
+        await escalateConversation(conversation, 'Customer requested human agent via button tap');
+        await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'text',
+          to:   incoming.from,
+          text: "I'm connecting you with a human agent right away. Please hold on for a moment! 🙌",
+        });
+        fireForget(
+          db.from('conversations').update({ processing_lock_expires_at: null }).eq('id', conversation.id),
+          'release-lock-btn-escalate',
+          fastify.log,
+        );
+        return;
+      }
+    }
+
     // Resolve bot config values (DB row takes precedence over defaults)
     const botConfig = botCtx.bot_config as (BotConfig & { product: Product | null }) | null;
 
