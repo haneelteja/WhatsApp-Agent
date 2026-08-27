@@ -56,13 +56,24 @@ export default async function DashboardLayout({
   if (!ctx) redirect('/login');
 
   const admin = getSupabaseAdminClient();
-  const { data: historyRows } = await admin
-    .from('copilot_messages')
-    .select('id, role, content, pending_action, action_status')
-    .eq('user_id', ctx.user.id)
-    .eq('tenant_id', ctx.tenantId)
-    .order('created_at', { ascending: false })
-    .limit(30);
+
+  const [{ data: historyRows }, { data: tenantRow }] = await Promise.all([
+    admin
+      .from('copilot_messages')
+      .select('id, role, content, pending_action, action_status')
+      .eq('user_id', ctx.user.id)
+      .eq('tenant_id', ctx.tenantId)
+      .order('created_at', { ascending: false })
+      .limit(30),
+    admin
+      .from('tenants')
+      .select('copilot_config')
+      .eq('id', ctx.tenantId)
+      .single(),
+  ]);
+
+  const rawCfg = (tenantRow as { copilot_config?: Record<string, unknown> } | null)?.copilot_config ?? {};
+  const copilotEnabled = typeof rawCfg['enabled'] === 'boolean' ? rawCfg['enabled'] : true;
 
   const initialMessages: CopilotMessage[] = ((historyRows ?? []) as Array<{
     id: string;
@@ -88,7 +99,7 @@ export default async function DashboardLayout({
         <Topbar email={ctx.user.email ?? ''} tenantName={ctx.tenantName} />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
-      <CopilotWidget initialMessages={initialMessages} />
+      {copilotEnabled && <CopilotWidget initialMessages={initialMessages} />}
     </div>
   );
 }
