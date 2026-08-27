@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { Topbar } from '@/components/topbar';
+import { CopilotWidget, type CopilotMessage } from '@/components/dashboard/CopilotWidget';
 
 // React.cache() deduplicates this call within a single server request.
 // The layout and any child server components that also call getTenantContext()
@@ -54,6 +55,32 @@ export default async function DashboardLayout({
   const ctx = await getTenantContext();
   if (!ctx) redirect('/login');
 
+  const admin = getSupabaseAdminClient();
+  const { data: historyRows } = await admin
+    .from('copilot_messages')
+    .select('id, role, content, pending_action, action_status')
+    .eq('user_id', ctx.user.id)
+    .eq('tenant_id', ctx.tenantId)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  const initialMessages: CopilotMessage[] = ((historyRows ?? []) as Array<{
+    id: string;
+    role: string;
+    content: string;
+    pending_action: Record<string, unknown> | null;
+    action_status: string | null;
+  }>).reverse().map(m => ({
+    id: m.id,
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+    type: m.pending_action ? 'action_pending' : 'message',
+    toolName: (m.pending_action?.['toolName'] as string | undefined),
+    toolInput: (m.pending_action?.['toolInput'] as Record<string, unknown> | undefined),
+    toolUseId: (m.pending_action?.['toolUseId'] as string | undefined),
+    actionStatus: m.action_status as CopilotMessage['actionStatus'],
+  }));
+
   return (
     <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
       <DashboardNav tenantName={ctx.tenantName} userRole={ctx.userRole} hasLifecycleBot={ctx.hasLifecycleBot} />
@@ -61,6 +88,7 @@ export default async function DashboardLayout({
         <Topbar email={ctx.user.email ?? ''} tenantName={ctx.tenantName} />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
+      <CopilotWidget initialMessages={initialMessages} />
     </div>
   );
 }
