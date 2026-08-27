@@ -162,18 +162,26 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
         body: JSON.stringify({ message: text }),
       });
       const data = await res.json() as {
-        type: 'message' | 'action_pending';
-        messageId: string;
+        type?: 'message' | 'action_pending';
+        messageId?: string;
         content?: string;
         assistantText?: string;
         toolName?: string;
         toolInput?: Record<string, unknown>;
         toolUseId?: string;
+        error?: string;
       };
 
-      if (data.type === 'action_pending') {
+      if (!res.ok) {
         setMessages(prev => [...prev, {
-          id: data.messageId,
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Error: ${data.error ?? res.statusText}`,
+          type: 'message',
+        }]);
+      } else if (data.type === 'action_pending') {
+        setMessages(prev => [...prev, {
+          id: data.messageId ?? crypto.randomUUID(),
           role: 'assistant',
           content: data.assistantText ?? '',
           type: 'action_pending',
@@ -184,7 +192,7 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
         }]);
       } else {
         setMessages(prev => [...prev, {
-          id: data.messageId,
+          id: data.messageId ?? crypto.randomUUID(),
           role: 'assistant',
           content: data.content ?? '',
           type: 'message',
