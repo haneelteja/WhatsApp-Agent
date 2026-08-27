@@ -127,21 +127,24 @@ async function callAnthropic(
   apiKey: string,
   systemPrompt: string,
   messages: MessageParam[],
+  tools: AnthropicTool[],
 ): Promise<{ content: ContentBlock[] }> {
+  const body: Record<string, unknown> = {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages,
+  };
+  if (tools.length > 0) body['tools'] = tools;
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': apiKey,
+      'x-api-key': apiKey.trim(),
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools: TOOLS,
-      messages,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -175,6 +178,18 @@ export async function POST(request: NextRequest) {
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     if (!anthropicKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
+
+    // Load copilot config — check enabled + get instructions/allowed_actions
+    const { data: tenantRow } = await admin.from('tenants').select('copilot_config').eq('id', tenantId).single();
+    const rawCfg = (tenantRow as { copilot_config?: Record<string, unknown> } | null)?.copilot_config ?? {};
+    const copilotEnabled = typeof rawCfg['enabled'] === 'boolean' ? rawCfg['enabled'] : true;
+    if (!copilotEnabled) {
+      return NextResponse.json({ error: 'AI Copilot is disabled for this account.' }, { status: 403 });
+    }
+    const copilotInstructions = typeof rawCfg['instructions'] === 'string' ? rawCfg['instructions'].trim() : '';
+    const allowedActions = Array.isArray(rawCfg['allowed_actions'])
+      ? rawCfg['allowed_actions'] as string[]
+      : ['add_kb_article', 'update_escalation_triggers', 'toggle_button_template', 'update_system_prompt'];
 
     // Load history + context in parallel
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -244,12 +259,13 @@ You can:
    Valid paths: /knowledge-base, /guardrails, /settings, /button-templates, /campaigns, /analytics, /conversations
 3. Propose write actions using tools (user must approve before executing)
 
-Before calling a tool, briefly describe what you'll do. Keep responses concise.`;
+Before calling a tool, briefly describe what you'll do. Keep responses concise.${copilotInstructions ? `\n\nADDITIONAL INSTRUCTIONS FROM PLATFORM:\n${copilotInstructions}` : ''}`;
 
     const claudeMessages = buildMessages(history);
     claudeMessages.push({ role: 'user', content: message });
 
-    const response = await callAnthropic(anthropicKey, systemPrompt, claudeMessages);
+    const enabledTools = TOOLS.filter(t => allowedActions.includes(t.name));
+    const response = await callAnthropic(anthropicKey, systemPrompt, claudeMessages, enabledTools);
 
     // Save user message
     await admin.from('copilot_messages').insert({

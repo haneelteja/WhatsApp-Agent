@@ -1,7 +1,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert, Cpu, Phone } from 'lucide-react';
+import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert, Cpu, Phone, Sparkles } from 'lucide-react';
 import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
 import { ClientProductsManager } from '@/components/platform/ClientProductsManager';
 import { LlmConfigCard } from '@/components/LlmConfigCard';
@@ -14,6 +14,8 @@ import { WhatsAppNumberSection } from '@/components/platform/WhatsAppNumberSecti
 import { BillingManager } from '@/components/platform/BillingManager';
 import { TenantVoiceConfigCard, type TenantVoiceConfigRow } from '@/components/platform/TenantVoiceConfigCard';
 import { CreditCard } from 'lucide-react';
+import { CopilotSettingsCard } from '@/components/platform/CopilotSettingsCard';
+import { getCopilotConfigAction } from '@/app/actions/copilot-settings';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
   support_bot:   { name: 'Support Bot',   desc: 'Q&A, issue resolution, escalations',  textColor: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200' },
@@ -81,6 +83,8 @@ export default async function ClientDetailPage({
       }
     }
   }
+
+  const copilotConfig = await getCopilotConfigAction(tenantId);
 
   if (!tenant) notFound();
 
@@ -369,6 +373,23 @@ export default async function ClientDetailPage({
           </div>
         );
       })()}
+
+      {/* AI Copilot settings */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+          <Sparkles size={15} className="text-emerald-500" />
+          <h3 className="text-sm font-semibold text-slate-800">AI Copilot</h3>
+          <span className={`ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium border ${copilotConfig.enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+            {copilotConfig.enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-xs text-slate-400 mb-5">
+            Configure the AI Copilot chat widget for this client — enable/disable it, set custom instructions, and control which write actions it can propose to users.
+          </p>
+          <CopilotSettingsCard tenantId={tenantId} initial={copilotConfig} />
+        </div>
+      </div>
 
       {/* Webhook info */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
