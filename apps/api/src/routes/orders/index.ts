@@ -231,19 +231,22 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
 export async function phonePeWebhookRoute(fastify: FastifyInstance): Promise<void> {
   const db = getServerClient();
 
-  fastify.post('/phonepe/webhook', async (request, reply) => {
+  fastify.post('/phonepe/webhook', {
+    config: { rawBody: true },
+  }, async (request, reply) => {
     reply.status(200).send('');
 
-    const xVerify       = request.headers['x-verify'] as string ?? '';
-    const body          = request.body as { response?: string };
-    const base64Response = body.response ?? '';
+    const checksumSignature = request.headers['x-phonepe-checksum-signature'] as string ?? '';
+    // rawBody gives us the exact bytes PhonePe signed; falls back to re-serialized body
+    const rawBody = (request as unknown as { rawBody?: string }).rawBody
+      ?? JSON.stringify(request.body);
 
-    if (!verifyPhonePeWebhook(base64Response, xVerify)) {
+    if (!verifyPhonePeWebhook(rawBody, checksumSignature)) {
       fastify.log.warn('[PhonePe Webhook] Signature verification failed');
       return;
     }
 
-    const event = parsePhonePeWebhook(base64Response);
+    const event = parsePhonePeWebhook(request.body);
     if (!event) return;
 
     fastify.log.info({ state: event.state, txnId: event.merchantTransactionId }, '[PhonePe Webhook] received');

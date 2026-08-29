@@ -9,112 +9,96 @@ import {
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
-function sha256(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex');
-}
-
-function buildXVerify(base64Response: string, saltKey: string, saltIndex: string): string {
-  const hash = sha256(base64Response + saltKey);
-  return `${hash}###${saltIndex}`;
+function buildChecksum(rawBody: string, secret: string): string {
+  return crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 }
 
 // ── verifyPhonePeWebhook ──────────────────────────────────────────────────────
 
 describe('verifyPhonePeWebhook', () => {
-  const saltKey   = process.env['PHONEPE_SALT_KEY']!;
-  const saltIndex = process.env['PHONEPE_SALT_INDEX']!;
+  const secret = process.env['PHONEPE_WEBHOOK_SECRET']!;
 
-  const sampleResponse = Buffer.from(JSON.stringify({
-    data: {
-      merchantTransactionId: 'pay-uuid-001',
-      transactionId:         'T1234567890',
-      amount:                50000,
-      state:                 'COMPLETED',
-      responseCode:          'SUCCESS',
+  const sampleBody = JSON.stringify({
+    event: 'checkout.order.completed',
+    payload: {
+      merchantOrderId: 'pay-uuid-001',
+      state:           'COMPLETED',
+      amount:          50000,
     },
-  })).toString('base64');
+  });
 
   it('returns true for a correctly signed webhook', () => {
-    const xVerify = buildXVerify(sampleResponse, saltKey, saltIndex);
-    expect(verifyPhonePeWebhook(sampleResponse, xVerify)).toBe(true);
+    const sig = buildChecksum(sampleBody, secret);
+    expect(verifyPhonePeWebhook(sampleBody, sig)).toBe(true);
   });
 
-  it('returns false for a tampered X-VERIFY hash', () => {
-    const xVerify = `deadbeef###${saltIndex}`;
-    expect(verifyPhonePeWebhook(sampleResponse, xVerify)).toBe(false);
+  it('returns false for a tampered signature', () => {
+    expect(verifyPhonePeWebhook(sampleBody, 'deadbeef')).toBe(false);
   });
 
-  it('returns false when salt index does not match', () => {
-    const hash    = sha256(sampleResponse + saltKey);
-    const xVerify = `${hash}###2`; // wrong index
-    expect(verifyPhonePeWebhook(sampleResponse, xVerify)).toBe(false);
-  });
-
-  it('returns false for an empty X-VERIFY string', () => {
-    expect(verifyPhonePeWebhook(sampleResponse, '')).toBe(false);
+  it('returns false for an empty signature', () => {
+    expect(verifyPhonePeWebhook(sampleBody, '')).toBe(false);
   });
 
   it('returns false when payload differs from signed content', () => {
-    const xVerify  = buildXVerify(sampleResponse, saltKey, saltIndex);
-    const tampered = Buffer.from('{"tampered":true}').toString('base64');
-    expect(verifyPhonePeWebhook(tampered, xVerify)).toBe(false);
+    const sig      = buildChecksum(sampleBody, secret);
+    const tampered = JSON.stringify({ event: 'checkout.order.failed', payload: { merchantOrderId: 'other', state: 'FAILED', amount: 0 } });
+    expect(verifyPhonePeWebhook(tampered, sig)).toBe(false);
   });
 
-  it('returns false when salt key is wrong', () => {
-    const xVerify = buildXVerify(sampleResponse, 'wrong_salt_key', saltIndex);
-    expect(verifyPhonePeWebhook(sampleResponse, xVerify)).toBe(false);
+  it('returns false when secret key is wrong', () => {
+    const sig = buildChecksum(sampleBody, 'wrong_secret');
+    expect(verifyPhonePeWebhook(sampleBody, sig)).toBe(false);
   });
 });
 
 // ── parsePhonePeWebhook ───────────────────────────────────────────────────────
 
 describe('parsePhonePeWebhook', () => {
-  function encode(data: unknown): string {
-    return Buffer.from(JSON.stringify({ data })).toString('base64');
-  }
-
   it('parses a COMPLETED webhook correctly', () => {
-    const payload = {
-      merchantTransactionId: 'pay-abc-123',
-      transactionId:         'T9876543210',
-      amount:                249900,
-      state:                 'COMPLETED' as const,
-      responseCode:          'SUCCESS',
+    const body = {
+      event: 'checkout.order.completed',
+      payload: {
+        merchantOrderId: 'pay-abc-123',
+        state:           'COMPLETED',
+        amount:          249900,
+      },
     };
 
-    const result = parsePhonePeWebhook(encode(payload));
+    const result = parsePhonePeWebhook(body);
 
     expect(result).not.toBeNull();
     expect(result?.merchantTransactionId).toBe('pay-abc-123');
     expect(result?.state).toBe('COMPLETED');
     expect(result?.amount).toBe(249900);
+    expect(result?.event).toBe('checkout.order.completed');
   });
 
   it('parses a FAILED webhook correctly', () => {
-    const payload = {
-      merchantTransactionId: 'pay-fail-001',
-      transactionId:         'T000',
-      amount:                50000,
-      state:                 'FAILED' as const,
-      responseCode:          'PAYMENT_ERROR',
+    const body = {
+      event: 'checkout.order.failed',
+      payload: {
+        merchantOrderId: 'pay-fail-001',
+        state:           'FAILED',
+        amount:          50000,
+      },
     };
 
-    const result = parsePhonePeWebhook(encode(payload));
+    const result = parsePhonePeWebhook(body);
     expect(result?.state).toBe('FAILED');
-    expect(result?.responseCode).toBe('PAYMENT_ERROR');
+    expect(result?.merchantTransactionId).toBe('pay-fail-001');
   });
 
-  it('returns null for invalid base64', () => {
-    expect(parsePhonePeWebhook('!!!not-valid-base64!!!')).toBeNull();
+  it('returns null when merchantOrderId is missing', () => {
+    const body = { event: 'checkout.order.completed', payload: { state: 'COMPLETED', amount: 100 } };
+    expect(parsePhonePeWebhook(body)).toBeNull();
   });
 
-  it('returns null for base64 that is not valid JSON', () => {
-    const notJson = Buffer.from('not json at all').toString('base64');
-    expect(parsePhonePeWebhook(notJson)).toBeNull();
+  it('returns null for null input', () => {
+    expect(parsePhonePeWebhook(null)).toBeNull();
   });
 
-  it('returns null when the data field is missing', () => {
-    const noData = Buffer.from(JSON.stringify({ other: 'field' })).toString('base64');
-    expect(parsePhonePeWebhook(noData)).toBeNull();
+  it('returns null for non-object input', () => {
+    expect(parsePhonePeWebhook('raw string')).toBeNull();
   });
 });

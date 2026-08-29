@@ -1,23 +1,63 @@
 import crypto from 'crypto';
 
-const PHONEPE_SALT_KEY   = process.env['PHONEPE_SALT_KEY']   ?? '';
-const PHONEPE_SALT_INDEX = process.env['PHONEPE_SALT_INDEX'] ?? '1';
-const PHONEPE_MERCHANT_ID = process.env['PHONEPE_MERCHANT_ID'] ?? '';
-const IS_SANDBOX = process.env['PHONEPE_ENV'] !== 'production';
+// New PhonePe PG API — OAuth2 token auth (replaces old Salt Key + X-VERIFY)
+const CLIENT_ID      = process.env['PHONEPE_CLIENT_ID']      ?? '';
+const CLIENT_VERSION = process.env['PHONEPE_CLIENT_VERSION'] ?? '1';
+const CLIENT_SECRET  = process.env['PHONEPE_CLIENT_SECRET']  ?? '';
+const WEBHOOK_SECRET = process.env['PHONEPE_WEBHOOK_SECRET'] ?? '';
+const IS_SANDBOX     = process.env['PHONEPE_ENV'] !== 'production';
 
-const BASE_URL = IS_SANDBOX
-  ? 'https://api-preprod.phonepe.com/apis/pgsandbox'
-  : 'https://api.phonepe.com/apis/hermes';
+const AUTH_URL = IS_SANDBOX
+  ? 'https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token'
+  : 'https://api.phonepe.com/apis/identity-manager/v1/oauth/token';
 
-const API_BASE_URL = process.env['API_BASE_URL'] ?? 'https://your-api.onrender.com';
+const PAY_URL = IS_SANDBOX
+  ? 'https://api-preprod.phonepe.com/apis/pg-sandbox/checkout/v2/pay'
+  : 'https://api.phonepe.com/apis/pg/checkout/v2/pay';
+
 const WEB_BASE_URL = process.env['WEB_BASE_URL'] ?? 'https://your-app.vercel.app';
 
+// ─── Token cache (module-level, refreshed 60s before expiry) ──────────────────
+
+let _cachedToken: string | null = null;
+let _tokenExpiresAt = 0; // epoch seconds
+
+async function getAuthToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (_cachedToken && _tokenExpiresAt - 60 > now) return _cachedToken;
+
+  const params = new URLSearchParams({
+    client_id:      CLIENT_ID,
+    client_version: CLIENT_VERSION,
+    client_secret:  CLIENT_SECRET,
+    grant_type:     'client_credentials',
+  });
+
+  const res = await fetch(AUTH_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    params.toString(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`PhonePe auth ${res.status}: ${text}`);
+  }
+
+  const data = await res.json() as { access_token: string; expires_at: number };
+  _cachedToken    = data.access_token;
+  _tokenExpiresAt = data.expires_at;
+  return _cachedToken;
+}
+
+// ─── Create payment ────────────────────────────────────────────────────────────
+
 export interface CreatePaymentLinkParams {
-  paymentId:   string;   // our payments.id — used as merchantTransactionId
-  contactId:   string;
+  paymentId:    string;   // our payments.id — used as merchantOrderId
+  contactId:    string;
   contactPhone: string;
-  amountPaise: number;   // amount in paise (total * 100)
-  orderId:     string;
+  amountPaise:  number;   // amount in paise (₹10 = 1000)
+  orderId:      string;
   description?: string;
 }
 
@@ -28,120 +68,118 @@ export interface PhonePePaymentResult {
   error?:      string;
 }
 
-function sha256(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex');
-}
-
-function buildXVerify(base64Payload: string, endpoint: string): string {
-  const hash = sha256(base64Payload + endpoint + PHONEPE_SALT_KEY);
-  return `${hash}###${PHONEPE_SALT_INDEX}`;
-}
-
 export async function createPhonePePaymentLink(
   params: CreatePaymentLinkParams
 ): Promise<PhonePePaymentResult> {
-  const endpoint = '/pg/v1/pay';
-
-  const payload = {
-    merchantId:            PHONEPE_MERCHANT_ID,
-    merchantTransactionId: params.paymentId,
-    merchantUserId:        params.contactId,
-    amount:                params.amountPaise,
-    redirectUrl:           `${WEB_BASE_URL}/payment/status/${params.paymentId}`,
-    redirectMode:          'REDIRECT',
-    callbackUrl:           `${API_BASE_URL}/api/payments/phonepe/webhook`,
-    mobileNumber:          params.contactPhone.replace(/\D/g, '').replace(/^91/, ''),
-    paymentInstrument:     { type: 'PAY_PAGE' },
-  };
-
-  const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
-  const xVerify = buildXVerify(base64Payload, endpoint);
-
   try {
-    const response = await fetch(`${BASE_URL}${endpoint}`, {
-      method: 'POST',
+    const token = await getAuthToken();
+
+    const body = {
+      merchantOrderId: params.paymentId, // UUID is 36 chars, within 63-char limit
+      amount:          params.amountPaise,
+      expireAfter:     1800,             // 30 minutes
+      paymentFlow: {
+        type: 'PG_CHECKOUT',
+        merchantUrls: {
+          redirectUrl: `${WEB_BASE_URL}/payment/status/${params.paymentId}`,
+        },
+      },
+      prefillUserLoginDetails: {
+        phoneNumber: params.contactPhone.replace(/\D/g, '').replace(/^91/, ''),
+      },
+      metaInfo: {
+        udf1: params.orderId,
+        udf2: params.contactId,
+        udf3: params.description ?? '',
+      },
+    };
+
+    const res = await fetch(PAY_URL, {
+      method:  'POST',
       headers: {
         'Content-Type':  'application/json',
-        'X-VERIFY':      xVerify,
-        'X-MERCHANT-ID': PHONEPE_MERCHANT_ID,
+        'Authorization': `O-Bearer ${token}`,
       },
-      body: JSON.stringify({ request: base64Payload }),
+      body: JSON.stringify(body),
     });
 
-    const data = await response.json() as {
-      success: boolean;
-      code:    string;
-      message: string;
-      data?: {
-        merchantId:            string;
-        merchantTransactionId: string;
-        instrumentResponse?: {
-          redirectInfo?: { url: string };
-        };
-      };
+    const data = await res.json() as {
+      orderId?:     string;
+      state?:       string;
+      redirectUrl?: string;
+      code?:        string;
+      message?:     string;
     };
 
-    if (!data.success) {
-      return { success: false, redirectUrl: null, phonePeRef: null, error: `${data.code}: ${data.message}` };
+    if (!res.ok || !data.redirectUrl) {
+      return { success: false, redirectUrl: null, phonePeRef: null, error: `${data.code ?? res.status}: ${data.message ?? 'No redirect URL'}` };
     }
 
-    const redirectUrl = data.data?.instrumentResponse?.redirectInfo?.url ?? null;
-    return {
-      success:     true,
-      redirectUrl,
-      phonePeRef:  params.paymentId,
-    };
+    return { success: true, redirectUrl: data.redirectUrl, phonePeRef: params.paymentId };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, redirectUrl: null, phonePeRef: null, error: msg };
+    return { success: false, redirectUrl: null, phonePeRef: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-export interface PhonePeWebhookPayload {
-  response: string; // base64-encoded JSON
-}
+// ─── Webhook verification & parsing ───────────────────────────────────────────
 
 export interface PhonePeWebhookData {
-  merchantTransactionId: string;
-  transactionId:         string;
-  amount:                number;
+  event:                 string;  // checkout.order.completed | checkout.order.failed
+  merchantTransactionId: string;  // = payload.merchantOrderId = our payments.id
   state:                 'COMPLETED' | 'FAILED' | 'PENDING';
-  responseCode:          string;
+  amount:                number;
 }
 
-export function verifyPhonePeWebhook(
-  base64Response: string,
-  xVerify:        string,
-): boolean {
-  const [hash, saltIndex] = xVerify.split('###');
-  if (saltIndex !== PHONEPE_SALT_INDEX) return false;
-  const expected = sha256(base64Response + PHONEPE_SALT_KEY);
-  return hash === expected;
-}
-
-export function parsePhonePeWebhook(base64Response: string): PhonePeWebhookData | null {
+// rawBody should be the exact string received from PhonePe (before JSON parsing)
+export function verifyPhonePeWebhook(rawBody: string, checksumSignature: string): boolean {
+  if (!WEBHOOK_SECRET || !rawBody || !checksumSignature) return false;
   try {
-    const decoded = Buffer.from(base64Response, 'base64').toString('utf-8');
-    const parsed  = JSON.parse(decoded) as { data: PhonePeWebhookData };
-    return parsed.data ?? null;
+    const expected = crypto.createHmac('sha256', WEBHOOK_SECRET).update(rawBody).digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(checksumSignature));
+  } catch {
+    return false;
+  }
+}
+
+export function parsePhonePeWebhook(body: unknown): PhonePeWebhookData | null {
+  try {
+    const b = body as {
+      event?:   string;
+      payload?: {
+        merchantOrderId?: string;
+        state?:           string;
+        amount?:          number;
+      };
+    };
+
+    const event                = b.event ?? '';
+    const merchantTransactionId = b.payload?.merchantOrderId ?? '';
+    const state                = (b.payload?.state ?? 'PENDING') as PhonePeWebhookData['state'];
+    const amount               = b.payload?.amount ?? 0;
+
+    if (!merchantTransactionId) return null;
+    return { event, merchantTransactionId, state, amount };
   } catch {
     return null;
   }
 }
 
-export async function checkPhonePeStatus(merchantTransactionId: string): Promise<'COMPLETED' | 'FAILED' | 'PENDING'> {
-  const endpoint = `/pg/v1/status/${PHONEPE_MERCHANT_ID}/${merchantTransactionId}`;
-  const xVerify  = buildXVerify('', endpoint);
+// ─── Order status check ────────────────────────────────────────────────────────
+
+export async function checkPhonePeStatus(merchantOrderId: string): Promise<'COMPLETED' | 'FAILED' | 'PENDING'> {
+  const statusUrl = IS_SANDBOX
+    ? `https://api-preprod.phonepe.com/apis/pg-sandbox/checkout/v2/order/${merchantOrderId}/status`
+    : `https://api.phonepe.com/apis/pg/checkout/v2/order/${merchantOrderId}/status`;
 
   try {
-    const response = await fetch(`${BASE_URL}${endpoint}`, {
-      headers: {
-        'X-VERIFY':      xVerify,
-        'X-MERCHANT-ID': PHONEPE_MERCHANT_ID,
-      },
+    const token = await getAuthToken();
+    const res   = await fetch(statusUrl, {
+      headers: { 'Authorization': `O-Bearer ${token}` },
     });
-    const data = await response.json() as { data?: { state: 'COMPLETED' | 'FAILED' | 'PENDING' } };
-    return data.data?.state ?? 'PENDING';
+    const data = await res.json() as { state?: string };
+    if (data.state === 'COMPLETED') return 'COMPLETED';
+    if (data.state === 'FAILED')    return 'FAILED';
+    return 'PENDING';
   } catch {
     return 'PENDING';
   }
