@@ -130,6 +130,15 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prevInitialRef = useRef(initialMessages);
+
+  // Sync when the layout re-renders with fresh DB data (soft navigation between pages)
+  useEffect(() => {
+    if (prevInitialRef.current !== initialMessages) {
+      prevInitialRef.current = initialMessages;
+      if (!loading) setMessages(initialMessages);
+    }
+  }, [initialMessages, loading]);
 
   useEffect(() => {
     if (open) {
