@@ -6,7 +6,7 @@ const PHONEPE_MERCHANT_ID = process.env['PHONEPE_MERCHANT_ID'] ?? '';
 const IS_SANDBOX = process.env['PHONEPE_ENV'] !== 'production';
 
 const BASE_URL = IS_SANDBOX
-  ? 'https://api-preprod.phonepe.com/apis/pg-sandbox'
+  ? 'https://api-preprod.phonepe.com/apis/pgsandbox'
   : 'https://api.phonepe.com/apis/hermes';
 
 const API_BASE_URL = process.env['API_BASE_URL'] ?? 'https://your-api.onrender.com';
