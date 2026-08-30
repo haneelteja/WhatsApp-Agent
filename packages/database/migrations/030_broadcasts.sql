@@ -39,3 +39,5 @@ CREATE INDEX IF NOT EXISTS idx_broadcast_scheduled ON broadcast_messages(schedul
 ALTER TABLE broadcast_messages ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "broadcast_messages: read own" ON broadcast_messages
   FOR SELECT USING (tenant_id = get_user_tenant_id());
+
+GRANT ALL ON broadcast_messages TO postgres, anon, authenticated, service_role;

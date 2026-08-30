@@ -54,3 +54,6 @@ CREATE INDEX IF NOT EXISTS idx_cgm_tenant  ON contact_group_members(tenant_id);
 ALTER TABLE contact_group_members ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "contact_group_members: read own" ON contact_group_members
   FOR SELECT USING (tenant_id = get_user_tenant_id());
+
+GRANT ALL ON contact_groups        TO postgres, anon, authenticated, service_role;
+GRANT ALL ON contact_group_members TO postgres, anon, authenticated, service_role;
