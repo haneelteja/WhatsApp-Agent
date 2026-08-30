@@ -116,7 +116,8 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
         return;
       }
 
-      if (callStatus && callStatus !== 'in-progress') {
+      const terminalStatuses = new Set(['completed', 'failed', 'busy', 'no-answer', 'canceled']);
+      if (callStatus && terminalStatuses.has(callStatus)) {
         void finaliseCall(voiceCallId, callSid, callStatus, duration, recordingUrl ?? undefined);
       }
     },
