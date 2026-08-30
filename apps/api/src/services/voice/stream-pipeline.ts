@@ -161,13 +161,15 @@ async function startTwilioRecording(
       return;
     }
 
-    const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const auth        = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const apiBase     = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
+    const callbackUrl = `${apiBase}/api/voice/status/${voiceCallId}`;
     const res  = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls/${callSid}/Recordings.json`,
       {
         method:  'POST',
         headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    'RecordingChannels=mono',
+        body:    `RecordingChannels=mono&RecordingStatusCallback=${encodeURIComponent(callbackUrl)}&RecordingStatusCallbackEvent=completed`,
         signal:  AbortSignal.timeout(5_000),
       },
     );
