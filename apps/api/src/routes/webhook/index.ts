@@ -377,6 +377,21 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     // Preserve the original form (with +) as the stored phone number.
     const phoneValue = incoming.from.startsWith('+') ? incoming.from : `+${incoming.from}`;
 
+    // ── Internal team number check ──────────────────────────────────────────
+    // If the sender is a configured internal number, drop the message silently.
+    if (!isBsuid) {
+      const { data: internalMatch } = await db
+        .from('tenant_internal_numbers')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('phone', phoneValue)
+        .maybeSingle();
+      if (internalMatch) {
+        fastify.log.info({ tenantId, phone: phoneValue }, '[Webhook] internal number — skipping');
+        return;
+      }
+    }
+
     const contactUpsertResult = isBsuid
       ? await db
           .from('contacts')

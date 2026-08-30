@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
   Building2, Phone, Bot, Link2, Bell, CreditCard, ChevronRight,
-  Users, Mail, Clock, Trash2, Info, Cpu, MessageSquare,
+  Users, Mail, Clock, Trash2, Info, Cpu, MessageSquare, ShieldOff,
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
@@ -17,6 +17,8 @@ import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { ClientVoiceConfigCard, type BotVoiceConfigRow, type ExotelConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
 import { VoiceWorkingHoursCard, type WorkingHoursInitial } from '@/components/dashboard/VoiceWorkingHoursCard';
 import { VoiceCallSummaryCard, type CallSummaryInitial } from '@/components/dashboard/VoiceCallSummaryCard';
+import { InternalNumbersManager } from '@/components/dashboard/InternalNumbersManager';
+import { listInternalNumbers } from '@/app/actions/internal-numbers';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -110,10 +112,11 @@ export default async function SettingsPage({
 
   if (activeTab === 'workspace') {
     const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
-    const [tenantRes, numbersRes, productsRes] = await Promise.all([
+    const [tenantRes, numbersRes, productsRes, { numbers: internalNumbers }] = await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
       admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
+      listInternalNumbers(),
     ]);
     tenant   = tenantRes.data as Record<string, unknown> | null;
     numbers  = (numbersRes.data ?? []) as Record<string, unknown>[];
@@ -171,6 +174,10 @@ export default async function SettingsPage({
               activeBots={activeBots.map(p => p['product_type'] as 'support_bot' | 'sales_bot' | 'lifecycle_bot')}
               webhookBase={`${apiBase}/api/webhook/${tenant?.['id'] ?? ''}`}
             />
+          </Section>
+
+          <Section icon={<ShieldOff size={16} />} title="Internal Team Numbers" hint="Messages from these numbers are silently ignored — no bot reply, no lead created. Add your team members' WhatsApp numbers here so internal tests don't appear as leads.">
+            <InternalNumbersManager initialNumbers={internalNumbers} />
           </Section>
 
           <Section icon={<Bot size={16} />} title="Bot Products" hint="Activate or disable bots included in your plan. Only active bots respond to WhatsApp messages. Deactivating a bot does not delete its conversation history.">
