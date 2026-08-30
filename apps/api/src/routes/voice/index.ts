@@ -108,18 +108,26 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
         '[Voice] Status callback received',
       );
 
-      if (recordingStatus === 'completed' && recordingUrl && !callStatus) {
-        void getServerClient()
+      // RecordingStatusCallback: save recording URL regardless of CallStatus field.
+      // Twilio always includes the current CallStatus (e.g. "in-progress") in recording callbacks,
+      // so we cannot use !callStatus as a guard — that would always fail.
+      if (recordingStatus === 'completed' && recordingUrl) {
+        fastify.log.info({ voiceCallId, recordingUrl }, '[Voice] Saving recording URL');
+        getServerClient()
           .from('voice_calls')
           .update({ recording_url: recordingUrl })
-          .eq('id', voiceCallId);
-        return;
+          .eq('id', voiceCallId)
+          .then(({ error }) => {
+            if (error) fastify.log.error({ error, voiceCallId }, '[Voice] Failed to save recording URL');
+            else fastify.log.info({ voiceCallId }, '[Voice] Recording URL saved');
+          });
       }
 
+      // StatusCallback: finalize if terminal status
       const terminalStatuses = new Set(['completed', 'failed', 'busy', 'no-answer', 'canceled']);
       if (callStatus && terminalStatuses.has(callStatus)) {
         void finaliseCall(voiceCallId, callSid, callStatus, duration, recordingUrl ?? undefined);
-      } else {
+      } else if (!recordingUrl) {
         fastify.log.info({ voiceCallId, callStatus }, '[Voice] Status callback skipped — non-terminal or empty');
       }
     },

@@ -475,10 +475,14 @@ export async function handleStreamSession(
     if (sttWs && sttWs.readyState === WebSocket.OPEN) sttWs.close();
     // Fallback: mark completed if Twilio's status callback hasn't fired yet.
     // Only overwrites if still in_progress — won't clobber a genuine failed/busy status.
-    void db.from('voice_calls')
+    db.from('voice_calls')
       .update({ status: 'completed', turn_count: turnCount })
       .eq('id', voiceCallId)
-      .eq('status', 'in_progress');
+      .eq('status', 'in_progress')
+      .then(({ error }) => {
+        if (error) log.error({ error, voiceCallId }, '[Stream] Failed to mark call completed on WS close');
+        else log.info({ voiceCallId, turnCount }, '[Stream] Call marked completed on WS close');
+      });
   });
 
   twilioWs.on('error', (err) => {
