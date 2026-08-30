@@ -11,7 +11,7 @@ export interface CopilotConfig {
 
 const ALL_ACTIONS = ['add_kb_article', 'update_escalation_triggers', 'toggle_button_template', 'update_system_prompt'];
 
-export function defaultCopilotConfig(): CopilotConfig {
+function defaultCopilotConfig(): CopilotConfig {
   return { enabled: true, instructions: '', allowed_actions: ALL_ACTIONS };
 }
 
