@@ -26,7 +26,7 @@ async function resolveAudience(
 
     const seen = new Set<string>();
     const out: ContactTarget[] = [];
-    for (const row of (data ?? []) as Array<{ contacts: { phone: string; name: string | null } | null }>) {
+    for (const row of (data ?? []) as unknown as Array<{ contacts: { phone: string; name: string | null } | null }>) {
       if (!row.contacts?.phone || seen.has(row.contacts.phone)) continue;
       seen.add(row.contacts.phone);
       out.push({ phone: row.contacts.phone, name: row.contacts.name });
