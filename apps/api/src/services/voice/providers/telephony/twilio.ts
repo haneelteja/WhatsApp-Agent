@@ -58,17 +58,15 @@ export function createTwilioProvider(config: TwilioConfig): TelephonyProvider {
 
     async dispatch({ to, from, twimlUrl, statusCallback }): Promise<OutboundCallResult> {
       const data = await twilioRequest(account_sid, auth_token, 'POST', '/Calls.json', {
-        To:             to,
-        From:           from,
-        Url:            twimlUrl,
-        StatusCallback: statusCallback,
+        To:                  to,
+        From:                from,
+        Url:                 twimlUrl,
+        StatusCallback:      statusCallback,
         StatusCallbackMethod: 'POST',
-        StatusCallbackEvent: 'initiated ringing answered completed',
-        // Enable recording — Twilio sends RecordingUrl in the status callback when done
-        Record:                  'true',
-        RecordingStatusCallback: statusCallback,
-        RecordingStatusCallbackMethod: 'POST',
-        Timeout:        '30',   // ring for 30s before no-answer
+        // No StatusCallbackEvent → Twilio defaults to sending 'completed' only.
+        // The space-separated string form is not valid for URLSearchParams.
+        // Recording is initiated mid-call by startTwilioRecording() after stream connects.
+        Timeout:             '30',
       }) as { sid: string; status: string };
 
       return {
