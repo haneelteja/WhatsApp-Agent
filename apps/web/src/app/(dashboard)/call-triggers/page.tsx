@@ -1,13 +1,15 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, Info, RefreshCw, MessageSquare, Phone, Target, Share2 } from 'lucide-react';
+import { Zap, Info, RefreshCw, MessageSquare, Phone, Target, Share2, Sparkles } from 'lucide-react';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { CallTriggersCard }  from '@/components/dashboard/CallTriggersCard';
-import { CollapsibleCard }   from '@/components/CollapsibleCard';
-import { FollowUpForm }      from '@/components/dashboard/FollowUpForm';
-import { SalesFollowUpForm } from '@/components/dashboard/SalesFollowUpForm';
-import { InboundLeadsTab }   from '@/components/dashboard/InboundLeadsTab';
+import { CallTriggersCard }        from '@/components/dashboard/CallTriggersCard';
+import { CollapsibleCard }         from '@/components/CollapsibleCard';
+import { FollowUpForm }            from '@/components/dashboard/FollowUpForm';
+import { SalesFollowUpForm }       from '@/components/dashboard/SalesFollowUpForm';
+import { InboundLeadsTab }         from '@/components/dashboard/InboundLeadsTab';
+import { LifecycleSequencesTab }   from '@/components/dashboard/LifecycleSequencesTab';
+import { listLifecycleSequences }  from '@/app/actions/lifecycle';
 import type { BotVoiceConfig, SalesConfig } from '@alphabot/shared';
 import type { FollowUpScope } from '@/app/actions/follow-up';
 
@@ -28,6 +30,7 @@ const BOT_META: Record<string, { name: string; color: string; bg: string; border
 };
 
 const TABS = [
+  { key: 'lifecycle',       label: 'Lifecycle',          icon: Sparkles      },
   { key: 'follow-ups',      label: 'Message Follow-ups', icon: MessageSquare },
   { key: 'lead-follow-ups', label: 'Lead Follow-ups',    icon: Target        },
   { key: 'voice',           label: 'Voice Triggers',     icon: Phone         },
@@ -44,10 +47,10 @@ export default async function TriggersPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const rawParams  = await searchParams;
-  const rawTab     = rawParams.tab ?? 'follow-ups';
+  const rawTab     = rawParams.tab ?? 'lifecycle';
   const activeTab: TabKey = TABS.some(t => t.key === rawTab)
     ? (rawTab as TabKey)
-    : 'follow-ups';
+    : 'lifecycle';
 
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
@@ -61,7 +64,7 @@ export default async function TriggersPage({
   const tenantId = tenantUser.tenant_id;
 
   // Single parallel fetch for all data regardless of tab
-  const [{ data: products }, { data: fuConfigs }, { data: convRows }, { data: botCfgs }, { data: tenantRow }] = await Promise.all([
+  const [{ data: products }, { data: fuConfigs }, { data: convRows }, { data: botCfgs }, { data: tenantRow }, { sequences: lifecycleSeqs }] = await Promise.all([
     admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
     admin.from('follow_up_configs')
       .select('product_slug, enabled, idle_days, message_template, max_follow_ups, scope, contact_ids')
@@ -76,6 +79,7 @@ export default async function TriggersPage({
       .select('inbound_webhook_key')
       .eq('id', tenantId)
       .single(),
+    listLifecycleSequences(),
   ]);
 
   const inboundWebhookKey = (tenantRow as { inbound_webhook_key?: string | null } | null)?.inbound_webhook_key ?? null;
@@ -108,6 +112,7 @@ export default async function TriggersPage({
   const salesConfig  = ((salesBotRow as { sales_config?: Partial<SalesConfig> } | undefined)?.sales_config ?? null);
 
   // Status indicators for tab badges
+  const anyLifecycleEnabled = lifecycleSeqs.some(s => s.enabled);
   const anyFollowUpEnabled  = [...fuConfigMap.values()].some(c => c.enabled);
   const leadFollowUpEnabled = !!salesConfig?.lead_follow_up_enabled;
   const anyVoiceTriggerOn   = activeSlugs.some(slug => {
@@ -139,7 +144,8 @@ export default async function TriggersPage({
         {TABS.map(t => {
           const isActive = activeTab === t.key;
           const dotOn =
-            t.key === 'follow-ups'      ? anyFollowUpEnabled  :
+            t.key === 'lifecycle'       ? anyLifecycleEnabled  :
+            t.key === 'follow-ups'      ? anyFollowUpEnabled   :
             t.key === 'lead-follow-ups' ? leadFollowUpEnabled  :
             t.key === 'inbound'         ? inboundConfigured    :
             anyVoiceTriggerOn;
@@ -163,6 +169,19 @@ export default async function TriggersPage({
           );
         })}
       </div>
+
+      {/* ── Tab: Lifecycle Sequences ────────────────────────────────────────── */}
+      {activeTab === 'lifecycle' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Automatically send time-delayed WhatsApp messages to contacts — welcome discounts, re-engagement offers, or follow-up nudges — triggered by key events like onboarding or lead detection.
+          </p>
+          <LifecycleSequencesTab
+            initialSequences={lifecycleSeqs}
+            activeSlugs={activeSlugs}
+          />
+        </div>
+      )}
 
       {/* ── Tab: Message Follow-ups ─────────────────────────────────────────── */}
       {activeTab === 'follow-ups' && (

@@ -328,6 +328,130 @@ async function processLeadFollowUps(): Promise<void> {
   }
 }
 
+async function processLifecycleSequences(): Promise<void> {
+  const db = getServerClient();
+
+  const { data: sequences } = await db
+    .from('lifecycle_sequences')
+    .select('*')
+    .eq('enabled', true);
+
+  if (!sequences?.length) return;
+
+  for (const seq of sequences) {
+    try {
+      const cutoff = new Date(
+        Date.now() - seq.delay_days * 24 * 60 * 60 * 1000,
+      ).toISOString();
+
+      // Find contacts created after this sequence was configured,
+      // old enough to have crossed the delay threshold,
+      // and not yet sent this sequence.
+      let contactsQuery = db
+        .from('contacts')
+        .select('id, phone, name')
+        .eq('tenant_id', seq.tenant_id)
+        .not('phone', 'is', null)
+        .gte('created_at', seq.created_at)   // only post-config contacts
+        .lt('created_at', cutoff);           // old enough
+
+      if (seq.trigger_event === 'lead_created') {
+        // Only contacts who have at least one conversation flagged as a lead
+        const { data: leadConvs } = await db
+          .from('conversations')
+          .select('contact_id')
+          .eq('tenant_id', seq.tenant_id)
+          .eq('product_type', seq.product_slug)
+          .not('lead_score', 'is', null)
+          .gte('lead_score', 50);
+
+        const leadContactIds = (leadConvs ?? []).map((r: { contact_id: string }) => r.contact_id);
+        if (!leadContactIds.length) continue;
+        contactsQuery = contactsQuery.in('id', leadContactIds);
+      } else if (seq.trigger_event === 'conversation_resolved') {
+        // Only contacts who have a resolved conversation for this product
+        const { data: resolvedConvs } = await db
+          .from('conversations')
+          .select('contact_id')
+          .eq('tenant_id', seq.tenant_id)
+          .eq('product_type', seq.product_slug)
+          .eq('status', 'resolved')
+          .lt('updated_at', cutoff);
+
+        const resolvedContactIds = (resolvedConvs ?? []).map((r: { contact_id: string }) => r.contact_id);
+        if (!resolvedContactIds.length) continue;
+        contactsQuery = contactsQuery.in('id', resolvedContactIds);
+      }
+
+      const { data: candidates } = await contactsQuery;
+      if (!candidates?.length) continue;
+
+      // Filter out already-sent contacts
+      const candidateIds = candidates.map((c: { id: string }) => c.id);
+      const { data: alreadySent } = await db
+        .from('lifecycle_sends')
+        .select('contact_id')
+        .eq('sequence_id', seq.id)
+        .in('contact_id', candidateIds);
+
+      const sentSet = new Set((alreadySent ?? []).map((r: { contact_id: string }) => r.contact_id));
+      const eligible = (candidates as Array<{ id: string; phone: string; name: string | null }>)
+        .filter(c => !sentSet.has(c.id));
+
+      if (!eligible.length) continue;
+
+      const { data: wn } = await db
+        .from('whatsapp_numbers')
+        .select('config_json, provider')
+        .eq('tenant_id', seq.tenant_id)
+        .eq('product_slug', seq.product_slug)
+        .eq('active', true)
+        .limit(1)
+        .maybeSingle();
+
+      // Fallback to any active number if product-specific not found
+      const wnFinal = wn ?? (await db
+        .from('whatsapp_numbers')
+        .select('config_json, provider')
+        .eq('tenant_id', seq.tenant_id)
+        .eq('active', true)
+        .limit(1)
+        .maybeSingle()).data;
+
+      if (!wnFinal) continue;
+
+      const gateway  = new WhatsAppGateway((wnFinal as { provider: string }).provider as WhatsAppProvider);
+      const wnConfig = (wnFinal as { config_json: { phone_number_id: string; access_token: string } }).config_json;
+
+      const newSends: object[] = [];
+
+      for (const contact of eligible) {
+        try {
+          const name    = contact.name?.split(' ')[0] ?? 'there';
+          const message = seq.message_template.replace(/\{name\}/gi, name);
+
+          await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+            type: 'text',
+            to:   contact.phone,
+            text: message,
+          });
+
+          newSends.push({ tenant_id: seq.tenant_id, sequence_id: seq.id, contact_id: contact.id });
+          console.log(`[Lifecycle] Sent "${seq.name}" to contact ${contact.id}`);
+        } catch (err) {
+          console.error(`[Lifecycle] Failed for contact ${contact.id}:`, err instanceof Error ? err.message : String(err));
+        }
+      }
+
+      if (newSends.length) {
+        await db.from('lifecycle_sends').insert(newSends);
+      }
+    } catch (seqErr) {
+      console.error(`[Lifecycle] Failed processing sequence ${seq.id}:`, seqErr);
+    }
+  }
+}
+
 export function startScheduler(): void {
   // Keep Supabase alive (free tier pauses after 7 days inactivity)
   void pingSupabase();
@@ -383,6 +507,13 @@ export function startScheduler(): void {
       console.error('[Scheduler] Campaign recovery failed:', (err as Error).message)
     );
   });
+
+  // Lifecycle sequences — daily at 10:00 UTC
+  cron.schedule('0 10 * * *', () => {
+    void processLifecycleSequences().catch(err =>
+      console.error('[Scheduler] Lifecycle sequences failed:', (err as Error).message)
+    );
+  }, { timezone: 'UTC' });
 
   // AI Insights — run once a day at the platform-configured hour (default 9 AM UTC)
   cron.schedule('0 * * * *', async () => {
