@@ -98,16 +98,16 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
       const body = request.body as Record<string, string>;
 
       const callSid    = body['CallSid']  ?? body['sid']       ?? '';
-      // Twilio: CallStatus + CallDuration  |  Exotel: Status + Duration
       const callStatus = body['CallStatus'] ?? body['Status']   ?? '';
       const duration   = parseInt(body['CallDuration'] ?? body['Duration'] ?? '0', 10) || null;
-      // Twilio sends RecordingUrl in both the main status callback and a separate
-      // recording-specific callback (RecordingStatusCallback). Handle both.
-      const recordingUrl  = body['RecordingUrl'] ?? body['recording_url'] ?? null;
+      const recordingUrl    = body['RecordingUrl'] ?? body['recording_url'] ?? null;
       const recordingStatus = body['RecordingStatus'] ?? null;
 
-      // Recording-only callback — Twilio fires this separately when the recording is ready.
-      // No CallStatus present, just save the URL and bail.
+      fastify.log.info(
+        { voiceCallId, callSid, callStatus, duration, recordingStatus, recordingUrl, bodyKeys: Object.keys(body) },
+        '[Voice] Status callback received',
+      );
+
       if (recordingStatus === 'completed' && recordingUrl && !callStatus) {
         void getServerClient()
           .from('voice_calls')
@@ -119,6 +119,8 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
       const terminalStatuses = new Set(['completed', 'failed', 'busy', 'no-answer', 'canceled']);
       if (callStatus && terminalStatuses.has(callStatus)) {
         void finaliseCall(voiceCallId, callSid, callStatus, duration, recordingUrl ?? undefined);
+      } else {
+        fastify.log.info({ voiceCallId, callStatus }, '[Voice] Status callback skipped — non-terminal or empty');
       }
     },
   );
