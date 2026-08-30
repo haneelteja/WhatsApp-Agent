@@ -8,6 +8,9 @@ const API_BASE = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onr
 
 // ─── Tenant voice config types ────────────────────────────────────────────────
 
+type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+type DaySchedule = { start: string; end: string; enabled: boolean };
+
 interface TenantVoiceConfig {
   tenant_id:              string;
   from_number:            string;
@@ -24,6 +27,9 @@ interface TenantVoiceConfig {
   calls_today:            number;
   monthly_reset_at:       string;  // YYYY-MM-DD
   daily_reset_at:         string;  // YYYY-MM-DD
+  timezone:               string;
+  working_hours_enabled:  boolean;
+  working_hours_json:     Record<DayKey, DaySchedule>;
 }
 
 // ─── Limit enforcement ────────────────────────────────────────────────────────
@@ -87,6 +93,42 @@ async function loadTenantVoiceConfig(tenantId: string): Promise<TenantVoiceConfi
   return cfg;
 }
 
+function checkWorkingHours(cfg: TenantVoiceConfig): void {
+  if (!cfg.working_hours_enabled) return;
+
+  const tz   = cfg.timezone || 'Asia/Kolkata';
+  const now  = new Date();
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour12:   false,
+    weekday:  'short',
+    hour:     '2-digit',
+    minute:   '2-digit',
+  }).formatToParts(now);
+
+  const weekdayFull = parts.find(p => p.type === 'weekday')?.value ?? '';
+  const hour        = parts.find(p => p.type === 'hour')?.value   ?? '00';
+  const minute      = parts.find(p => p.type === 'minute')?.value ?? '00';
+
+  const dayKey  = weekdayFull.toLowerCase().slice(0, 3) as DayKey;
+  const current = `${hour}:${minute}`;   // e.g. "09:30"
+  const dayCfg  = cfg.working_hours_json[dayKey];
+
+  if (!dayCfg?.enabled) {
+    throw new Error(
+      `Voice calls are not allowed on ${weekdayFull}s according to your working hours schedule.`,
+    );
+  }
+
+  if (current < dayCfg.start || current >= dayCfg.end) {
+    throw new Error(
+      `Outside working hours: calls are allowed ${dayCfg.start}–${dayCfg.end} (${tz}). ` +
+      `Current time is ${current}. Please try again during working hours.`,
+    );
+  }
+}
+
 function enforceLimits(cfg: TenantVoiceConfig): void {
   if (cfg.max_calls_per_month !== null && cfg.calls_this_month >= cfg.max_calls_per_month) {
     throw new Error(
@@ -136,9 +178,10 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
     throw new Error(`Voice is not enabled for ${req.product_slug}. Enable it in Guardrails → Per-Bot Config → Voice.`);
   }
 
-  // Load tenant voice config and enforce limits before creating any DB records
+  // Load tenant voice config and enforce limits + working hours before creating any DB records
   const tenantVoiceCfg = await loadTenantVoiceConfig(req.tenant_id);
   enforceLimits(tenantVoiceCfg);
+  checkWorkingHours(tenantVoiceCfg);
 
   const telephonyProvider = voiceCfg.telephony_provider ?? 'twilio';
 

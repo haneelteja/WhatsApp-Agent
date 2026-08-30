@@ -15,6 +15,7 @@ import { removeTeamMemberAction } from '@/app/actions/tenant-team';
 import { LlmConfigCard }         from '@/components/LlmConfigCard';
 import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { ClientVoiceConfigCard, type BotVoiceConfigRow, type ExotelConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
+import { VoiceWorkingHoursCard, type WorkingHoursInitial } from '@/components/dashboard/VoiceWorkingHoursCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -451,7 +452,7 @@ export default async function SettingsPage({
       admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
       admin.from('bot_configs').select('product_slug, voice_config').eq('tenant_id', tenantId),
       admin.from('tenant_voice_configs')
-        .select('from_number, exotel_api_key, exotel_account_sid')
+        .select('from_number, exotel_api_key, exotel_account_sid, timezone, working_hours_enabled, working_hours_json')
         .eq('tenant_id', tenantId)
         .maybeSingle(),
     ]);
@@ -468,12 +469,28 @@ export default async function SettingsPage({
       voice_config:  ((botCfgs ?? []).find(bc => bc.product_slug === p.product_type)?.voice_config ?? null) as BotVoiceConfigRow['voice_config'],
     }));
 
-    const tvcRow = tvc as { from_number: string; exotel_api_key: string | null; exotel_account_sid: string | null } | null;
+    const tvcRow = tvc as {
+      from_number:           string;
+      exotel_api_key:        string | null;
+      exotel_account_sid:    string | null;
+      timezone:              string | null;
+      working_hours_enabled: boolean | null;
+      working_hours_json:    WorkingHoursInitial['working_hours_json'] | null;
+    } | null;
+
     const exotelInitial: ExotelConfigRow | null = tvcRow
       ? {
           from_number:        tvcRow.from_number,
           has_exotel_creds:   !!tvcRow.exotel_api_key,
           exotel_account_sid: tvcRow.exotel_account_sid,
+        }
+      : null;
+
+    const workingHoursInitial: WorkingHoursInitial | null = tvcRow?.working_hours_json
+      ? {
+          timezone:              tvcRow.timezone ?? 'Asia/Kolkata',
+          working_hours_enabled: tvcRow.working_hours_enabled ?? false,
+          working_hours_json:    tvcRow.working_hours_json,
         }
       : null;
 
@@ -490,6 +507,18 @@ export default async function SettingsPage({
               on escalation, on demand, or via campaign. Platform voice (Twilio) is managed for you.
             </p>
             <ClientVoiceConfigCard bots={voiceBots} exotel={exotelInitial} />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock size={15} className="text-emerald-600" />
+              <h3 className="text-sm font-semibold text-gray-800">Working Hours</h3>
+            </div>
+            <p className="text-xs text-gray-400 mb-6">
+              Set the days and times when outbound voice calls are allowed. Calls triggered outside
+              these hours — manual, campaign, or escalation — will be blocked automatically.
+            </p>
+            <VoiceWorkingHoursCard initial={workingHoursInitial} />
           </div>
         </div>
       </SettingsShell>
