@@ -548,7 +548,7 @@ export default async function ConversationsPage({
                               {call.outcome_json.resolved ? '✓ Resolved' : '✗ Unresolved'}
                             </span>
                           )}
-                          <span className="ml-auto">{new Date(call.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="ml-auto">{new Date(call.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}</span>
                         </div>
                       </div>
                       <TrendingUp size={13} className="text-gray-200 mt-1.5 shrink-0" />

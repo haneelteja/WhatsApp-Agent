@@ -63,7 +63,7 @@ const VOICE_STATUS_STYLES: Record<string, string> = {
 
 function formatDate(iso: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
 }
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {

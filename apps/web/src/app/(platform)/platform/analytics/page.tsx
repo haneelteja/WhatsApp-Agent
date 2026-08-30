@@ -614,7 +614,7 @@ export default async function PlatformAnalyticsPage({ searchParams }: { searchPa
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-700 truncate">{tenant?.name ?? '—'}</p>
-                  <p className="text-[10px] text-slate-400">{new Date(c.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-[10px] text-slate-400">{new Date(c.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}</p>
                 </div>
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ring-1 capitalize ${STATUS_BADGE[c.status] ?? STATUS_BADGE.open}`}>
                   {c.status.replace('_', ' ')}

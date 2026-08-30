@@ -62,7 +62,7 @@ const CHANNEL_ICONS: Record<string, LucideIcon> = {
 };
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 }
 
 function completionPct(camp: CampaignRow): number {

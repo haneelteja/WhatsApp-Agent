@@ -149,7 +149,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                       {items.length > 2 ? ` +${items.length - 2} more` : ''}
                     </p>
                     <p className="text-[10px] text-slate-300 mt-0.5">
-                      {new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
                     </p>
                   </div>
 
