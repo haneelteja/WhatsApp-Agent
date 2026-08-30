@@ -101,7 +101,7 @@ export function BroadcastCreateForm({
           className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-300 placeholder:text-gray-300 resize-none"
         />
         <p className="text-[10px] text-gray-400 mt-1">
-          Use <code className="bg-gray-100 px-1 rounded">{'{name}'}</code> to insert the contact's first name.
+          Use <code className="bg-gray-100 px-1 rounded">{'{name}'}</code> to insert the contact&apos;s first name.
         </p>
       </div>
 

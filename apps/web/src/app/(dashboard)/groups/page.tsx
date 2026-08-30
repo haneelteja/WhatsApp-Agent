@@ -96,7 +96,7 @@ export default async function GroupsPage() {
           <Users size={28} className="text-gray-200" />
           <p className="text-sm font-medium text-gray-400">No groups yet</p>
           <p className="text-xs text-gray-300 text-center max-w-xs">
-            Create groups like "VIP Customers", "Hot Leads", or "Price Sensitive" to segment your contacts.
+            Create groups like &ldquo;VIP Customers&rdquo;, &ldquo;Hot Leads&rdquo;, or &ldquo;Price Sensitive&rdquo; to segment your contacts.
           </p>
         </div>
       ) : (

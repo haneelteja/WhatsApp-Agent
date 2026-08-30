@@ -99,7 +99,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             <Users size={24} className="text-gray-200" />
             <p className="text-sm text-gray-400">No contacts in this group yet.</p>
-            <p className="text-xs text-gray-300">Go to Contacts and use "Add to group" or the AI suggest button.</p>
+            <p className="text-xs text-gray-300">Go to Contacts and use &ldquo;Add to group&rdquo; or the AI suggest button.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-50">

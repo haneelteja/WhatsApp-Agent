@@ -13,7 +13,7 @@ export function GroupDeleteButton({ groupId, groupName }: { groupId: string; gro
   if (confirm) {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-red-600">Delete "{groupName}"?</span>
+        <span className="text-xs text-red-600">Delete &ldquo;{groupName}&rdquo;?</span>
         <button
           type="button"
           onClick={() => startTransition(async () => {
