@@ -47,7 +47,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
   if (!group) notFound();
 
   const g           = group as { id: string; name: string; description: string | null; color: string; emoji: string };
-  const memberList  = (members ?? []) as MemberRow[];
+  const memberList  = (members ?? []) as unknown as MemberRow[];
 
   const SENTIMENT_DOT: Record<string, string> = {
     positive: 'bg-emerald-400', neutral: 'bg-slate-300', negative: 'bg-orange-400', frustrated: 'bg-red-400',
