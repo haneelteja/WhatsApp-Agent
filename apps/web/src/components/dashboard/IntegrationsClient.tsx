@@ -10,8 +10,8 @@ import {
 import {
   saveWelcomeTemplate, toggleIntegration, regenerateApiKey, sendTestMessage,
   saveOutboundSettings, regenerateSigningSecret, triggerManualPush,
-  OUTBOUND_EVENT_OPTIONS,
 } from '@/app/actions/integrations';
+import { OUTBOUND_EVENT_OPTIONS } from '@/lib/integration-constants';
 import type { IntegrationSettings, WebhookLog, OutboundLog } from '@/app/actions/integrations';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
