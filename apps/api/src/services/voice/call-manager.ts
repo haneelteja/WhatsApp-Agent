@@ -356,4 +356,47 @@ async function runPostCallProcessing(voiceCallId: string, durationSeconds: numbe
       })
       .eq('tenant_id', call.tenant_id);
   }
+
+  // 4. Fetch recording URL from Twilio if not already saved
+  //    (RecordingStatusCallback may arrive later or be missed — this is a fallback)
+  const { data: callWithSid } = await db
+    .from('voice_calls')
+    .select('telephony_call_sid, recording_url')
+    .eq('id', voiceCallId)
+    .single();
+
+  const sidRow = callWithSid as { telephony_call_sid: string | null; recording_url: string | null } | null;
+  if (sidRow?.telephony_call_sid && !sidRow.recording_url) {
+    const { data: providerRow } = await db
+      .from('voice_provider_configs')
+      .select('credentials_json')
+      .eq('provider_name', 'twilio')
+      .eq('component', 'telephony')
+      .limit(1)
+      .maybeSingle();
+
+    const creds     = providerRow?.credentials_json as Record<string, string> | null;
+    const accountSid = creds?.['account_sid'];
+    const authToken  = creds?.['auth_token'];
+
+    if (accountSid && authToken) {
+      try {
+        // Wait a moment for Twilio to finish processing the recording
+        await new Promise(r => setTimeout(r, 5000));
+        const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+        const res  = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls/${sidRow.telephony_call_sid}/Recordings.json`,
+          { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(10_000) },
+        );
+        if (res.ok) {
+          const json = await res.json() as { recordings?: Array<{ uri: string }> };
+          const first = json.recordings?.[0];
+          if (first) {
+            const recordingUrl = `https://api.twilio.com${first.uri.replace('.json', '')}`;
+            void db.from('voice_calls').update({ recording_url: recordingUrl }).eq('id', voiceCallId);
+          }
+        }
+      } catch { /* non-critical */ }
+    }
+  }
 }

@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
+import { AutoRefresh } from '@/components/dashboard/AutoRefresh';
 import { redirect, notFound }      from 'next/navigation';
 import Link                        from 'next/link';
 import {
@@ -114,8 +115,11 @@ export default async function VoiceCallDetailPage({
     !call.recording_url.includes('/api/voice/twiml/')
   );
 
+  const isLive = ['in_progress', 'initiated', 'ringing'].includes(call.status);
+
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-4xl mx-auto">
+      <AutoRefresh active={isLive} intervalMs={5000} />
       {/* Header */}
       <div className="flex items-start gap-3">
         <Link href="/voice" className="mt-0.5 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">

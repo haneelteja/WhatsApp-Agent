@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { BotFilterBar } from '@/components/dashboard/BotFilterBar';
 import { MakeCallButton } from '@/components/dashboard/MakeCallButton';
+import { AutoRefresh } from '@/components/dashboard/AutoRefresh';
 import type { ContactSentiment } from '@alphabot/shared';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
@@ -455,6 +456,7 @@ export default async function ConversationsPage({
       {/* ── VOICE TAB ─────────────────────────────────────────────────────────── */}
       {activeTab === 'voice' && (
         <>
+          <AutoRefresh active={callList.some(c => ['in_progress', 'initiated', 'ringing'].includes(c.status))} />
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
             {voiceStats.map(s => (
