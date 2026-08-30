@@ -336,6 +336,12 @@ export async function finaliseCall(
   if (status === 'completed' && durationSeconds) {
     void runPostCallProcessing(voiceCallId, durationSeconds);
   }
+
+  // Send WhatsApp call summary to configured team numbers (fire-and-forget)
+  if (status === 'completed') {
+    const { sendCallSummaryNotifications } = await import('./call-summary-notif.js');
+    void sendCallSummaryNotifications(voiceCallId);
+  }
 }
 
 async function runPostCallProcessing(voiceCallId: string, durationSeconds: number): Promise<void> {

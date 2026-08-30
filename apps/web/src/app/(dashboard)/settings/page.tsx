@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
   Building2, Phone, Bot, Link2, Bell, CreditCard, ChevronRight,
-  Users, Mail, Clock, Trash2, Info, Cpu,
+  Users, Mail, Clock, Trash2, Info, Cpu, MessageSquare,
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
@@ -16,6 +16,7 @@ import { LlmConfigCard }         from '@/components/LlmConfigCard';
 import type { LlmConfigCardProps } from '@/components/LlmConfigCard';
 import { ClientVoiceConfigCard, type BotVoiceConfigRow, type ExotelConfigRow } from '@/components/dashboard/ClientVoiceConfigCard';
 import { VoiceWorkingHoursCard, type WorkingHoursInitial } from '@/components/dashboard/VoiceWorkingHoursCard';
+import { VoiceCallSummaryCard, type CallSummaryInitial } from '@/components/dashboard/VoiceCallSummaryCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -452,7 +453,7 @@ export default async function SettingsPage({
       admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
       admin.from('bot_configs').select('product_slug, voice_config').eq('tenant_id', tenantId),
       admin.from('tenant_voice_configs')
-        .select('from_number, exotel_api_key, exotel_account_sid, timezone, working_hours_enabled, working_hours_json')
+        .select('from_number, exotel_api_key, exotel_account_sid, timezone, working_hours_enabled, working_hours_json, call_summary_enabled, call_summary_wa_numbers')
         .eq('tenant_id', tenantId)
         .maybeSingle(),
     ]);
@@ -470,12 +471,14 @@ export default async function SettingsPage({
     }));
 
     const tvcRow = tvc as {
-      from_number:           string;
-      exotel_api_key:        string | null;
-      exotel_account_sid:    string | null;
-      timezone:              string | null;
-      working_hours_enabled: boolean | null;
-      working_hours_json:    WorkingHoursInitial['working_hours_json'] | null;
+      from_number:              string;
+      exotel_api_key:           string | null;
+      exotel_account_sid:       string | null;
+      timezone:                 string | null;
+      working_hours_enabled:    boolean | null;
+      working_hours_json:       WorkingHoursInitial['working_hours_json'] | null;
+      call_summary_enabled:     boolean | null;
+      call_summary_wa_numbers:  string[] | null;
     } | null;
 
     const exotelInitial: ExotelConfigRow | null = tvcRow
@@ -491,6 +494,13 @@ export default async function SettingsPage({
           timezone:              tvcRow.timezone ?? 'Asia/Kolkata',
           working_hours_enabled: tvcRow.working_hours_enabled ?? false,
           working_hours_json:    tvcRow.working_hours_json,
+        }
+      : null;
+
+    const callSummaryInitial: CallSummaryInitial | null = tvcRow
+      ? {
+          call_summary_enabled:    tvcRow.call_summary_enabled    ?? false,
+          call_summary_wa_numbers: tvcRow.call_summary_wa_numbers ?? [],
         }
       : null;
 
@@ -519,6 +529,18 @@ export default async function SettingsPage({
               these hours — manual, campaign, or escalation — will be blocked automatically.
             </p>
             <VoiceWorkingHoursCard initial={workingHoursInitial} />
+          </div>
+
+          <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquare size={15} className="text-emerald-600" />
+              <h3 className="text-sm font-semibold text-gray-800">Call Summary Notifications</h3>
+            </div>
+            <p className="text-xs text-gray-400 mb-6">
+              After each completed call, send a WhatsApp summary to your internal team — including
+              call outcome, customer intent, sentiment, and recommended next steps.
+            </p>
+            <VoiceCallSummaryCard initial={callSummaryInitial} />
           </div>
         </div>
       </SettingsShell>
