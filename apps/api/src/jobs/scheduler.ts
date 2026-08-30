@@ -175,7 +175,23 @@ async function processNoReplyTriggers(): Promise<void> {
 
     if (!candidates?.length) continue;
 
-    for (const cand of candidates) {
+    // Deduplicate: skip any conversation that already had a call attempt in the last 24h
+    // (regardless of status — failed calls should not re-trigger immediately)
+    const convIds = candidates.map(c => c.conversation_id);
+    const { data: recentCalls } = await db
+      .from('voice_calls')
+      .select('conversation_id')
+      .in('conversation_id', convIds)
+      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+    const recentlyCalledConvIds = new Set(
+      (recentCalls ?? []).map(c => (c as { conversation_id: string }).conversation_id),
+    );
+    const deduped = candidates.filter(c => !recentlyCalledConvIds.has(c.conversation_id));
+
+    if (!deduped.length) continue;
+
+    for (const cand of deduped) {
       try {
         await dispatchCall({
           tenant_id:       row.tenant_id,
