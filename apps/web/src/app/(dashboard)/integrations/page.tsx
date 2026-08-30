@@ -1,14 +1,19 @@
 export const dynamic = 'force-dynamic';
 
-import { redirect }              from 'next/navigation';
-import { Plug, AlertCircle }     from 'lucide-react';
-import { getOrCreateIntegration, getWebhookLogs } from '@/app/actions/integrations';
-import { IntegrationsClient }    from '@/components/dashboard/IntegrationsClient';
+import { redirect }           from 'next/navigation';
+import { Plug, AlertCircle }  from 'lucide-react';
+import {
+  getOrCreateIntegration,
+  getWebhookLogs,
+  getOutboundLogs,
+} from '@/app/actions/integrations';
+import { IntegrationsClient } from '@/components/dashboard/IntegrationsClient';
 
 export default async function IntegrationsPage() {
-  const [{ settings, error }, { logs }] = await Promise.all([
+  const [{ settings, error }, { logs: inboundLogs }, { logs: outboundLogs }] = await Promise.all([
     getOrCreateIntegration(),
     getWebhookLogs(),
+    getOutboundLogs(),
   ]);
 
   if (error === 'Unauthorized') redirect('/login');
@@ -17,15 +22,15 @@ export default async function IntegrationsPage() {
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-
-      {/* Header */}
       <div>
         <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <Plug size={20} className="text-emerald-600" />
           Integrations
         </h2>
         <p className="text-sm text-gray-500 mt-1">
-          Connect your CRM, Zapier, or Make to automatically send a WhatsApp welcome message when a new lead or contact is created externally.
+          <strong>Inbound</strong> — external systems trigger WhatsApp welcome messages when new leads arrive.
+          &nbsp;·&nbsp;
+          <strong>Outbound</strong> — push contacts, conversations, and sentiment data to your CRM or automation platform in real time.
         </p>
       </div>
 
@@ -39,7 +44,8 @@ export default async function IntegrationsPage() {
         <IntegrationsClient
           settings={settings}
           apiBase={apiBase}
-          initialLogs={logs}
+          initialInboundLogs={inboundLogs}
+          initialOutboundLogs={outboundLogs}
         />
       )}
     </div>

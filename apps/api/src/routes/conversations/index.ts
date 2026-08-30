@@ -5,6 +5,7 @@ import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { claimEscalation, releaseToBot } from '../../services/escalation/index.js';
 import { summariseAndStoreConversation } from '../../services/contact/memory.js';
 import { fireForget } from '../../lib/fire-forget.js';
+import { fireOutboundWebhook } from '../../services/outbound/index.js';
 import type { Conversation } from '@alphabot/shared';
 
 export async function conversationRoutes(fastify: FastifyInstance): Promise<void> {
@@ -222,17 +223,42 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       })
       .eq('id', request.params.id)
       .eq('tenant_id', request.tenantId)
-      .select()
+      .select('*, contacts(phone, name)')
       .single();
 
     if (error) return reply.status(500).send({ success: false, error: error.message });
 
-    // When a conversation is resolved, summarise it and store in contact memory
-    // so the bot can greet returning customers with context from prior sessions.
+    // When resolved: summarise for contact memory + fire outbound event
     if (request.body.status === 'resolved') {
       fireForget(
         summariseAndStoreConversation(request.params.id),
         'summarise-resolved-conversation',
+        fastify.log,
+      );
+      const conv = data as { product_type?: string; contacts?: { phone?: string; name?: string } | null } | null;
+      fireForget(
+        fireOutboundWebhook(request.tenantId, 'conversation.resolved', {
+          conversation_id: request.params.id,
+          product_type:    conv?.product_type,
+          contact_phone:   conv?.contacts?.phone,
+          contact_name:    conv?.contacts?.name,
+        }, fastify.log),
+        'outbound-conversation-resolved',
+        fastify.log,
+      );
+    }
+
+    // When escalated: fire outbound event so CRM can assign to human agent
+    if (request.body.status === 'escalated') {
+      const conv = data as { product_type?: string; contacts?: { phone?: string; name?: string } | null } | null;
+      fireForget(
+        fireOutboundWebhook(request.tenantId, 'conversation.escalated', {
+          conversation_id: request.params.id,
+          product_type:    conv?.product_type,
+          contact_phone:   conv?.contacts?.phone,
+          contact_name:    conv?.contacts?.name,
+        }, fastify.log),
+        'outbound-conversation-escalated',
         fastify.log,
       );
     }
