@@ -259,16 +259,27 @@ export default async function ConversationsPage({
       query = query.or(`name.ilike.%${safeQ}%,phone.ilike.%${safeQ}%`);
     }
 
-    const [{ data: contacts }, { data: groupsData }, { data: membersData }] = await Promise.all([
+    const [{ data: contacts }, { data: groupsData }] = await Promise.all([
       query,
       admin.from('contact_groups').select('id, name, color, emoji').eq('tenant_id', tenantId).order('name'),
-      admin.from('contact_group_members').select('contact_id, group_id, added_by, contact_groups(name, color, emoji)').eq('tenant_id', tenantId),
     ]);
 
     contactRows = (contacts ?? []) as unknown as ContactRow[];
     allGroups   = (groupsData ?? []) as typeof allGroups;
 
-    for (const m of (membersData ?? []) as Array<{ contact_id: string; group_id: string; added_by: string; contact_groups: { name: string; color: string; emoji: string } | null }>) {
+    // Fetch memberships only for the contacts being shown
+    let membersData: unknown[] = [];
+    if (contactRows.length > 0) {
+      const contactIds = contactRows.map(c => c.id);
+      const { data: mData } = await admin
+        .from('contact_group_members')
+        .select('contact_id, group_id, added_by, contact_groups(name, color, emoji)')
+        .eq('tenant_id', tenantId)
+        .in('contact_id', contactIds);
+      membersData = mData ?? [];
+    }
+
+    for (const m of membersData as Array<{ contact_id: string; group_id: string; added_by: string; contact_groups: { name: string; color: string; emoji: string } | null }>) {
       if (!m.contact_groups) continue;
       const existing = groupMembershipMap.get(m.contact_id) ?? [];
       existing.push({ group_id: m.group_id, name: m.contact_groups.name, color: m.contact_groups.color, emoji: m.contact_groups.emoji, added_by: m.added_by });

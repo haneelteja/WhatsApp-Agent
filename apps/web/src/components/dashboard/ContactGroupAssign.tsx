@@ -21,6 +21,7 @@ export function ContactGroupAssign({
   const [suggesting,  setSuggesting]  = useState(false);
   const [suggestion,  setSuggestion]  = useState<{ group_id: string; group_name: string; reason: string } | null>(null);
   const [suggError,   setSuggError]   = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [pending,     startTransition] = useTransition();
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -38,16 +39,28 @@ export function ContactGroupAssign({
 
   function handleAdd(group: GroupOption) {
     setOpen(false);
+    setActionError(null);
+    const optimistic: AssignedGroup = { group_id: group.id, name: group.name, color: group.color, emoji: group.emoji, added_by: 'manual' };
+    setAssigned(prev => [...prev, optimistic]);
     startTransition(async () => {
-      await addContactToGroup(contactId, group.id, 'manual');
-      setAssigned(prev => [...prev, { group_id: group.id, name: group.name, color: group.color, emoji: group.emoji, added_by: 'manual' }]);
+      const result = await addContactToGroup(contactId, group.id, 'manual');
+      if (result.error) {
+        setAssigned(prev => prev.filter(a => a.group_id !== group.id));
+        setActionError(result.error);
+      }
     });
   }
 
   function handleRemove(groupId: string) {
+    setActionError(null);
+    const snapshot = assigned.find(a => a.group_id === groupId);
+    setAssigned(prev => prev.filter(a => a.group_id !== groupId));
     startTransition(async () => {
-      await removeContactFromGroup(contactId, groupId);
-      setAssigned(prev => prev.filter(a => a.group_id !== groupId));
+      const result = await removeContactFromGroup(contactId, groupId);
+      if (result.error && snapshot) {
+        setAssigned(prev => [...prev, snapshot]);
+        setActionError(result.error);
+      }
     });
   }
 
@@ -65,10 +78,16 @@ export function ContactGroupAssign({
     if (!suggestion) return;
     const group = allGroups.find(g => g.id === suggestion.group_id);
     if (!group) return;
+    setActionError(null);
+    const optimistic: AssignedGroup = { group_id: group.id, name: group.name, color: group.color, emoji: group.emoji, added_by: 'ai' };
+    setAssigned(prev => [...prev, optimistic]);
+    setSuggestion(null);
     startTransition(async () => {
-      await addContactToGroup(contactId, suggestion.group_id, 'ai', suggestion.reason);
-      setAssigned(prev => [...prev, { group_id: group.id, name: group.name, color: group.color, emoji: group.emoji, added_by: 'ai' }]);
-      setSuggestion(null);
+      const result = await addContactToGroup(contactId, suggestion.group_id, 'ai', suggestion.reason);
+      if (result.error) {
+        setAssigned(prev => prev.filter(a => a.group_id !== group.id));
+        setActionError(result.error);
+      }
     });
   }
 
@@ -125,8 +144,8 @@ export function ContactGroupAssign({
         </div>
       )}
 
-      {/* AI suggest button */}
-      {allGroups.length > 0 && !suggestion && (
+      {/* AI suggest button — only show if there are unassigned groups left */}
+      {unassigned.length > 0 && !suggestion && (
         <button
           type="button"
           onClick={handleAiSuggest}
@@ -168,10 +187,16 @@ export function ContactGroupAssign({
         </div>
       )}
 
-      {/* AI error */}
+      {/* AI suggest error */}
       {suggError && (
         <span className="text-[10px] text-red-500 italic max-w-[150px] truncate" title={suggError}>
           {suggError}
+        </span>
+      )}
+      {/* Add/remove action error */}
+      {actionError && (
+        <span className="text-[10px] text-red-500 italic max-w-[150px] truncate" title={actionError}>
+          {actionError}
         </span>
       )}
     </div>
