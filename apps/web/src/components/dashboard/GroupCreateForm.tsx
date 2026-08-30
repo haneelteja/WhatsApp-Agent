@@ -79,7 +79,7 @@ export function GroupCreateForm() {
                 title={c.label}
                 onClick={() => setColor(c.value)}
                 className={`w-7 h-7 rounded-full transition-all ${color === c.value ? 'ring-2 ring-offset-2 scale-110' : 'hover:scale-105'}`}
-                style={{ backgroundColor: c.value, ringColor: c.value }}
+                style={{ backgroundColor: c.value }}
               />
             ))}
           </div>
