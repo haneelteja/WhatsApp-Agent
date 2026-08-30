@@ -12,6 +12,7 @@ import {
 import { BotFilterBar } from '@/components/dashboard/BotFilterBar';
 import { MakeCallButton } from '@/components/dashboard/MakeCallButton';
 import { AutoRefresh } from '@/components/dashboard/AutoRefresh';
+import { ContactGroupAssign } from '@/components/dashboard/ContactGroupAssign';
 import type { ContactSentiment } from '@alphabot/shared';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
@@ -240,6 +241,9 @@ export default async function ConversationsPage({
   // Contacts data
   let contactRows: ContactRow[] = [];
   let contactStats = { total: 0, activeThisWeek: 0, positive: 0, frustrated: 0 };
+  let allGroups: { id: string; name: string; color: string; emoji: string }[] = [];
+  // Map of contact_id → assigned groups
+  let groupMembershipMap = new Map<string, { group_id: string; name: string; color: string; emoji: string; added_by: string }[]>();
 
   if (activeTab === 'contacts') {
     let query = admin
@@ -255,8 +259,21 @@ export default async function ConversationsPage({
       query = query.or(`name.ilike.%${safeQ}%,phone.ilike.%${safeQ}%`);
     }
 
-    const { data: contacts } = await query;
+    const [{ data: contacts }, { data: groupsData }, { data: membersData }] = await Promise.all([
+      query,
+      admin.from('contact_groups').select('id, name, color, emoji').eq('tenant_id', tenantId).order('name'),
+      admin.from('contact_group_members').select('contact_id, group_id, added_by, contact_groups(name, color, emoji)').eq('tenant_id', tenantId),
+    ]);
+
     contactRows = (contacts ?? []) as unknown as ContactRow[];
+    allGroups   = (groupsData ?? []) as typeof allGroups;
+
+    for (const m of (membersData ?? []) as Array<{ contact_id: string; group_id: string; added_by: string; contact_groups: { name: string; color: string; emoji: string } | null }>) {
+      if (!m.contact_groups) continue;
+      const existing = groupMembershipMap.get(m.contact_id) ?? [];
+      existing.push({ group_id: m.group_id, name: m.contact_groups.name, color: m.contact_groups.color, emoji: m.contact_groups.emoji, added_by: m.added_by });
+      groupMembershipMap.set(m.contact_id, existing);
+    }
 
     const oneWeekAgo = Date.now() - 7 * 86_400_000;
     const bySentiment = { positive: 0, neutral: 0, negative: 0, frustrated: 0 };
@@ -676,6 +693,15 @@ export default async function ConversationsPage({
                           <AlertCircle size={11} className="text-orange-400 shrink-0" />
                           <span className="text-xs text-orange-600 truncate">{openIssues[0]}</span>
                           {openIssues.length > 1 && <span className="text-xs text-slate-400">+{openIssues.length - 1}</span>}
+                        </div>
+                      )}
+                      {allGroups.length > 0 && (
+                        <div className="mt-2">
+                          <ContactGroupAssign
+                            contactId={contact.id}
+                            allGroups={allGroups}
+                            assignedGroups={groupMembershipMap.get(contact.id) ?? []}
+                          />
                         </div>
                       )}
                     </div>
