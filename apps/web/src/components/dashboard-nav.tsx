@@ -17,7 +17,6 @@ import {
   Zap,
   Target,
   MessageSquareMore,
-  Tag,
   Plug,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
@@ -39,7 +38,6 @@ const BASE_NAV = [
 ];
 
 const LEADS_ITEM        = { href: '/leads',        label: 'Leads',        icon: Target      };
-const GROUPS_ITEM       = { href: '/groups',       label: 'Groups',       icon: Tag         };
 const INTEGRATIONS_ITEM = { href: '/integrations', label: 'Integrations', icon: Plug        };
 const ORDERS_ITEM       = { href: '/orders',       label: 'Orders',       icon: ShoppingCart };
 
@@ -58,15 +56,15 @@ export function DashboardNav({
 
   // Items visible to each role (most-restrictive first)
   const AGENT_HREFS      = new Set(['/dashboard', '/conversations']);
-  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/groups', '/integrations', '/knowledge-base', '/orders', '/analytics', '/settings']);
+  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/integrations', '/knowledge-base', '/orders', '/analytics', '/settings']);
   // admin / client_manager — no filter (see everything)
 
   // Build nav dynamically — insert gated items at their correct positions
   const navItems = (() => {
     const items = [...BASE_NAV];
-    // Leads + Groups + Integrations go after Conversations
+    // Leads + Integrations go after Conversations
     const convsIdx = items.findIndex(i => i.href === '/conversations');
-    items.splice(convsIdx + 1, 0, LEADS_ITEM, GROUPS_ITEM, INTEGRATIONS_ITEM);
+    items.splice(convsIdx + 1, 0, LEADS_ITEM, INTEGRATIONS_ITEM);
     // Orders goes after Guardrails, lifecycle_bot only
     if (hasLifecycleBot) {
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
