@@ -7,12 +7,15 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import {
   MessageSquare, AlertCircle, Phone, PhoneCall, PhoneOff, PhoneMissed,
-  Clock, TrendingUp, IndianRupee, Users, Star, Search,
+  Clock, TrendingUp, IndianRupee, Users, Star, Search, Megaphone,
 } from 'lucide-react';
 import { BotFilterBar } from '@/components/dashboard/BotFilterBar';
 import { MakeCallButton } from '@/components/dashboard/MakeCallButton';
 import { AutoRefresh } from '@/components/dashboard/AutoRefresh';
 import { ContactGroupAssign } from '@/components/dashboard/ContactGroupAssign';
+import { BroadcastCreateForm } from '@/components/dashboard/BroadcastCreateForm';
+import { BroadcastList }       from '@/components/dashboard/BroadcastList';
+import { listBroadcasts }      from '@/app/actions/broadcasts';
 import type { ContactSentiment } from '@alphabot/shared';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
@@ -127,7 +130,7 @@ export default async function ConversationsPage({
 }) {
   const { tab: tabParam, bot: botParam, status: statusParam, sentiment: sentimentFilter = 'all', q: search = '' } = await searchParams;
 
-  const activeTab = tabParam === 'voice' ? 'voice' : tabParam === 'contacts' ? 'contacts' : 'chats';
+  const activeTab = tabParam === 'voice' ? 'voice' : tabParam === 'contacts' ? 'contacts' : tabParam === 'broadcasts' ? 'broadcasts' : 'chats';
   const botFilter    = botParam    && VALID_BOTS.has(botParam)       ? botParam    : null;
   const statusFilter = statusParam && VALID_STATUSES.has(statusParam) ? statusParam : null;
 
@@ -149,9 +152,10 @@ export default async function ConversationsPage({
 
   // ── Tab switcher ─────────────────────────────────────────────────────────────
   const tabs = [
-    { key: 'chats',    label: 'Chats',    icon: MessageSquare },
-    { key: 'voice',    label: 'Voice',    icon: Phone },
-    { key: 'contacts', label: 'Contacts', icon: Users },
+    { key: 'chats',      label: 'Chats',      icon: MessageSquare },
+    { key: 'voice',      label: 'Voice',      icon: Phone },
+    { key: 'contacts',   label: 'Contacts',   icon: Users },
+    { key: 'broadcasts', label: 'Broadcasts', icon: Megaphone },
   ];
 
   // ── Data fetching (only the active tab) ──────────────────────────────────────
@@ -300,6 +304,19 @@ export default async function ConversationsPage({
     };
   }
 
+  // Broadcasts data
+  let broadcastRows: Awaited<ReturnType<typeof listBroadcasts>>['broadcasts'] = [];
+  let broadcastGroups: { id: string; name: string; color: string; emoji: string }[] = [];
+
+  if (activeTab === 'broadcasts') {
+    const [{ broadcasts }, { data: gData }] = await Promise.all([
+      listBroadcasts(),
+      admin.from('contact_groups').select('id, name, color, emoji').eq('tenant_id', tenantId).order('name'),
+    ]);
+    broadcastRows  = broadcasts;
+    broadcastGroups = (gData ?? []) as typeof broadcastGroups;
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
   function statusHref(status: string | null) {
@@ -327,9 +344,10 @@ export default async function ConversationsPage({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-gray-900">
-            {activeTab === 'chats'    ? 'Conversations' :
-             activeTab === 'voice'    ? 'Voice Calls' :
-                                        'Contacts'}
+            {activeTab === 'chats'      ? 'Conversations' :
+             activeTab === 'voice'      ? 'Voice Calls' :
+             activeTab === 'broadcasts' ? 'Broadcasts' :
+                                          'Contacts'}
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
             {activeTab === 'chats'
@@ -340,6 +358,8 @@ export default async function ConversationsPage({
                   : 'All customer conversations across your bots')
               : activeTab === 'voice'
               ? 'AI voice call log — outbound escalations and campaigns'
+              : activeTab === 'broadcasts'
+              ? 'Send marketing or festival messages to your contacts on schedule'
               : 'All customers who have messaged your bot'}
           </p>
         </div>
@@ -740,6 +760,61 @@ export default async function ConversationsPage({
             {sentimentFilter !== 'all' ? ` · filtered by ${sentimentFilter}` : ''}
             {search ? ` · matching "${search}"` : ''}
           </p>
+        </>
+      )}
+
+      {/* ── BROADCASTS TAB ──────────────────────────────────────────────────── */}
+      {activeTab === 'broadcasts' && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Create form */}
+            <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-5">
+                <Megaphone size={15} className="text-emerald-600" />
+                <h3 className="text-sm font-semibold text-gray-800">New broadcast</h3>
+              </div>
+              <BroadcastCreateForm allGroups={broadcastGroups} />
+            </div>
+
+            {/* API reference */}
+            <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6 self-start">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">API trigger</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Send or schedule a broadcast programmatically from any external system.
+              </p>
+              <div className="bg-gray-950 rounded-xl p-4 text-xs font-mono text-gray-300 overflow-x-auto">
+                <p className="text-gray-500 mb-2"># Send now</p>
+                <p className="text-sky-400">POST</p>
+                <p className="text-gray-200 break-all">/api/broadcast/trigger</p>
+                <p className="text-gray-500 mt-3 mb-1">Headers:</p>
+                <p className="text-amber-300">x-api-key: {'<BROADCAST_API_KEY>'}</p>
+                <p className="text-gray-500 mt-3 mb-1">Body:</p>
+                <pre className="text-green-300 whitespace-pre-wrap">{JSON.stringify({
+                  tenant_id:     '<your-tenant-id>',
+                  name:          'Diwali Offer',
+                  message:       'Hi {name}! 🎉 Special offer inside.',
+                  audience_type: 'all | recent_7d | recent_10d | groups',
+                  group_ids:     ['<group-uuid>'],
+                  scheduled_at:  '2024-11-01T10:00:00Z',
+                }, null, 2)}</pre>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-3">
+                Set <code className="bg-gray-100 px-1 rounded">BROADCAST_API_KEY</code> in your Render environment variables.
+                Omit <code className="bg-gray-100 px-1 rounded">scheduled_at</code> to send immediately.
+              </p>
+            </div>
+          </div>
+
+          {/* History */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              Broadcast history
+              <span className="ml-2 text-[11px] font-normal text-gray-400">
+                {broadcastRows.length} total
+              </span>
+            </h3>
+            <BroadcastList broadcasts={broadcastRows} />
+          </div>
         </>
       )}
     </div>

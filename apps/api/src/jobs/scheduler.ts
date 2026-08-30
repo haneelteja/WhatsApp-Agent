@@ -3,6 +3,7 @@ import { getServerClient } from '@alphabot/database';
 import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
 import { dispatchPendingVoiceCalls, processCampaignContacts } from '../services/campaign/index.js';
+import { processScheduledBroadcasts } from '../services/broadcast/index.js';
 import { isWithinBusinessHours } from '../lib/business-hours.js';
 import { runInsightsForAllTenants } from '../services/insights/generator.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
@@ -364,6 +365,13 @@ export function startScheduler(): void {
   cron.schedule('0 */2 * * *', () => {
     void processLeadFollowUps().catch(err =>
       console.error('[Scheduler] Lead follow-up failed:', (err as Error).message)
+    );
+  });
+
+  // Scheduled broadcast execution — check every minute
+  cron.schedule('* * * * *', () => {
+    void processScheduledBroadcasts().catch(err =>
+      console.error('[Scheduler] Broadcast processing failed:', (err as Error).message)
     );
   });
 
