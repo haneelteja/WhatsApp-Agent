@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { captureException } from '@/lib/sentry';
+import { logError } from '@/lib/logger';
 
 export default function RootError({
   error,
@@ -10,7 +10,11 @@ export default function RootError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('[RootError]', error.digest, error.message);
+    logError(error, {
+      layer:  'Component',
+      source: 'RootError',
+      meta:   { digest: error.digest },
+    });
   }, [error]);
 
   return (
