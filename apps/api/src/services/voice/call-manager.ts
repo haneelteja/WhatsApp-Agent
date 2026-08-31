@@ -211,6 +211,8 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
     tenantFromNumber = tenantVoiceCfg.from_number;
   }
 
+  const isBridgeCall = !!req.agent_number;
+
   // Create voice_calls record first to get an ID
   const { data: callRow, error: insertErr } = await db
     .from('voice_calls')
@@ -220,14 +222,16 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
       contact_id:         req.contact_id        ?? null,
       campaign_id:        req.campaign_id       ?? null,
       direction:          'outbound',
-      from_number:        tenantVoiceCfg.from_number || '',
+      from_number:        req.from_number?.trim() || tenantVoiceCfg.from_number || '',
       to_number:          req.to_number,
       product_slug:       req.product_slug,
       telephony_provider: telephonyProvider,
       stt_provider:       voiceCfg.stt_provider  ?? 'deepgram',
       tts_provider:       voiceCfg.tts_provider  ?? 'twilio_say',
       status:             'initiated',
-      triggered_by:       req.triggered_by ?? 'manual',
+      triggered_by:       isBridgeCall ? 'bridge' : (req.triggered_by ?? 'manual'),
+      bridge_mode:        isBridgeCall,
+      agent_number:       req.agent_number ?? null,
     })
     .select('id')
     .single();
@@ -243,23 +247,39 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
   const statusCallback = `${API_BASE}/api/voice/status/${voiceCallId}`;
 
   try {
-    // Resolve providers — Exotel uses tenant creds; Twilio uses platform creds
-    const providers = await resolveVoiceProviders(voiceCfg, tenantFromNumber, tenantExotelCreds);
+    // Resolve providers. from_number override (Option A) takes precedence over tenant default.
+    const fromOverride = req.from_number?.trim() || tenantFromNumber;
+    const providers    = await resolveVoiceProviders(voiceCfg, fromOverride, tenantExotelCreds);
 
     await db.from('voice_calls')
       .update({ from_number: providers.fromNumber })
       .eq('id', voiceCallId);
 
-    const twimlWithContext = req.call_context
-      ? `${twimlUrl}?${new URLSearchParams(req.call_context).toString()}`
-      : twimlUrl;
+    let result: { callSid: string; status: string };
 
-    const result = await providers.telephony.dispatch({
-      to:             req.to_number,
-      from:           providers.fromNumber,
-      twimlUrl:       twimlWithContext,
-      statusCallback,
-    });
+    if (isBridgeCall) {
+      // Option B — bridge/click-to-call:
+      // 1. System calls the agent's personal number first.
+      // 2. When agent answers, /api/voice/bridge/answer/:id returns TwiML that dials the customer.
+      const bridgeAnswerUrl = `${API_BASE}/api/voice/bridge/answer/${voiceCallId}`;
+      result = await providers.telephony.dispatch({
+        to:             req.agent_number!,
+        from:           providers.fromNumber,
+        twimlUrl:       bridgeAnswerUrl,
+        statusCallback,
+      });
+    } else {
+      // Option A / standard — AI talks to the customer directly.
+      const twimlWithContext = req.call_context
+        ? `${twimlUrl}?${new URLSearchParams(req.call_context).toString()}`
+        : twimlUrl;
+      result = await providers.telephony.dispatch({
+        to:             req.to_number,
+        from:           providers.fromNumber,
+        twimlUrl:       twimlWithContext,
+        statusCallback,
+      });
+    }
 
     await db.from('voice_calls')
       .update({ telephony_call_sid: result.callSid, status: result.status })
@@ -273,7 +293,7 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
       })
       .eq('tenant_id', req.tenant_id);
 
-    return { voice_call_id: voiceCallId, telephony_call_sid: result.callSid, status: result.status };
+    return { voice_call_id: voiceCallId, telephony_call_sid: result.callSid, status: result.status as 'initiated' | 'in_progress' };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await db.from('voice_calls')

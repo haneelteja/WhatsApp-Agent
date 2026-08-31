@@ -4,13 +4,21 @@ import { useState, useTransition } from 'react';
 import {
   Phone, CheckCircle2, Save, Eye, EyeOff, RefreshCw,
   ChevronDown, ChevronUp, Zap, Clock, Mic, MessageSquare,
+  ArrowLeftRight, Plus, Trash2, Star,
 } from 'lucide-react';
 import { saveBotVoiceConfigAction } from '@/app/actions/bot-voice-config';
 import {
   saveClientExotelCredsAction,
   saveClientFromNumberAction,
   fetchExotelNumbersAction,
+  saveClientBridgeConfigAction,
 } from '@/app/actions/tenant-voice-config';
+import {
+  addVoiceNumberAction,
+  removeVoiceNumberAction,
+  setDefaultVoiceNumberAction,
+  type VoiceNumberRow,
+} from '@/app/actions/tenant-voice-numbers';
 import type { BotVoiceConfig } from '@alphabot/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,8 +36,11 @@ export interface ExotelConfigRow {
 }
 
 export interface ClientVoiceConfigCardProps {
-  bots:   BotVoiceConfigRow[];
-  exotel: ExotelConfigRow | null;
+  bots:               BotVoiceConfigRow[];
+  exotel:             ExotelConfigRow | null;
+  voiceNumbers?:      VoiceNumberRow[];
+  bridgeModeEnabled?: boolean;
+  defaultAgentNumber?: string;
 }
 
 // ─── Language + voice options ─────────────────────────────────────────────────
@@ -415,9 +426,210 @@ function ExotelSection({ initial }: { initial: ExotelConfigRow | null }) {
   );
 }
 
+// ─── Virtual numbers management ───────────────────────────────────────────────
+
+function VoiceNumbersSection({ initial }: { initial: VoiceNumberRow[] }) {
+  const [numbers,   setNumbers]   = useState<VoiceNumberRow[]>(initial);
+  const [newNum,    setNewNum]    = useState('');
+  const [newLabel,  setNewLabel]  = useState('');
+  const [newProv,   setNewProv]   = useState<'twilio' | 'exotel'>('twilio');
+  const [mkDefault, setMkDefault] = useState(numbers.length === 0);
+  const [error,     setError]     = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleAdd() {
+    if (!newNum.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await addVoiceNumberAction(newNum.trim(), newLabel.trim(), newProv, mkDefault || numbers.length === 0);
+      if (res.error) { setError(res.error); return; }
+      // Refetch optimistically
+      const updated: VoiceNumberRow[] = [
+        ...(mkDefault || numbers.length === 0 ? numbers.map(n => ({ ...n, is_default: false })) : numbers),
+        {
+          id: `tmp-${Date.now()}`, number: newNum.trim().startsWith('+') ? newNum.trim() : `+${newNum.trim()}`,
+          label: newLabel.trim(), provider: newProv,
+          is_default: mkDefault || numbers.length === 0,
+          active: true, created_at: new Date().toISOString(),
+        },
+      ];
+      setNumbers(updated);
+      setNewNum(''); setNewLabel(''); setMkDefault(false);
+    });
+  }
+
+  function handleRemove(id: string) {
+    startTransition(async () => {
+      await removeVoiceNumberAction(id);
+      setNumbers(prev => prev.filter(n => n.id !== id));
+    });
+  }
+
+  function handleSetDefault(id: string) {
+    startTransition(async () => {
+      await setDefaultVoiceNumberAction(id);
+      setNumbers(prev => prev.map(n => ({ ...n, is_default: n.id === id })));
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-gray-800">Virtual Numbers</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Phone numbers used as Caller ID when dispatching calls. Add Twilio or Exotel numbers here — you can pick one per call from the Make a Call button.
+        </p>
+      </div>
+
+      {/* Existing numbers list */}
+      {numbers.length > 0 && (
+        <div className="space-y-2">
+          {numbers.map(n => (
+            <div key={n.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+              <Phone size={13} className="text-gray-400 shrink-0" />
+              <span className="text-sm font-mono text-gray-800 flex-1 min-w-0 truncate">{n.number}</span>
+              {n.label && <span className="text-[11px] text-gray-400 truncate max-w-[100px]">{n.label}</span>}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${n.provider === 'exotel' ? 'bg-orange-50 text-orange-600' : 'bg-sky-50 text-sky-600'}`}>
+                {n.provider}
+              </span>
+              {n.is_default ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">default</span>
+              ) : (
+                <button type="button" onClick={() => handleSetDefault(n.id)} disabled={isPending}
+                  title="Set as default" className="text-gray-300 hover:text-amber-400 transition-colors">
+                  <Star size={13} />
+                </button>
+              )}
+              <button type="button" onClick={() => handleRemove(n.id)} disabled={isPending}
+                className="text-gray-300 hover:text-red-400 transition-colors ml-1">
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new number */}
+      <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-3 space-y-2">
+        <p className="text-xs font-medium text-gray-500">Add a number</p>
+        <div className="grid grid-cols-2 gap-2">
+          <input type="tel" value={newNum} onChange={e => setNewNum(e.target.value)}
+            placeholder="+91xxxxxxxxxx"
+            className="text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white col-span-2 sm:col-span-1" />
+          <input type="text" value={newLabel} onChange={e => setNewLabel(e.target.value)}
+            placeholder="Label (e.g. Support)"
+            className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white col-span-2 sm:col-span-1" />
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <select value={newProv} onChange={e => setNewProv(e.target.value as 'twilio' | 'exotel')}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300">
+            <option value="twilio">Twilio</option>
+            <option value="exotel">Exotel</option>
+          </select>
+          <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+            <input type="checkbox" checked={mkDefault} onChange={e => setMkDefault(e.target.checked)}
+              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-400" />
+            Set as default
+          </label>
+          <button type="button" onClick={handleAdd} disabled={isPending || !newNum.trim()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors ml-auto">
+            <Plus size={12} />
+            {isPending ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Bridge mode settings ─────────────────────────────────────────────────────
+
+function BridgeModeSection({
+  initialEnabled,
+  initialAgentNumber,
+}: {
+  initialEnabled:     boolean;
+  initialAgentNumber: string;
+}) {
+  const [enabled,     setEnabled]     = useState(initialEnabled);
+  const [agentNumber, setAgentNumber] = useState(initialAgentNumber);
+  const [saved,       setSaved]       = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [isPending,   startTransition] = useTransition();
+
+  function handleSave() {
+    setError(null); setSaved(false);
+    startTransition(async () => {
+      const res = await saveClientBridgeConfigAction(enabled, agentNumber);
+      if (res.error) setError(res.error);
+      else { setSaved(true); setTimeout(() => setSaved(false), 3000); }
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+          <ArrowLeftRight size={14} className="text-violet-500" />
+          Bridge / Click-to-Call
+        </p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          When enabled, agents can trigger a call that rings their personal phone first, then connects to the customer — no headset or softphone needed.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 bg-violet-50 border border-violet-100 rounded-xl px-4 py-3">
+        <div>
+          <p className="text-sm font-medium text-violet-900">Enable bridge calls</p>
+          <p className="text-xs text-violet-500 mt-0.5">Shows "Bridge call" toggle inside Make a Call button</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEnabled(v => !v)}
+          className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-1 ${
+            enabled ? 'bg-violet-500' : 'bg-gray-200'
+          }`}
+          aria-pressed={enabled}
+        >
+          <span className={`inline-block h-4 w-4 mt-0.5 ml-0.5 rounded-full bg-white shadow transition-transform duration-200 ${enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+        </button>
+      </div>
+
+      {enabled && (
+        <div>
+          <label className="text-xs font-medium text-gray-500 block mb-1">
+            Default agent number <span className="text-gray-300">(optional)</span>
+          </label>
+          <input
+            type="tel"
+            value={agentNumber}
+            onChange={e => setAgentNumber(e.target.value)}
+            placeholder="+91 99999 00000"
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 font-mono focus:outline-none focus:ring-2 focus:ring-violet-300"
+          />
+          <p className="text-[11px] text-gray-400 mt-1">
+            Pre-filled in the Make a Call dialog. Each agent can still override this per call.
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={handleSave} disabled={isPending}
+          className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors">
+          <Save size={12} />
+          {isPending ? 'Saving…' : 'Save'}
+        </button>
+        {saved && <span className="text-xs text-violet-600 font-medium">Saved</span>}
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main card ────────────────────────────────────────────────────────────────
 
-export function ClientVoiceConfigCard({ bots, exotel }: ClientVoiceConfigCardProps) {
+export function ClientVoiceConfigCard({ bots, exotel, voiceNumbers = [], bridgeModeEnabled = false, defaultAgentNumber = '' }: ClientVoiceConfigCardProps) {
   const [showExotel, setShowExotel] = useState(exotel?.has_exotel_creds ?? false);
 
   return (
@@ -447,6 +659,16 @@ export function ClientVoiceConfigCard({ bots, exotel }: ClientVoiceConfigCardPro
           {bots.map(bot => <BotVoiceRow key={bot.product_slug} bot={bot} />)}
         </div>
       )}
+
+      {/* Virtual numbers management — Option A */}
+      <div className="border-t border-gray-100 pt-4">
+        <VoiceNumbersSection initial={voiceNumbers} />
+      </div>
+
+      {/* Bridge mode settings — Option B */}
+      <div className="border-t border-gray-100 pt-4">
+        <BridgeModeSection initialEnabled={bridgeModeEnabled} initialAgentNumber={defaultAgentNumber} />
+      </div>
 
       {/* Optional Exotel section */}
       <div className="border-t border-gray-100 pt-4">

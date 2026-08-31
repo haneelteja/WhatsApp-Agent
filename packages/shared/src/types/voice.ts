@@ -76,7 +76,20 @@ export type VoiceCallStatus =
   | 'initiated' | 'ringing' | 'in_progress'
   | 'completed' | 'failed' | 'no_answer' | 'voicemail' | 'busy';
 
-export type VoiceCallTrigger = 'escalation' | 'campaign' | 'manual' | 'inbound';
+export type VoiceCallTrigger = 'escalation' | 'campaign' | 'manual' | 'inbound' | 'bridge';
+
+// ─── Tenant Virtual Numbers ───────────────────────────────────────────────────
+
+export interface TenantVoiceNumber {
+  id:         string;
+  tenant_id:  string;
+  number:     string;          // E.164
+  label:      string;
+  provider:   TelephonyProviderName;
+  is_default: boolean;
+  active:     boolean;
+  created_at: string;
+}
 export type VoiceCallDirection = 'inbound' | 'outbound';
 
 export interface VoiceCallOutcome {
@@ -202,12 +215,16 @@ export interface CampaignContact {
 export interface DispatchCallRequest {
   tenant_id:        string;
   product_slug:     string;
-  to_number:        string;           // E.164 e.g. +919876543210
+  to_number:        string;           // E.164 — the customer's number
   conversation_id?: string;
   contact_id?:      string;
   campaign_id?:     string;
   triggered_by?:    VoiceCallTrigger;
   call_context?:    Record<string, string>;  // extra info injected into agent greeting
+  // Option A — override which virtual number to use as Caller ID
+  from_number?:     string;           // E.164; must be in tenant_voice_numbers
+  // Option B — bridge/click-to-call: system calls agent first, then bridges to customer
+  agent_number?:    string;           // E.164 personal number; implies triggered_by='bridge'
 }
 
 export interface DispatchCallResponse {

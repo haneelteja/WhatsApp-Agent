@@ -310,6 +310,28 @@ export default async function ConversationsPage({
     broadcastGroups = (gData ?? []) as typeof broadcastGroups;
   }
 
+  // Voice numbers + bridge config (always fetched — used in voice tab header)
+  const [{ data: voiceNumberRows }, { data: voiceCfgRow }] = await Promise.all([
+    admin
+      .from('tenant_voice_numbers')
+      .select('id, number, label, provider, is_default')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true }),
+    admin
+      .from('tenant_voice_configs')
+      .select('bridge_mode_enabled, bridge_default_agent_number')
+      .eq('tenant_id', tenantId)
+      .maybeSingle(),
+  ]);
+
+  const voiceNumbers = (voiceNumberRows ?? []) as {
+    id: string; number: string; label: string; provider: string; is_default: boolean;
+  }[];
+  const bridgeModeEnabled  = (voiceCfgRow as { bridge_mode_enabled?: boolean } | null)?.bridge_mode_enabled ?? false;
+  const defaultAgentNumber = (voiceCfgRow as { bridge_default_agent_number?: string | null } | null)?.bridge_default_agent_number ?? '';
+
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
   function statusHref(status: string | null) {
@@ -363,7 +385,14 @@ export default async function ConversationsPage({
         )}
         {activeTab === 'voice' && (
           <div className="flex items-center gap-2">
-            <MakeCallButton tenantId={tenantId} productSlug="support_bot" apiBase={apiBase} />
+            <MakeCallButton
+              tenantId={tenantId}
+              productSlug="support_bot"
+              apiBase={apiBase}
+              voiceNumbers={voiceNumbers}
+              bridgeModeEnabled={bridgeModeEnabled}
+              defaultAgentNumber={defaultAgentNumber}
+            />
             <Link href="/campaigns" className="text-sm font-medium border border-emerald-200 text-emerald-700 px-4 py-2 rounded-xl hover:bg-emerald-50 transition-colors">
               + Campaign
             </Link>

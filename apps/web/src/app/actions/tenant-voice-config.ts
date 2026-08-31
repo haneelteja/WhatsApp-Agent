@@ -167,6 +167,44 @@ export async function saveClientFromNumberAction(
   return {};
 }
 
+// ─── Bridge mode (client dashboard) ──────────────────────────────────────────
+
+/** Client enables/disables bridge mode and sets their default agent number. */
+export async function saveClientBridgeConfigAction(
+  bridgeModeEnabled: boolean,
+  bridgeDefaultAgentNumber: string,
+): Promise<{ error?: string }> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Not authenticated' };
+
+  const admin = getSupabaseAdminClient();
+  const { data: tenantUser } = await admin
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single();
+  if (!tenantUser) return { error: 'Tenant not found' };
+
+  const normalized = bridgeDefaultAgentNumber.trim();
+  const e164 = normalized && !normalized.startsWith('+') ? `+${normalized}` : normalized;
+
+  const { error } = await admin
+    .from('tenant_voice_configs')
+    .upsert(
+      {
+        tenant_id:                    tenantUser.tenant_id,
+        bridge_mode_enabled:          bridgeModeEnabled,
+        bridge_default_agent_number:  e164 || null,
+      },
+      { onConflict: 'tenant_id' },
+    );
+
+  if (error) return { error: error.message };
+  revalidatePath('/settings');
+  return {};
+}
+
 // ─── Exotel virtual numbers fetch ─────────────────────────────────────────────
 
 interface ExotelNumber {

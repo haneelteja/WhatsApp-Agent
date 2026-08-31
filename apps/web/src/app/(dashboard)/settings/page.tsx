@@ -456,13 +456,19 @@ export default async function SettingsPage({
 
   // ── Voice data ──────────────────────────────────────────────────────────────
   if (activeTab === 'voice') {
-    const [{ data: voiceProducts }, { data: botCfgs }, { data: tvc }] = await Promise.all([
+    const [{ data: voiceProducts }, { data: botCfgs }, { data: tvc }, { data: voiceNumRows }] = await Promise.all([
       admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
       admin.from('bot_configs').select('product_slug, voice_config').eq('tenant_id', tenantId),
       admin.from('tenant_voice_configs')
-        .select('from_number, exotel_api_key, exotel_account_sid, timezone, working_hours_enabled, working_hours_json, call_summary_enabled, call_summary_wa_numbers')
+        .select('from_number, exotel_api_key, exotel_account_sid, timezone, working_hours_enabled, working_hours_json, call_summary_enabled, call_summary_wa_numbers, bridge_mode_enabled, bridge_default_agent_number')
         .eq('tenant_id', tenantId)
         .maybeSingle(),
+      admin.from('tenant_voice_numbers')
+        .select('id, number, label, provider, is_default, active, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true }),
     ]);
 
     const BOT_NAMES: Record<string, string> = {
@@ -478,15 +484,21 @@ export default async function SettingsPage({
     }));
 
     const tvcRow = tvc as {
-      from_number:              string;
-      exotel_api_key:           string | null;
-      exotel_account_sid:       string | null;
-      timezone:                 string | null;
-      working_hours_enabled:    boolean | null;
-      working_hours_json:       WorkingHoursInitial['working_hours_json'] | null;
-      call_summary_enabled:     boolean | null;
-      call_summary_wa_numbers:  string[] | null;
+      from_number:                  string;
+      exotel_api_key:               string | null;
+      exotel_account_sid:           string | null;
+      timezone:                     string | null;
+      working_hours_enabled:        boolean | null;
+      working_hours_json:           WorkingHoursInitial['working_hours_json'] | null;
+      call_summary_enabled:         boolean | null;
+      call_summary_wa_numbers:      string[] | null;
+      bridge_mode_enabled:          boolean | null;
+      bridge_default_agent_number:  string | null;
     } | null;
+
+    const settingsVoiceNumbers = (voiceNumRows ?? []) as {
+      id: string; number: string; label: string; provider: string; is_default: boolean; active: boolean; created_at: string;
+    }[];
 
     const exotelInitial: ExotelConfigRow | null = tvcRow
       ? {
@@ -523,7 +535,13 @@ export default async function SettingsPage({
               Enable voice calls for each bot. When enabled, your bot can make AI-powered outbound calls —
               on escalation, on demand, or via campaign. Platform voice (Twilio) is managed for you.
             </p>
-            <ClientVoiceConfigCard bots={voiceBots} exotel={exotelInitial} />
+            <ClientVoiceConfigCard
+              bots={voiceBots}
+              exotel={exotelInitial}
+              voiceNumbers={settingsVoiceNumbers}
+              bridgeModeEnabled={tvcRow?.bridge_mode_enabled ?? false}
+              defaultAgentNumber={tvcRow?.bridge_default_agent_number ?? ''}
+            />
           </div>
 
           <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">

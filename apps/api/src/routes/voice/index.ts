@@ -308,4 +308,114 @@ export async function voiceRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.send(estimate);
     },
   );
+
+  // ─── POST /api/voice/bridge/answer/:voiceCallId ───────────────────────────
+  // Twilio calls this when the AGENT answers their personal phone.
+  // Returns TwiML that immediately bridges the agent to the customer.
+  fastify.post<{ Params: { voiceCallId: string } }>(
+    '/bridge/answer/:voiceCallId',
+    async (request, reply) => {
+      const { voiceCallId } = request.params;
+      const db = getServerClient();
+
+      const { data: callRow } = await db
+        .from('voice_calls')
+        .select('to_number, from_number')
+        .eq('id', voiceCallId)
+        .single();
+
+      if (!callRow) {
+        return reply.status(200).type('text/xml').send(
+          '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Call not found.</Say><Hangup/></Response>',
+        );
+      }
+
+      await db.from('voice_calls').update({ status: 'in_progress' }).eq('id', voiceCallId);
+
+      const statusCallback = `${process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com'}/api/voice/status/${voiceCallId}`;
+
+      const twiml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Response>',
+        '  <Say voice="alice">Connecting you to the customer now. Please hold.</Say>',
+        `  <Dial callerId="${callRow.from_number}" action="${statusCallback}">`,
+        `    <Number>${callRow.to_number}</Number>`,
+        '  </Dial>',
+        '</Response>',
+      ].join('\n');
+
+      return reply.status(200).type('text/xml').send(twiml);
+    },
+  );
+
+  // ─── GET /api/voice/numbers/:tenantId ─────────────────────────────────────
+  fastify.get<{ Params: { tenantId: string } }>(
+    '/numbers/:tenantId',
+    async (request, reply) => {
+      const { tenantId } = request.params;
+      const db = getServerClient();
+      const { data, error } = await db
+        .from('tenant_voice_numbers')
+        .select('id, number, label, provider, is_default, active, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true });
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.send({ numbers: data ?? [] });
+    },
+  );
+
+  // ─── POST /api/voice/numbers ──────────────────────────────────────────────
+  fastify.post<{ Body: { tenant_id: string; number: string; label?: string; provider?: string; is_default?: boolean } }>(
+    '/numbers',
+    async (request, reply) => {
+      const { tenant_id, number, label = '', provider = 'twilio', is_default = false } = request.body;
+      if (!tenant_id || !number) return reply.status(400).send({ error: 'tenant_id and number are required' });
+
+      const db = getServerClient();
+
+      if (is_default) {
+        // Clear any existing default for this tenant first
+        await db.from('tenant_voice_numbers').update({ is_default: false }).eq('tenant_id', tenant_id);
+      }
+
+      const { data, error } = await db
+        .from('tenant_voice_numbers')
+        .upsert({ tenant_id, number: number.trim(), label, provider, is_default }, { onConflict: 'tenant_id,number' })
+        .select('id, number, label, provider, is_default, active')
+        .single();
+
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.status(201).send(data);
+    },
+  );
+
+  // ─── DELETE /api/voice/numbers/:id ───────────────────────────────────────
+  fastify.delete<{ Params: { id: string } }>(
+    '/numbers/:id',
+    async (request, reply) => {
+      const { id } = request.params;
+      const db = getServerClient();
+      const { error } = await db.from('tenant_voice_numbers').update({ active: false }).eq('id', id);
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.status(204).send();
+    },
+  );
+
+  // ─── PATCH /api/voice/numbers/:id/default ────────────────────────────────
+  fastify.patch<{ Params: { id: string }; Body: { tenant_id: string } }>(
+    '/numbers/:id/default',
+    async (request, reply) => {
+      const { id } = request.params;
+      const { tenant_id } = request.body;
+      if (!tenant_id) return reply.status(400).send({ error: 'tenant_id is required' });
+
+      const db = getServerClient();
+      await db.from('tenant_voice_numbers').update({ is_default: false }).eq('tenant_id', tenant_id);
+      const { error } = await db.from('tenant_voice_numbers').update({ is_default: true }).eq('id', id);
+      if (error) return reply.status(500).send({ error: error.message });
+      return reply.status(200).send({ ok: true });
+    },
+  );
 }
