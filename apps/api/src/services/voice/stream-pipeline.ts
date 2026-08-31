@@ -333,10 +333,12 @@ export async function handleStreamSession(
       log.error({ err, voiceCallId }, '[Stream] Turn failed');
       try {
         const fallbackAudio = await synthesiseSpeech(
-          'I am having trouble with that. Could you repeat?',
+          'Sorry, I had a bit of trouble there. Could you say that again?',
           language, voiceId,
         );
         if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+          isBotSpeaking        = true;
+          botSpeakingStartedAt = Date.now();
           sendAudio(twilioWs, streamSid, fallbackAudio);
         }
       } catch { /* ignore */ }
@@ -455,14 +457,16 @@ export async function handleStreamSession(
             DEFAULT_GREETINGS['support_bot']!;
 
           try {
-            isBotSpeaking = true;
             const greetingAudio = await synthesiseSpeech(greeting, language, voiceId);
             if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+              isBotSpeaking        = true;
+              botSpeakingStartedAt = Date.now();
               sendAudio(twilioWs, streamSid, greetingAudio);
             }
           } catch (err) {
             log.error({ err, voiceCallId }, '[Stream] Greeting synthesis failed');
-            isBotSpeaking = false;
+            isBotSpeaking        = false;
+            botSpeakingStartedAt = null;
           }
           break;
         }
