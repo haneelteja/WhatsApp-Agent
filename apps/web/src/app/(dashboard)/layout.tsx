@@ -1,10 +1,17 @@
 import { cache }    from 'react';
 import { redirect } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
 import { DashboardNav }  from '@/components/dashboard-nav';
 import { Topbar }        from '@/components/topbar';
-import { CopilotWidget, type CopilotMessage } from '@/components/dashboard/CopilotWidget';
+import type { CopilotMessage } from '@/components/dashboard/CopilotWidget';
+
+// Code-split the widget — it's ~15 KB of JS not needed for initial paint or SSR.
+const CopilotWidget = dynamic(
+  () => import('@/components/dashboard/CopilotWidget').then(m => ({ default: m.CopilotWidget })),
+  { ssr: false },
+);
 
 // React.cache() deduplicates within a single server request — the layout and
 // any child server components share one DB round-trip instead of making N.

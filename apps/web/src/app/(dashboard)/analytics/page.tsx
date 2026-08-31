@@ -1,6 +1,7 @@
-import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { unstable_cache } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSession } from '@/lib/session';
 import { MessageSquare, Zap, TrendingUp, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -13,47 +14,52 @@ const AnalyticsCharts = dynamic(
   },
 );
 
+// Cache the 7 DB queries server-side for 5 minutes per tenant.
+// Dates are computed inside the cached function so the query windows are
+// fixed at cache-fill time — up to 5-minute staleness is fine for analytics.
+const getAnalyticsData = unstable_cache(
+  async (tenantId: string) => {
+    const admin          = getSupabaseAdminClient();
+    const sevenDaysAgo   = new Date(Date.now() - 7  * 86400000).toISOString();
+    const thirtyDaysAgo  = new Date(Date.now() - 30 * 86400000).toISOString();
+    const currentMonth   = new Date().toISOString().slice(0, 7) + '-01'; // "YYYY-MM-01" matches DATE column
+
+    const [
+      { count: totalConvs },
+      { count: openConvs },
+      { count: resolvedConvs },
+      { count: escalatedTotal },
+      { data: tokenRow },
+      { data: weekEvents },
+      { data: monthEvents },
+    ] = await Promise.all([
+      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
+      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'resolved'),
+      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['escalated']),
+      // Single-row aggregate lookup — O(1) vs full usage_events table scan
+      admin.from('tenant_token_usage_monthly').select('tokens_used').eq('tenant_id', tenantId).eq('month', currentMonth).maybeSingle(),
+      admin.from('usage_events').select('event_type, created_at').eq('tenant_id', tenantId).gte('created_at', sevenDaysAgo),
+      admin.from('usage_events').select('event_type, product_type').eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo),
+    ]);
+
+    return { totalConvs, openConvs, resolvedConvs, escalatedTotal, tokenRow, weekEvents, monthEvents };
+  },
+  ['analytics'],
+  { revalidate: 300 },
+);
+
 export default async function AnalyticsPage() {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
+  const session = await getSession();
+  if (!session) redirect('/login');
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-
-  const { data: tenantUser } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!tenantUser?.tenant_id) redirect('/login');
-  const tenantId = tenantUser.tenant_id;
-  const sevenDaysAgo  = new Date(Date.now() - 7  * 86400000).toISOString();
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
-  const currentMonth  = new Date().toISOString().slice(0, 7) + '-01'; // "YYYY-MM-01" matches DATE column
-
-  const [
-    { count: totalConvs },
-    { count: openConvs },
-    { count: resolvedConvs },
-    { count: escalatedTotal },
-    { data: tokenRow },
-    { data: weekEvents },
-    { data: monthEvents },
-  ] = await Promise.all([
-    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
-    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
-    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'resolved'),
-    admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['escalated']),
-    // Single-row aggregate lookup — O(1) vs full usage_events table scan
-    admin.from('tenant_token_usage_monthly').select('tokens_used').eq('tenant_id', tenantId).eq('month', currentMonth).maybeSingle(),
-    admin.from('usage_events').select('event_type, created_at').eq('tenant_id', tenantId).gte('created_at', sevenDaysAgo),
-    admin.from('usage_events').select('event_type, product_type').eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo),
-  ]);
+  const { tenantId } = session;
+  const { totalConvs, openConvs, resolvedConvs, escalatedTotal, tokenRow, weekEvents, monthEvents } =
+    await getAnalyticsData(tenantId);
 
   // Aggregate totals
-  const totalTokens   = (tokenRow as { tokens_used?: number } | null)?.tokens_used ?? 0;
-  const totalMessages = (monthEvents ?? []).filter(e => e.event_type === 'message_sent').length;
+  const totalTokens    = (tokenRow as { tokens_used?: number } | null)?.tokens_used ?? 0;
+  const totalMessages  = (monthEvents ?? []).filter(e => e.event_type === 'message_sent').length;
   const escalationRate = totalConvs
     ? Math.round(((escalatedTotal ?? 0) / totalConvs) * 100)
     : 0;

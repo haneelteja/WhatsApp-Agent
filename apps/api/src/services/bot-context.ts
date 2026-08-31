@@ -2,7 +2,9 @@ import { getServerClient } from '@alphabot/database';
 import { cacheGet, cacheSet, cacheDelPattern } from '../lib/redis.js';
 import type { BotConfig, LayeredGuardrailsConfig, PlatformGuardrails, Product } from '@alphabot/shared';
 
-const TTL = 60; // seconds — config changes are admin-driven and infrequent
+// 300s — config changes are admin-driven and infrequent; 5-minute staleness is acceptable.
+// Previous value was 60s, which caused unnecessary DB round-trips on every message.
+const TTL = 300;
 
 export interface BotContext {
   whatsapp_number: { config_json: Record<string, string>; provider: string } | null;
@@ -108,7 +110,7 @@ export async function getBotContext(
 }
 
 /**
- * Invalidate cached bot context for a tenant (call from settings PATCH routes).
+ * Invalidate cached bot context for a tenant (call after any settings mutation).
  */
 export async function invalidateBotContext(tenantId: string, productSlug?: string): Promise<void> {
   const pattern = productSlug

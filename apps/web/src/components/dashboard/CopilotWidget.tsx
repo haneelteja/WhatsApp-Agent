@@ -128,6 +128,7 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
   const [messages, setMessages] = useState<CopilotMessage[]>(initialMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false); // sync read to avoid stale closure in sendMessage
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevInitialRef = useRef(initialMessages);
@@ -136,23 +137,30 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
   useEffect(() => {
     if (prevInitialRef.current !== initialMessages) {
       prevInitialRef.current = initialMessages;
-      if (!loading) setMessages(initialMessages);
+      if (!loadingRef.current) setMessages(initialMessages);
     }
-  }, [initialMessages, loading]);
+  }, [initialMessages]);
 
+  // Single scroll effect — fires when panel opens or new messages arrive.
+  // Using 'auto' (instant) avoids two competing smooth-scroll animations.
   useEffect(() => {
-    if (open) {
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
+    if (!open) return;
+    const timer = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 0);
+    return () => clearTimeout(timer);
+  }, [messages, open]);
+
+  // Focus input after panel animation completes (~200ms)
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 200);
+    return () => clearTimeout(timer);
   }, [open]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
+  // sendMessage has no loading in its deps — reads loadingRef instead.
+  // This prevents a new function reference on every loading-state change,
+  // which previously caused unnecessary child re-renders via onKeyDown.
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim() || loadingRef.current) return;
 
     const userMsg: CopilotMessage = {
       id: crypto.randomUUID(),
@@ -163,6 +171,7 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+    loadingRef.current = true;
 
     try {
       const res = await fetch('/api/copilot/chat', {
@@ -216,14 +225,16 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
       }]);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  }, [loading]);
+  }, []); // stable across renders
 
   const handleAction = useCallback(async (msg: CopilotMessage, approved: boolean) => {
     setMessages(prev =>
       prev.map(m => m.id === msg.id ? { ...m, actionStatus: approved ? 'approved' : 'cancelled' } : m)
     );
     setLoading(true);
+    loadingRef.current = true;
 
     try {
       const res = await fetch('/api/copilot/action', {
@@ -247,6 +258,7 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
       }]);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }, []);
 
