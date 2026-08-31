@@ -203,10 +203,10 @@ export default async function DashboardPage() {
   const activeSlugs  = (activeProducts ?? []).map(p => p.product_type as string);
 
   const stats = [
-    { label: 'Open',      value: openCount      ?? 0, sub: 'Bot handling',   icon: MessageSquare, iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', valColor: 'text-emerald-700' },
-    { label: 'Escalated', value: escalationCount ?? 0, sub: 'Need attention', icon: AlertCircle,   iconBg: 'bg-red-100',     iconColor: 'text-red-600',     valColor: 'text-red-700'     },
-    { label: 'Resolved',  value: resolvedCount   ?? 0, sub: 'All time',       icon: CheckCircle2,  iconBg: 'bg-sky-100',     iconColor: 'text-sky-600',     valColor: 'text-sky-700'     },
-    { label: 'Total',     value: totalCount      ?? 0, sub: 'Conversations',  icon: Bot,           iconBg: 'bg-violet-100',  iconColor: 'text-violet-600',  valColor: 'text-violet-700'  },
+    { label: 'Open',      value: openCount      ?? 0, sub: 'Active right now',    href: '/conversations?tab=chats&status=open',      icon: MessageSquare, iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', valColor: 'text-emerald-700' },
+    { label: 'Escalated', value: escalationCount ?? 0, sub: 'Need attention',     href: '/conversations?tab=chats&status=escalated', icon: AlertCircle,   iconBg: 'bg-red-100',     iconColor: 'text-red-600',     valColor: 'text-red-700'     },
+    { label: 'Resolved',  value: resolvedCount   ?? 0, sub: 'All time',           href: '/conversations?tab=chats&status=resolved',  icon: CheckCircle2,  iconBg: 'bg-sky-100',     iconColor: 'text-sky-600',     valColor: 'text-sky-700'     },
+    { label: 'Total',     value: totalCount      ?? 0, sub: 'All conversations',  href: '/conversations?tab=chats',                  icon: Bot,           iconBg: 'bg-violet-100',  iconColor: 'text-violet-600',  valColor: 'text-violet-700'  },
   ];
 
   return (
@@ -227,16 +227,21 @@ export default async function DashboardPage() {
       {/* ── Stats ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {stats.map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-lg ${s.iconBg} flex items-center justify-center shrink-0`}>
-              <s.icon size={16} className={s.iconColor} />
+          <Link
+            key={s.label}
+            href={s.href}
+            className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex items-center gap-3 hover:border-emerald-200 hover:shadow-md transition-all group"
+            aria-label={`${s.value} ${s.label} conversations — ${s.sub}`}
+          >
+            <div className={`w-9 h-9 rounded-lg ${s.iconBg} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform`}>
+              <s.icon size={16} className={s.iconColor} aria-hidden="true" />
             </div>
             <div>
               <p className={`text-2xl font-bold tabular-nums leading-none ${s.valColor}`}>{s.value}</p>
               <p className="text-xs font-semibold text-gray-700 mt-0.5">{s.label}</p>
               <p className="text-[10px] text-gray-400">{s.sub}</p>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 

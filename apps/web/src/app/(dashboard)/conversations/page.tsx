@@ -95,6 +95,10 @@ function formatDuration(s: number | null): string {
   return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
 }
 
+function humanizeStatus(status: string): string {
+  return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ── Contacts section ──────────────────────────────────────────────────────────
 
 type ConversationRow = { id: string; product_type: string; status: string; updated_at: string };
@@ -368,20 +372,30 @@ export default async function ConversationsPage({
       </div>
 
       {/* Tab switcher */}
-      <div className="flex items-center gap-1 bg-white border border-green-100 rounded-xl shadow-sm p-1 w-fit">
+      <div
+        role="tablist"
+        aria-label="Conversation sections"
+        className="flex items-center gap-1 bg-white border border-green-100 rounded-xl shadow-sm p-1 w-fit"
+      >
         {tabs.map(({ key, label, icon: Icon }) => (
-          <Link key={key} href={tabHref(key)}
+          <Link
+            key={key}
+            href={tabHref(key)}
+            role="tab"
+            aria-selected={activeTab === key}
+            aria-controls={`tabpanel-${key}`}
             className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-colors ${
               activeTab === key ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}>
-            <Icon size={14} /> {label}
+            }`}
+          >
+            <Icon size={14} aria-hidden="true" /> {label}
           </Link>
         ))}
       </div>
 
       {/* ── CHATS TAB ─────────────────────────────────────────────────────────── */}
       {activeTab === 'chats' && (
-        <>
+        <div role="tabpanel" id="tabpanel-chats" aria-label="Chats">
           {/* Status filters */}
           <div className="flex items-center gap-2 flex-wrap">
             {([
@@ -477,7 +491,7 @@ export default async function ConversationsPage({
                         )}
                         <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ring-1 ${style.badge}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                          {conv.status.replace('_', ' ')}
+                          {humanizeStatus(conv.status)}
                         </span>
                         <span className="text-xs text-gray-400 w-8 text-right tabular-nums">{timeAgo}</span>
                       </div>
@@ -487,12 +501,12 @@ export default async function ConversationsPage({
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* ── VOICE TAB ─────────────────────────────────────────────────────────── */}
       {activeTab === 'voice' && (
-        <>
+        <div role="tabpanel" id="tabpanel-voice" aria-label="Voice Calls">
           <AutoRefresh active={callList.some(c => ['in_progress', 'initiated', 'ringing'].includes(c.status))} />
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
@@ -554,7 +568,8 @@ export default async function ConversationsPage({
                 <p className="text-xs text-gray-300 mt-1">Enable voice in Guardrails → Per-Bot Config, then enable auto-dispatch on escalation.</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-50">
+              <div className="overflow-x-auto">
+              <div className="divide-y divide-gray-50 min-w-[600px]">
                 {callList.map(call => (
                   <Link key={call.id} href={`/voice/${call.id}`} className="block px-5 py-4 hover:bg-gray-50/50 transition-colors">
                     <div className="flex items-start gap-3">
@@ -569,7 +584,7 @@ export default async function ConversationsPage({
                           <span className="text-sm font-semibold text-gray-800">{call.to_number}</span>
                           {call.from_number && <span className="text-[11px] text-gray-400">from {call.from_number}</span>}
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${VOICE_STATUS_STYLES[call.status] ?? 'bg-gray-50 text-gray-500'}`}>
-                            {call.status.replace('_', ' ')}
+                            {humanizeStatus(call.status)}
                           </span>
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">{call.triggered_by}</span>
                           {call.outcome_json?.sentiment && <span title={call.outcome_json.sentiment}>{SENTIMENT_EMOJI[call.outcome_json.sentiment]}</span>}
@@ -593,14 +608,15 @@ export default async function ConversationsPage({
                   </Link>
                 ))}
               </div>
+              </div>
             )}
           </div>
-        </>
+        </div>
       )}
 
       {/* ── CONTACTS TAB ──────────────────────────────────────────────────────── */}
       {activeTab === 'contacts' && (
-        <>
+        <div role="tabpanel" id="tabpanel-contacts" aria-label="Contacts">
           {/* Stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
@@ -625,8 +641,13 @@ export default async function ConversationsPage({
               <input type="hidden" name="tab" value="contacts" />
               {sentimentFilter !== 'all' && <input type="hidden" name="sentiment" value={sentimentFilter} />}
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input name="q" defaultValue={search} placeholder="Search by name or phone…"
-                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400" />
+              <input
+                name="q"
+                defaultValue={search}
+                placeholder="Search by name or phone…"
+                aria-label="Search contacts by name or phone"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400"
+              />
             </form>
             <div className="flex gap-1 flex-wrap">
               {contactSentimentTabs.map(tab => {
@@ -681,12 +702,12 @@ export default async function ConversationsPage({
             {sentimentFilter !== 'all' ? ` · filtered by ${sentimentFilter}` : ''}
             {search ? ` · matching &ldquo;${search}&rdquo;` : ''}
           </p>
-        </>
+        </div>
       )}
 
       {/* ── BROADCASTS TAB ──────────────────────────────────────────────────── */}
       {activeTab === 'broadcasts' && (
-        <>
+        <div role="tabpanel" id="tabpanel-broadcasts" aria-label="Broadcasts">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Create form */}
             <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-6">
@@ -736,7 +757,7 @@ export default async function ConversationsPage({
             </h3>
             <BroadcastList broadcasts={broadcastRows} />
           </div>
-        </>
+        </div>
       )}
     </div>
   );

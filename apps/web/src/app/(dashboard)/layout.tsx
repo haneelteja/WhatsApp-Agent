@@ -3,8 +3,7 @@ import { redirect } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
-import { DashboardNav }  from '@/components/dashboard-nav';
-import { Topbar }        from '@/components/topbar';
+import { DashboardShell } from '@/components/dashboard-shell';
 import type { CopilotMessage } from '@/components/dashboard/CopilotWidget';
 
 // Code-split the widget — it's ~15 KB of JS not needed for initial paint or SSR.
@@ -103,13 +102,16 @@ export default async function DashboardLayout({
   }));
 
   return (
-    <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
-      <DashboardNav tenantName={ctx.tenantName} userRole={ctx.userRole} hasLifecycleBot={ctx.hasLifecycleBot} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar email={ctx.user.email ?? ''} tenantName={ctx.tenantName} />
-        <main className="flex-1 overflow-auto">{children}</main>
-      </div>
+    <>
+      <DashboardShell
+        tenantName={ctx.tenantName}
+        email={ctx.user.email ?? ''}
+        userRole={ctx.userRole}
+        hasLifecycleBot={ctx.hasLifecycleBot}
+      >
+        {children}
+      </DashboardShell>
       {ctx.copilotEnabled && <CopilotWidget initialMessages={initialMessages} />}
-    </div>
+    </>
   );
 }

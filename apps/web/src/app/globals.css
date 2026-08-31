@@ -28,4 +28,19 @@
 @layer base {
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
+
+  /* Global focus ring — enables keyboard navigation across the entire app.
+     Uses :focus-visible so mouse users never see the ring. */
+  *:focus-visible {
+    outline: 2px solid #10b981;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Remove outline from elements that have their own focus style */
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+  }
 }
