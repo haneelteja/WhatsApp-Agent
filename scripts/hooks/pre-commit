@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Pre-commit safety checks — runs automatically on every `git commit`.
+# Wire-up: `git config core.hooksPath scripts/hooks`  (done by `npm prepare`)
+
+set -euo pipefail
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+ERRORS=0
+
+# ── 1. Block files over 100 KB ──────────────────────────────────────────────
+LIMIT_KB=100
+while IFS= read -r file; do
+  [[ -f "$file" ]] || continue
+  size_kb=$(( $(wc -c < "$file") / 1024 ))
+  if (( size_kb > LIMIT_KB )); then
+    echo -e "${RED}[pre-commit] BLOCKED: $file is ${size_kb} KB (limit ${LIMIT_KB} KB)${NC}"
+    echo -e "  Large files should live outside the repo (e.g. cloud storage, git-lfs)."
+    ERRORS=$(( ERRORS + 1 ))
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+# ── 2. Block *.log files ─────────────────────────────────────────────────────
+while IFS= read -r file; do
+  if [[ "$file" == *.log ]]; then
+    echo -e "${RED}[pre-commit] BLOCKED: $file is a log file — add to .gitignore instead.${NC}"
+    ERRORS=$(( ERRORS + 1 ))
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+# ── 3. Block .env files (except .env.example) ───────────────────────────────
+while IFS= read -r file; do
+  base=$(basename "$file")
+  if [[ "$base" == .env* && "$base" != ".env.example" ]]; then
+    echo -e "${RED}[pre-commit] BLOCKED: $file looks like an env/secrets file.${NC}"
+    echo -e "  Use Render/Vercel environment variables instead of committing secrets."
+    ERRORS=$(( ERRORS + 1 ))
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+# ── 4. Warn on generated docs committed to docs/ ────────────────────────────
+while IFS= read -r file; do
+  if [[ "$file" == docs/* ]]; then
+    echo -e "${YELLOW}[pre-commit] WARNING: $file is inside docs/ — generated files should be gitignored.${NC}"
+    echo -e "  If intentional, add '# nocheck' to your commit message to suppress."
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+if (( ERRORS > 0 )); then
+  echo -e "\n${RED}[pre-commit] Commit blocked — fix the issues above and retry.${NC}"
+  exit 1
+fi
+
+exit 0

@@ -29,7 +29,7 @@ generate_brd_docx.py
 MASTER_PROMPT.md
 Content/
 docs/generate_user_guide.py
-docs/USER_GUIDE.md
+docs/*.md
 amicorp-live.jsx
 logs/
 
