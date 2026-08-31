@@ -519,8 +519,8 @@ export function startScheduler(): void {
     );
   }, { timezone: 'UTC' });
 
-  // AI Insights — hourly check, runs at platform-configured hour  [TTL: 3540s = 59min]
-  cron.schedule('0 * * * *', () => {
+  // AI Insights — runs at :30 past each hour; schedule_hour=0 → 0:30 UTC = 6:00 AM IST
+  cron.schedule('30 * * * *', () => {
     void withJobLock('ai_insights', 3540, async () => {
       const db = getServerClient();
       const { data: setting } = await db
@@ -528,7 +528,7 @@ export function startScheduler(): void {
         .select('value')
         .eq('key', 'insights')
         .maybeSingle();
-      const scheduleHour = ((setting?.value as Record<string, unknown> | null)?.['schedule_hour'] as number | null) ?? 9;
+      const scheduleHour = ((setting?.value as Record<string, unknown> | null)?.['schedule_hour'] as number | null) ?? 0;
       if (new Date().getUTCHours() === scheduleHour) {
         await runInsightsForAllTenants();
       }

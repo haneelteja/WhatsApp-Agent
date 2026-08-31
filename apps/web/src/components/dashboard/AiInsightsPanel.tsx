@@ -95,7 +95,7 @@ export function AiInsightsPanel({ insight }: { insight: InsightRow | null }) {
           </div>
         </div>
         <div className="px-5 py-8 text-center">
-          <p className="text-sm text-gray-400">No insights yet — your first analysis will run at 9 AM UTC today.</p>
+          <p className="text-sm text-gray-400">No insights yet — your first analysis will run at 6 AM IST today.</p>
         </div>
       </div>
     );
