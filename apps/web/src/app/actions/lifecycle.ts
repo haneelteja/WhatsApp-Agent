@@ -1,8 +1,8 @@
 'use server';
 
-import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
-import { revalidatePath }          from 'next/cache';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { revalidatePath }         from 'next/cache';
+import { getSession }             from '@/lib/session';
 
 export type TriggerEvent = 'contact_created' | 'conversation_resolved' | 'lead_created';
 
@@ -18,24 +18,15 @@ export type LifecycleSequence = {
   created_at:       string;
 };
 
-async function getTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: tu } = await admin.from('tenant_users').select('tenant_id').eq('user_id', user.id).single();
-  return tu?.tenant_id ?? null;
-}
-
 export async function listLifecycleSequences(): Promise<{ sequences: LifecycleSequence[]; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { sequences: [], error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { sequences: [], error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('lifecycle_sequences')
     .select('*')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .order('created_at', { ascending: true });
 
   if (error) return { sequences: [], error: error.message };
@@ -49,8 +40,8 @@ export async function createLifecycleSequence(input: {
   delay_days:       number;
   message_template: string;
 }): Promise<{ sequence?: LifecycleSequence; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   if (!input.name.trim())             return { error: 'Name is required' };
   if (!input.message_template.trim()) return { error: 'Message template is required' };
@@ -59,7 +50,7 @@ export async function createLifecycleSequence(input: {
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('lifecycle_sequences')
-    .insert({ tenant_id: tenantId, ...input, name: input.name.trim(), message_template: input.message_template.trim() })
+    .insert({ tenant_id: session.tenantId, ...input, name: input.name.trim(), message_template: input.message_template.trim() })
     .select('*')
     .single();
 
@@ -78,15 +69,15 @@ export async function updateLifecycleSequence(
     product_slug:     string;
   }>,
 ): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('lifecycle_sequences')
     .update(input)
     .eq('id', id)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/call-triggers');
@@ -94,15 +85,15 @@ export async function updateLifecycleSequence(
 }
 
 export async function toggleLifecycleSequence(id: string, enabled: boolean): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('lifecycle_sequences')
     .update({ enabled })
     .eq('id', id)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/call-triggers');
@@ -110,15 +101,15 @@ export async function toggleLifecycleSequence(id: string, enabled: boolean): Pro
 }
 
 export async function deleteLifecycleSequence(id: string): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('lifecycle_sequences')
     .delete()
     .eq('id', id)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/call-triggers');

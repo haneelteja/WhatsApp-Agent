@@ -1,8 +1,8 @@
 'use server';
 
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { revalidatePath } from 'next/cache';
+import { getSession }             from '@/lib/session';
+import { revalidatePath }         from 'next/cache';
 
 export type WaProvider = 'meta_cloud' | 'interakt' | 'wati' | 'gupshup';
 
@@ -14,20 +14,20 @@ export interface WhatsAppNumberData {
 }
 
 export interface UpdateWhatsAppNumberInput {
-  label?:          string;
-  product_slug?:   string;
-  phoneNumberId?:  string;
-  accessToken?:    string;
+  label?:         string;
+  product_slug?:  string;
+  phoneNumberId?: string;
+  accessToken?:   string;
 }
 
 export async function updateWhatsAppNumberAction(
   numberId: string,
   input:    UpdateWhatsAppNumberInput,
 ): Promise<{ ok: true } | { error: string }> {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const admin = getSupabaseAdminClient();
 
   const { data: existing } = await admin
     .from('whatsapp_numbers')
@@ -61,6 +61,7 @@ export async function updateWhatsAppNumberAction(
   return { ok: true };
 }
 
+/** Platform-only: tenantId is passed explicitly from the platform console. */
 export async function upsertWhatsAppNumberAction(
   tenantId:    string,
   productSlug: string,

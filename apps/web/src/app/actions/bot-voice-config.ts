@@ -1,9 +1,9 @@
 'use server';
 
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { revalidatePath } from 'next/cache';
-import type { BotVoiceConfig } from '@alphabot/shared';
+import { getSession }             from '@/lib/session';
+import { revalidatePath }         from 'next/cache';
+import type { BotVoiceConfig }    from '@alphabot/shared';
 
 const DEFAULT_VOICE_CONFIG: BotVoiceConfig = {
   enabled:                        false,
@@ -36,25 +36,17 @@ const DEFAULT_VOICE_CONFIG: BotVoiceConfig = {
 
 export async function saveBotVoiceConfigAction(
   productSlug: string,
-  patch:        Partial<BotVoiceConfig>,
+  patch:       Partial<BotVoiceConfig>,
 ): Promise<{ error?: string }> {
-  const supabase = await getSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
 
   const admin = getSupabaseAdminClient();
-
-  const { data: tu } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-  if (!tu) return { error: 'Tenant not found' };
 
   const { data: bc } = await admin
     .from('bot_configs')
     .select('id, voice_config')
-    .eq('tenant_id', tu.tenant_id)
+    .eq('tenant_id', session.tenantId)
     .eq('product_slug', productSlug)
     .single();
   if (!bc) return { error: 'Bot config not found' };

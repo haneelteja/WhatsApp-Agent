@@ -1,8 +1,8 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath }         from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getSession }             from '@/lib/session';
 
 export type FollowUpScope = 'all' | 'include' | 'exclude';
 
@@ -15,29 +15,16 @@ interface FollowUpConfig {
   contact_ids:      string[];
 }
 
-async function getCallerTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-  return data?.tenant_id ?? null;
-}
-
 export async function saveFollowUpConfigAction(productSlug: string, config: FollowUpConfig) {
-  const tenantId = await getCallerTenantId();
-  if (!tenantId) return { error: 'Not authenticated' };
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
 
   const admin = getSupabaseAdminClient();
 
   const { data: existing } = await admin
     .from('follow_up_configs')
     .select('id')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .eq('product_slug', productSlug)
     .maybeSingle();
 
@@ -50,7 +37,7 @@ export async function saveFollowUpConfigAction(productSlug: string, config: Foll
   } else {
     const { error } = await admin
       .from('follow_up_configs')
-      .insert({ tenant_id: tenantId, product_slug: productSlug, ...config });
+      .insert({ tenant_id: session.tenantId, product_slug: productSlug, ...config });
     if (error) return { error: error.message };
   }
 

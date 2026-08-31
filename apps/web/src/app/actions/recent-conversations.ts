@@ -1,7 +1,7 @@
 'use server';
 
-import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSession }             from '@/lib/session';
 
 export type RecentMessage = {
   id:        string;
@@ -20,25 +20,15 @@ export type RecentConv = {
 };
 
 export async function getRecentConversationsAction(offset: number): Promise<RecentConv[]> {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
+  const session = await getSession();
+  if (!session) return [];
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  const { data: tenantUser } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-
-  const tid = tenantUser?.tenant_id;
-  if (!tid) return [];
+  const admin = getSupabaseAdminClient();
 
   const { data: convs } = await admin
     .from('conversations')
     .select('id, status, product_type, updated_at, contacts(name, phone)')
-    .eq('tenant_id', tid)
+    .eq('tenant_id', session.tenantId)
     .order('updated_at', { ascending: false })
     .range(offset, offset + 4);
 
@@ -51,7 +41,6 @@ export async function getRecentConversationsAction(offset: number): Promise<Rece
     .in('conversation_id', ids)
     .order('timestamp', { ascending: false });
 
-  // Group messages by conversation, keep last 5, restore chronological order
   const msgMap = new Map<string, RecentMessage[]>();
   for (const m of (msgs ?? [])) {
     const list = msgMap.get(m.conversation_id) ?? [];

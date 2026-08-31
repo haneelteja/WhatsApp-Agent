@@ -16,6 +16,7 @@ interface IRedisPipeline {
 interface IRedis {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ex: 'EX', seconds: number): Promise<'OK' | null>;
+  set(key: string, value: string, ex: 'EX', seconds: number, nx: 'NX'): Promise<'OK' | null>;
   del(...keys: string[]): Promise<number>;
   incrby(key: string, increment: number): Promise<number>;
   expireat(key: string, unixTimestamp: number): Promise<number>;
@@ -73,6 +74,30 @@ export async function cacheDel(key: string): Promise<void> {
     await _redis?.del(key);
   } catch {
     // Non-fatal
+  }
+}
+
+/**
+ * Acquire a distributed job lock via Redis SET NX EX.
+ * Only the instance that wins the lock executes fn(); others return immediately.
+ * Degrades gracefully to direct execution when Redis is unavailable (single-instance).
+ */
+export async function withJobLock(
+  jobName:    string,
+  ttlSeconds: number,
+  fn:         () => Promise<void>,
+): Promise<void> {
+  const redis = getRedis();
+  if (!redis) { await fn(); return; }
+
+  const key      = `job_lock:${jobName}`;
+  const acquired = await redis.set(key, '1', 'EX', ttlSeconds, 'NX');
+  if (acquired !== 'OK') return;
+
+  try {
+    await fn();
+  } finally {
+    await redis.del(key);
   }
 }
 

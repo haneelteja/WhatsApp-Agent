@@ -1,30 +1,17 @@
 'use server';
 
-import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-
-async function getTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const admin = getSupabaseAdminClient();
-  const { data: tu } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-  return tu?.tenant_id ?? null;
-}
+import { getSession }             from '@/lib/session';
 
 export async function getInboundWebhookKeyAction(): Promise<{ key: string | null; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { key: null, error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { key: null, error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('tenants')
     .select('inbound_webhook_key')
-    .eq('id', tenantId)
+    .eq('id', session.tenantId)
     .single();
 
   if (error) return { key: null, error: error.message };
@@ -32,16 +19,15 @@ export async function getInboundWebhookKeyAction(): Promise<{ key: string | null
 }
 
 export async function generateInboundWebhookKeyAction(): Promise<{ key: string | null; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { key: null, error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { key: null, error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
 
-  // Generate a new UUID key via Postgres
   const { data, error } = await admin
     .from('tenants')
     .update({ inbound_webhook_key: crypto.randomUUID() })
-    .eq('id', tenantId)
+    .eq('id', session.tenantId)
     .select('inbound_webhook_key')
     .single();
 

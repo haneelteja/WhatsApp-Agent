@@ -6,6 +6,7 @@ import { dispatchPendingVoiceCalls, processCampaignContacts } from '../services/
 import { processScheduledBroadcasts } from '../services/broadcast/index.js';
 import { isWithinBusinessHours } from '../lib/business-hours.js';
 import { runInsightsForAllTenants } from '../services/insights/generator.js';
+import { withJobLock } from '../lib/redis.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -97,10 +98,9 @@ async function processFollowUps(): Promise<void> {
         (contactsData ?? []).map(c => [(c as { id: string }).id, c as { id: string; phone: string; name: string | null }]),
       );
 
-      // Collect inserts/updates — send messages sequentially to respect WA rate limits
-      const newMessages:     object[] = [];
-      const newSends:        object[] = [];
-      const updatedConvIds:  string[] = [];
+      const newMessages:    object[] = [];
+      const newSends:       object[] = [];
+      const updatedConvIds: string[] = [];
 
       for (const conv of eligibleConvs) {
         try {
@@ -176,8 +176,6 @@ async function processNoReplyTriggers(): Promise<void> {
 
     if (!candidates?.length) continue;
 
-    // Deduplicate: skip any conversation that already had a call attempt in the last 24h
-    // (regardless of status — failed calls should not re-trigger immediately)
     const convIds = candidates.map(c => c.conversation_id);
     const { data: recentCalls } = await db
       .from('voice_calls')
@@ -237,9 +235,6 @@ async function processLeadFollowUps(): Promise<void> {
 
     const cutoff = new Date(Date.now() - delayHours * 3_600_000).toISOString();
 
-    // Pre-fetch escalation conversation IDs into a plain array.
-    // Passing a query builder object to .in() was the bug — PostgREST
-    // coerced it to "[object Object]" so no rows ever matched.
     const { data: escalationRows } = await db
       .from('escalations')
       .select('conversation_id')
@@ -251,9 +246,6 @@ async function processLeadFollowUps(): Promise<void> {
     );
     if (!escalatedConvIds.length) continue;
 
-    // Sales lead conversations that are stale and haven't hit the follow-up cap.
-    // Include 'escalated' (human notified but not yet claimed) and 'open'.
-    // Exclude 'bot_paused' (agent actively working it) and 'resolved'.
     const { data: convs } = await db
       .from('conversations')
       .select('id, contact_id, lead_follow_up_count')
@@ -289,8 +281,8 @@ async function processLeadFollowUps(): Promise<void> {
       (contacts ?? []).map(c => [(c as { id: string }).id, c as { id: string; phone: string; name: string | null }]),
     );
 
-    const newMessages:    object[] = [];
-    const convUpdates:    { id: string; count: number }[] = [];
+    const newMessages: object[] = [];
+    const convUpdates: { id: string; count: number }[] = [];
 
     for (const conv of convs) {
       try {
@@ -317,13 +309,15 @@ async function processLeadFollowUps(): Promise<void> {
       }
     }
 
-    // Batch inserts — replaces N×2 sequential round-trips with 1+N updates
     if (newMessages.length) await db.from('messages').insert(newMessages);
-    const now = new Date().toISOString();
-    for (const u of convUpdates) {
-      await db.from('conversations')
-        .update({ lead_follow_up_count: u.count, updated_at: now })
-        .eq('id', u.id);
+
+    // Single RPC replaces the old per-row UPDATE loop — one round-trip for N conversations
+    if (convUpdates.length) {
+      await db.rpc('batch_update_lead_followup_count', {
+        p_ids:        convUpdates.map(u => u.id),
+        p_counts:     convUpdates.map(u => u.count),
+        p_updated_at: new Date().toISOString(),
+      });
     }
   }
 }
@@ -344,19 +338,15 @@ async function processLifecycleSequences(): Promise<void> {
         Date.now() - seq.delay_days * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      // Find contacts created after this sequence was configured,
-      // old enough to have crossed the delay threshold,
-      // and not yet sent this sequence.
       let contactsQuery = db
         .from('contacts')
         .select('id, phone, name')
         .eq('tenant_id', seq.tenant_id)
         .not('phone', 'is', null)
-        .gte('created_at', seq.created_at)   // only post-config contacts
-        .lt('created_at', cutoff);           // old enough
+        .gte('created_at', seq.created_at)
+        .lt('created_at', cutoff);
 
       if (seq.trigger_event === 'lead_created') {
-        // Only contacts who have at least one conversation flagged as a lead
         const { data: leadConvs } = await db
           .from('conversations')
           .select('contact_id')
@@ -369,7 +359,6 @@ async function processLifecycleSequences(): Promise<void> {
         if (!leadContactIds.length) continue;
         contactsQuery = contactsQuery.in('id', leadContactIds);
       } else if (seq.trigger_event === 'conversation_resolved') {
-        // Only contacts who have a resolved conversation for this product
         const { data: resolvedConvs } = await db
           .from('conversations')
           .select('contact_id')
@@ -386,7 +375,6 @@ async function processLifecycleSequences(): Promise<void> {
       const { data: candidates } = await contactsQuery;
       if (!candidates?.length) continue;
 
-      // Filter out already-sent contacts
       const candidateIds = candidates.map((c: { id: string }) => c.id);
       const { data: alreadySent } = await db
         .from('lifecycle_sends')
@@ -409,7 +397,6 @@ async function processLifecycleSequences(): Promise<void> {
         .limit(1)
         .maybeSingle();
 
-      // Fallback to any active number if product-specific not found
       const wnFinal = wn ?? (await db
         .from('whatsapp_numbers')
         .select('config_json, provider')
@@ -452,88 +439,6 @@ async function processLifecycleSequences(): Promise<void> {
   }
 }
 
-export function startScheduler(): void {
-  // Keep Supabase alive (free tier pauses after 7 days inactivity)
-  void pingSupabase();
-  setInterval(() => void pingSupabase(), KEEP_ALIVE_INTERVAL_MS);
-
-  // Daily report — 08:00 UTC every day
-  cron.schedule('0 8 * * *', () => {
-    void runDailyReports().catch(err =>
-      console.error('[Scheduler] Daily report failed:', (err as Error).message)
-    );
-  }, { timezone: 'UTC' });
-
-  // Follow-up messages — every hour
-  cron.schedule('0 * * * *', () => {
-    void processFollowUps().catch(err =>
-      console.error('[Scheduler] Follow-up failed:', (err as Error).message)
-    );
-  });
-
-  // 'Both' campaigns — dispatch voice calls for contacts that had WA sent N hours ago with no reply
-  cron.schedule('*/15 * * * *', () => {
-    void dispatchPendingVoiceCalls().catch(err =>
-      console.error('[Scheduler] Campaign voice dispatch failed:', (err as Error).message)
-    );
-  });
-
-  // No-reply call triggers — check every 30 minutes
-  cron.schedule('*/30 * * * *', () => {
-    void processNoReplyTriggers().catch(err =>
-      console.error('[Scheduler] No-reply trigger failed:', (err as Error).message)
-    );
-  });
-
-  // Sales lead follow-up sequences — every 2 hours
-  cron.schedule('0 */2 * * *', () => {
-    void processLeadFollowUps().catch(err =>
-      console.error('[Scheduler] Lead follow-up failed:', (err as Error).message)
-    );
-  });
-
-  // Scheduled broadcast execution — check every minute
-  cron.schedule('* * * * *', () => {
-    void processScheduledBroadcasts().catch(err =>
-      console.error('[Scheduler] Broadcast processing failed:', (err as Error).message)
-    );
-  });
-
-  // Campaign recovery — reset and resume campaigns stuck in 'running' after a server restart.
-  // A campaign is considered stale if it has been 'running' for more than 10 minutes
-  // with no contact status change (updated_at on the campaign row hasn't advanced).
-  cron.schedule('*/10 * * * *', () => {
-    void recoverStaleCampaigns().catch(err =>
-      console.error('[Scheduler] Campaign recovery failed:', (err as Error).message)
-    );
-  });
-
-  // Lifecycle sequences — daily at 10:00 UTC
-  cron.schedule('0 10 * * *', () => {
-    void processLifecycleSequences().catch(err =>
-      console.error('[Scheduler] Lifecycle sequences failed:', (err as Error).message)
-    );
-  }, { timezone: 'UTC' });
-
-  // AI Insights — run once a day at the platform-configured hour (default 9 AM UTC)
-  cron.schedule('0 * * * *', async () => {
-    try {
-      const db = getServerClient();
-      const { data: setting } = await db
-        .from('platform_settings')
-        .select('value')
-        .eq('key', 'insights')
-        .maybeSingle();
-      const scheduleHour = ((setting?.value as Record<string, unknown> | null)?.['schedule_hour'] as number | null) ?? 9;
-      if (new Date().getUTCHours() === scheduleHour) {
-        await runInsightsForAllTenants();
-      }
-    } catch (err) {
-      console.error('[Scheduler] AI Insights failed:', (err as Error).message);
-    }
-  });
-}
-
 async function recoverStaleCampaigns(): Promise<void> {
   const db = getServerClient();
   const staleThreshold = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -551,4 +456,84 @@ async function recoverStaleCampaigns(): Promise<void> {
     void processCampaignContacts(campaign as Parameters<typeof processCampaignContacts>[0], campaign.tenant_id)
       .catch((err: unknown) => console.error(`[CampaignRecovery] Resume failed for ${campaign.id}:`, (err as Error).message));
   }
+}
+
+export function startScheduler(): void {
+  // Keep Supabase alive (free tier pauses after 7 days inactivity)
+  void pingSupabase();
+  setInterval(() => void pingSupabase(), KEEP_ALIVE_INTERVAL_MS);
+
+  // Daily report — 08:00 UTC every day  [TTL: 82800s = 23h, prevents duplicate on restart]
+  cron.schedule('0 8 * * *', () => {
+    void withJobLock('daily_reports', 82800, () => runDailyReports()).catch(err =>
+      console.error('[Scheduler] Daily report failed:', (err as Error).message)
+    );
+  }, { timezone: 'UTC' });
+
+  // Follow-up messages — every hour  [TTL: 3540s = 59min]
+  cron.schedule('0 * * * *', () => {
+    void withJobLock('follow_ups', 3540, () => processFollowUps()).catch(err =>
+      console.error('[Scheduler] Follow-up failed:', (err as Error).message)
+    );
+  });
+
+  // Campaign voice dispatch — every 15 min  [TTL: 840s = 14min]
+  cron.schedule('*/15 * * * *', () => {
+    void withJobLock('voice_dispatch', 840, () => dispatchPendingVoiceCalls()).catch(err =>
+      console.error('[Scheduler] Campaign voice dispatch failed:', (err as Error).message)
+    );
+  });
+
+  // No-reply call triggers — every 30 min  [TTL: 1740s = 29min]
+  cron.schedule('*/30 * * * *', () => {
+    void withJobLock('no_reply_triggers', 1740, () => processNoReplyTriggers()).catch(err =>
+      console.error('[Scheduler] No-reply trigger failed:', (err as Error).message)
+    );
+  });
+
+  // Sales lead follow-up — every 2 hours  [TTL: 7140s = 119min]
+  cron.schedule('0 */2 * * *', () => {
+    void withJobLock('lead_follow_ups', 7140, () => processLeadFollowUps()).catch(err =>
+      console.error('[Scheduler] Lead follow-up failed:', (err as Error).message)
+    );
+  });
+
+  // Scheduled broadcasts — every minute  [TTL: 55s]
+  cron.schedule('* * * * *', () => {
+    void withJobLock('scheduled_broadcasts', 55, () => processScheduledBroadcasts()).catch(err =>
+      console.error('[Scheduler] Broadcast processing failed:', (err as Error).message)
+    );
+  });
+
+  // Campaign recovery — every 10 min  [TTL: 540s = 9min]
+  cron.schedule('*/10 * * * *', () => {
+    void withJobLock('campaign_recovery', 540, () => recoverStaleCampaigns()).catch(err =>
+      console.error('[Scheduler] Campaign recovery failed:', (err as Error).message)
+    );
+  });
+
+  // Lifecycle sequences — daily at 10:00 UTC  [TTL: 82800s = 23h]
+  cron.schedule('0 10 * * *', () => {
+    void withJobLock('lifecycle_sequences', 82800, () => processLifecycleSequences()).catch(err =>
+      console.error('[Scheduler] Lifecycle sequences failed:', (err as Error).message)
+    );
+  }, { timezone: 'UTC' });
+
+  // AI Insights — hourly check, runs at platform-configured hour  [TTL: 3540s = 59min]
+  cron.schedule('0 * * * *', () => {
+    void withJobLock('ai_insights', 3540, async () => {
+      const db = getServerClient();
+      const { data: setting } = await db
+        .from('platform_settings')
+        .select('value')
+        .eq('key', 'insights')
+        .maybeSingle();
+      const scheduleHour = ((setting?.value as Record<string, unknown> | null)?.['schedule_hour'] as number | null) ?? 9;
+      if (new Date().getUTCHours() === scheduleHour) {
+        await runInsightsForAllTenants();
+      }
+    }).catch(err =>
+      console.error('[Scheduler] AI Insights failed:', (err as Error).message)
+    );
+  });
 }

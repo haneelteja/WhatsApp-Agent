@@ -1,8 +1,8 @@
 'use server';
 
-import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
-import { revalidatePath }          from 'next/cache';
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { revalidatePath }         from 'next/cache';
+import { getSession }             from '@/lib/session';
 
 export type InternalNumber = {
   id:         string;
@@ -11,24 +11,15 @@ export type InternalNumber = {
   created_at: string;
 };
 
-async function getTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: tu } = await admin.from('tenant_users').select('tenant_id').eq('user_id', user.id).single();
-  return tu?.tenant_id ?? null;
-}
-
 export async function listInternalNumbers(): Promise<{ numbers: InternalNumber[]; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { numbers: [], error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { numbers: [], error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('tenant_internal_numbers')
     .select('id, phone, label, created_at')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .order('created_at', { ascending: true });
 
   if (error) return { numbers: [], error: error.message };
@@ -39,8 +30,8 @@ export async function addInternalNumber(
   phone: string,
   label: string,
 ): Promise<{ number?: InternalNumber; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const cleaned = phone.trim().replace(/\s+/g, '');
   if (!cleaned) return { error: 'Phone number is required' };
@@ -51,7 +42,7 @@ export async function addInternalNumber(
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('tenant_internal_numbers')
-    .insert({ tenant_id: tenantId, phone: normalized, label: label.trim() || null })
+    .insert({ tenant_id: session.tenantId, phone: normalized, label: label.trim() || null })
     .select('id, phone, label, created_at')
     .single();
 
@@ -65,15 +56,15 @@ export async function addInternalNumber(
 }
 
 export async function removeInternalNumber(id: string): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('tenant_internal_numbers')
     .delete()
     .eq('id', id)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/settings');

@@ -1,33 +1,22 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { revalidatePath }         from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSession }             from '@/lib/session';
 import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 
-/** Called from the client dashboard — tenantId resolved from the session. */
 export async function saveTenantGuardrailsAction(guardrails: LayeredGuardrailsConfig) {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
-
-  const { data: tenantUser } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!tenantUser) return { error: 'Tenant not found' };
-
+  const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('tenant_guardrails')
     .upsert({
-      tenant_id:       tenantUser.tenant_id,
+      tenant_id:       session.tenantId,
       guardrails_json: guardrails,
       updated_at:      new Date().toISOString(),
-      updated_by:      user.id,
+      updated_by:      session.userId,
     });
 
   if (error) return { error: error.message };

@@ -1,22 +1,9 @@
 'use server';
 
-import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSession }             from '@/lib/session';
 
 const API_URL = process.env['API_BASE_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
-
-async function getTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const admin = getSupabaseAdminClient();
-  const { data: tu } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-  return tu?.tenant_id ?? null;
-}
 
 export interface ButtonTemplateRow {
   id:               string;
@@ -33,14 +20,14 @@ export interface ButtonTemplateRow {
 }
 
 export async function listButtonTemplatesAction(): Promise<{ templates: ButtonTemplateRow[]; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { templates: [], error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { templates: [], error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('interactive_button_templates')
     .select('*')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .order('created_at', { ascending: true });
 
   if (error) return { templates: [], error: error.message };
@@ -50,10 +37,10 @@ export async function listButtonTemplatesAction(): Promise<{ templates: ButtonTe
 export async function createButtonTemplateAction(
   body: Omit<ButtonTemplateRow, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>,
 ): Promise<{ template?: ButtonTemplateRow; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
-  const res = await fetch(`${API_URL}/api/button-templates/${tenantId}`, {
+  const res = await fetch(`${API_URL}/api/button-templates/${session.tenantId}`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(body),
@@ -70,10 +57,10 @@ export async function updateButtonTemplateAction(
   id:   string,
   body: Partial<Omit<ButtonTemplateRow, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>>,
 ): Promise<{ template?: ButtonTemplateRow; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
-  const res = await fetch(`${API_URL}/api/button-templates/${tenantId}/${id}`, {
+  const res = await fetch(`${API_URL}/api/button-templates/${session.tenantId}/${id}`, {
     method:  'PUT',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(body),
@@ -87,15 +74,13 @@ export async function updateButtonTemplateAction(
 }
 
 export async function deleteButtonTemplateAction(id: string): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
-  const res = await fetch(`${API_URL}/api/button-templates/${tenantId}/${id}`, {
+  const res = await fetch(`${API_URL}/api/button-templates/${session.tenantId}/${id}`, {
     method: 'DELETE',
   });
 
-  if (!res.ok && res.status !== 204) {
-    return { error: `HTTP ${res.status}` };
-  }
+  if (!res.ok && res.status !== 204) return { error: `HTTP ${res.status}` };
   return {};
 }

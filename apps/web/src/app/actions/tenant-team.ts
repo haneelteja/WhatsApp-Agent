@@ -1,9 +1,9 @@
 'use server';
 
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { revalidatePath } from 'next/cache';
-import { sendEmail } from '@/lib/email';
+import { getSession }             from '@/lib/session';
+import { revalidatePath }         from 'next/cache';
+import { sendEmail }              from '@/lib/email';
 
 export async function sendTeamInviteAction(_prevState: unknown, formData: FormData) {
   const email = (formData.get('email') as string | null)?.trim().toLowerCase() ?? '';
@@ -12,28 +12,18 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
   if (!email) return { error: 'Email is required' };
   if (!['agent', 'supervisor', 'admin'].includes(role)) return { error: 'Invalid role' };
 
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
-
-  const { data: tenantUser } = await admin
-    .from('tenant_users')
-    .select('tenant_id, role')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!tenantUser) return { error: 'Not a team member' };
-  if (!['admin', 'supervisor'].includes(tenantUser.role) && tenantUser.role !== 'client_manager') {
+  if (!['admin', 'supervisor', 'client_manager'].includes(session.role)) {
     return { error: 'Only admins can invite team members' };
   }
 
-  const tenantId = tenantUser.tenant_id;
-  const { data: tenant } = await admin.from('tenants').select('name').eq('id', tenantId).single();
+  const admin = getSupabaseAdminClient();
+
+  const { data: tenant } = await admin.from('tenants').select('name').eq('id', session.tenantId).single();
   if (!tenant) return { error: 'Tenant not found' };
 
-  // Block if the invited email belongs to a platform user
   const { data: { users: allUsers } } = await admin.auth.admin.listUsers();
   const matchedUser = allUsers.find(u => u.email?.toLowerCase() === email);
   if (matchedUser) {
@@ -47,25 +37,21 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
     }
   }
 
-  // Block if the email is already a member of this tenant
   if (matchedUser) {
     const { data: existingMember } = await admin
       .from('tenant_users')
       .select('id')
       .eq('user_id', matchedUser.id)
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', session.tenantId)
       .maybeSingle();
-    if (existingMember) {
-      return { error: 'This person is already a member of your workspace.' };
-    }
+    if (existingMember) return { error: 'This person is already a member of your workspace.' };
   }
 
-  // Map admin/supervisor to client_manager/client_admin for client_invites constraint
   const inviteRole = role === 'admin' ? 'client_manager' : role === 'supervisor' ? 'client_admin' : 'agent';
 
   const { data: invite, error: inviteError } = await admin
     .from('client_invites')
-    .insert({ tenant_id: tenantId, email, role: inviteRole })
+    .insert({ tenant_id: session.tenantId, email, role: inviteRole })
     .select('token')
     .single();
 
@@ -102,29 +88,21 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
 }
 
 export async function removeTeamMemberAction(userId: string) {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
-
-  const { data: callerTU } = await admin
-    .from('tenant_users')
-    .select('tenant_id, role')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!callerTU || !['admin', 'client_manager'].includes(callerTU.role)) {
+  if (!['admin', 'client_manager'].includes(session.role)) {
     return { error: 'Only admins can remove team members' };
   }
 
-  if (userId === user.id) return { error: 'Cannot remove yourself' };
+  if (userId === session.userId) return { error: 'Cannot remove yourself' };
 
+  const admin = getSupabaseAdminClient();
   await admin
     .from('tenant_users')
     .delete()
     .eq('user_id', userId)
-    .eq('tenant_id', callerTU.tenant_id);
+    .eq('tenant_id', session.tenantId);
 
   revalidatePath('/team');
   return { success: true };

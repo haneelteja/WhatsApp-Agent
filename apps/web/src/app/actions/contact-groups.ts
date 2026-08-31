@@ -1,35 +1,24 @@
 'use server';
 
-import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
-import { revalidatePath }          from 'next/cache';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function getTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: tu } = await admin.from('tenant_users').select('tenant_id').eq('user_id', user.id).single();
-  return tu?.tenant_id ?? null;
-}
+import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { revalidatePath }         from 'next/cache';
+import { getSession }             from '@/lib/session';
 
 // ─── Group CRUD ───────────────────────────────────────────────────────────────
 
 export async function createContactGroup(
-  name: string,
+  name:        string,
   description: string,
-  color: string,
-  emoji: string,
+  color:       string,
+  emoji:       string,
 ): Promise<{ id?: string; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('contact_groups')
-    .insert({ tenant_id: tenantId, name: name.trim(), description: description.trim() || null, color, emoji })
+    .insert({ tenant_id: session.tenantId, name: name.trim(), description: description.trim() || null, color, emoji })
     .select('id')
     .single();
 
@@ -39,21 +28,21 @@ export async function createContactGroup(
 }
 
 export async function updateContactGroup(
-  groupId: string,
-  name: string,
+  groupId:     string,
+  name:        string,
   description: string,
-  color: string,
-  emoji: string,
+  color:       string,
+  emoji:       string,
 ): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('contact_groups')
     .update({ name: name.trim(), description: description.trim() || null, color, emoji })
     .eq('id', groupId)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/groups');
@@ -62,15 +51,15 @@ export async function updateContactGroup(
 }
 
 export async function deleteContactGroup(groupId: string): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('contact_groups')
     .delete()
     .eq('id', groupId)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/groups');
@@ -81,18 +70,18 @@ export async function deleteContactGroup(groupId: string): Promise<{ error?: str
 
 export async function addContactToGroup(
   contactId: string,
-  groupId: string,
-  addedBy: 'manual' | 'ai' = 'manual',
+  groupId:   string,
+  addedBy:   'manual' | 'ai' = 'manual',
   aiReason?: string,
 ): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('contact_group_members')
     .upsert(
-      { group_id: groupId, contact_id: contactId, tenant_id: tenantId, added_by: addedBy, ai_reason: aiReason ?? null },
+      { group_id: groupId, contact_id: contactId, tenant_id: session.tenantId, added_by: addedBy, ai_reason: aiReason ?? null },
       { onConflict: 'group_id,contact_id' },
     );
 
@@ -104,10 +93,10 @@ export async function addContactToGroup(
 
 export async function removeContactFromGroup(
   contactId: string,
-  groupId: string,
+  groupId:   string,
 ): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
@@ -115,7 +104,7 @@ export async function removeContactFromGroup(
     .delete()
     .eq('contact_id', contactId)
     .eq('group_id', groupId)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/conversations');
@@ -134,16 +123,15 @@ type GroupSuggestion = {
 export async function suggestGroupForContact(
   contactId: string,
 ): Promise<{ suggestion?: GroupSuggestion; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
 
-  // Load all data in parallel
   const [contactRes, groupsRes, convsRes] = await Promise.all([
-    admin.from('contacts').select('name, phone, memory_json').eq('id', contactId).eq('tenant_id', tenantId).single(),
-    admin.from('contact_groups').select('id, name, description').eq('tenant_id', tenantId).order('name'),
-    admin.from('conversations').select('product_type, status, updated_at').eq('contact_id', contactId).eq('tenant_id', tenantId).order('updated_at', { ascending: false }).limit(5),
+    admin.from('contacts').select('name, phone, memory_json').eq('id', contactId).eq('tenant_id', session.tenantId).single(),
+    admin.from('contact_groups').select('id, name, description').eq('tenant_id', session.tenantId).order('name'),
+    admin.from('conversations').select('product_type, status, updated_at').eq('contact_id', contactId).eq('tenant_id', session.tenantId).order('updated_at', { ascending: false }).limit(5),
   ]);
 
   const contact = contactRes.data as {
@@ -214,7 +202,6 @@ Choose the single best-matching group. Respond ONLY with valid JSON (no markdown
     const json = await res.json() as { content?: Array<{ text?: string }> };
     const raw  = json.content?.[0]?.text?.trim() ?? '';
 
-    // Strip markdown code fences if present
     const cleaned = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').trim();
     const parsed  = JSON.parse(cleaned) as { group_id: string; reason: string };
 

@@ -3,17 +3,16 @@
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
 import { revalidatePath }          from 'next/cache';
+import { getSession }              from '@/lib/session';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type IntegrationSettings = {
   id:                      string;
   tenant_id:               string;
-  // Inbound
   webhook_api_key:         string;
   welcome_template:        string;
   enabled:                 boolean;
-  // Outbound
   outbound_webhook_url:    string | null;
   outbound_signing_secret: string;
   outbound_events:         string[];
@@ -38,36 +37,25 @@ export type OutboundLog = {
   triggered_at:  string;
 };
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-async function getTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: tu } = await admin.from('tenant_users').select('tenant_id').eq('user_id', user.id).single();
-  return tu?.tenant_id ?? null;
-}
-
 // ─── Get or create integration settings ──────────────────────────────────────
 
 export async function getOrCreateIntegration(): Promise<{ settings?: IntegrationSettings; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
 
   const { data: existing } = await admin
     .from('tenant_integrations')
     .select('id, tenant_id, webhook_api_key, welcome_template, enabled, outbound_webhook_url, outbound_signing_secret, outbound_events')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .single();
 
   if (existing) return { settings: existing as IntegrationSettings };
 
   const { data: created, error } = await admin
     .from('tenant_integrations')
-    .insert({ tenant_id: tenantId })
+    .insert({ tenant_id: session.tenantId })
     .select('id, tenant_id, webhook_api_key, welcome_template, enabled, outbound_webhook_url, outbound_signing_secret, outbound_events')
     .single();
 
@@ -78,15 +66,15 @@ export async function getOrCreateIntegration(): Promise<{ settings?: Integration
 // ─── Inbound actions ──────────────────────────────────────────────────────────
 
 export async function saveWelcomeTemplate(template: string): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
   if (!template.trim()) return { error: 'Template cannot be empty' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('tenant_integrations')
     .update({ welcome_template: template.trim() })
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/integrations');
@@ -94,14 +82,14 @@ export async function saveWelcomeTemplate(template: string): Promise<{ error?: s
 }
 
 export async function toggleIntegration(enabled: boolean): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('tenant_integrations')
     .update({ enabled })
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/integrations');
@@ -109,8 +97,8 @@ export async function toggleIntegration(enabled: boolean): Promise<{ error?: str
 }
 
 export async function regenerateApiKey(): Promise<{ key?: string; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const randomBytes = new Uint8Array(16);
   crypto.getRandomValues(randomBytes);
@@ -120,7 +108,7 @@ export async function regenerateApiKey(): Promise<{ key?: string; error?: string
   const { error } = await admin
     .from('tenant_integrations')
     .update({ webhook_api_key: newKey })
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/integrations');
@@ -128,8 +116,8 @@ export async function regenerateApiKey(): Promise<{ key?: string; error?: string
 }
 
 export async function sendTestMessage(phone: string, name: string): Promise<{ sent?: boolean; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
   if (!phone.trim()) return { error: 'Phone number is required' };
 
   const admin   = getSupabaseAdminClient();
@@ -138,7 +126,7 @@ export async function sendTestMessage(phone: string, name: string): Promise<{ se
   const { data: integration } = await admin
     .from('tenant_integrations')
     .select('webhook_api_key')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .single();
 
   if (!integration) return { error: 'Integration not configured' };
@@ -158,14 +146,14 @@ export async function sendTestMessage(phone: string, name: string): Promise<{ se
 }
 
 export async function getWebhookLogs(): Promise<{ logs: WebhookLog[]; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { logs: [], error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { logs: [], error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('webhook_logs')
     .select('id, contact_phone, contact_name, status, error_message, source, triggered_at')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .order('triggered_at', { ascending: false })
     .limit(100);
 
@@ -179,10 +167,9 @@ export async function saveOutboundSettings(
   url:    string | null,
   events: string[],
 ): Promise<{ error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
-  // Basic URL validation
   if (url && url.trim()) {
     try { new URL(url.trim()); } catch { return { error: 'Invalid URL format' }; }
   }
@@ -194,7 +181,7 @@ export async function saveOutboundSettings(
       outbound_webhook_url: url?.trim() || null,
       outbound_events:      events,
     })
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/integrations');
@@ -202,8 +189,8 @@ export async function saveOutboundSettings(
 }
 
 export async function regenerateSigningSecret(): Promise<{ secret?: string; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const randomBytes = new Uint8Array(20);
   crypto.getRandomValues(randomBytes);
@@ -213,7 +200,7 @@ export async function regenerateSigningSecret(): Promise<{ secret?: string; erro
   const { error } = await admin
     .from('tenant_integrations')
     .update({ outbound_signing_secret: newSecret })
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   revalidatePath('/integrations');
@@ -223,19 +210,20 @@ export async function regenerateSigningSecret(): Promise<{ secret?: string; erro
 export async function triggerManualPush(
   type: 'contacts' | 'conversations' | 'leads',
 ): Promise<{ count?: number; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
-
-  const supabase = await getSupabaseServerClient();
-  const session  = (await supabase.auth.getSession()).data.session;
+  const session = await getSession();
   if (!session) return { error: 'Unauthorized' };
+
+  // Need the live access token for the downstream API call
+  const supabase = await getSupabaseServerClient();
+  const { data: { session: s } } = await supabase.auth.getSession();
+  if (!s) return { error: 'Unauthorized' };
 
   const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://whatsapp-agent-fmtg.onrender.com';
   const res = await fetch(`${apiBase}/api/integrations/outbound/push`, {
     method:  'POST',
     headers: {
-      'content-type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
+      'content-type':  'application/json',
+      'Authorization': `Bearer ${s.access_token}`,
     },
     body: JSON.stringify({ type }),
   });
@@ -246,14 +234,14 @@ export async function triggerManualPush(
 }
 
 export async function getOutboundLogs(): Promise<{ logs: OutboundLog[]; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { logs: [], error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { logs: [], error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('outbound_logs')
     .select('id, event_type, status, http_status, error_message, triggered_at')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .order('triggered_at', { ascending: false })
     .limit(100);
 

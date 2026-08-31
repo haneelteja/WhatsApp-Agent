@@ -1,8 +1,8 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { revalidatePath }         from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSession }             from '@/lib/session';
 
 export interface CallTriggersInput {
   productSlug:                  string;
@@ -21,25 +21,15 @@ export interface CallTriggersInput {
 }
 
 export async function saveCallTriggersAction(input: CallTriggersInput) {
-  const supabase = await getSupabaseServerClient();
-  const admin    = getSupabaseAdminClient();
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not authenticated' };
+  const admin = getSupabaseAdminClient();
 
-  const { data: tenantUser } = await admin
-    .from('tenant_users')
-    .select('tenant_id, role')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!tenantUser) return { error: 'Tenant not found' };
-
-  // Load existing voice_config to merge (don't overwrite telephony settings etc.)
   const { data: existing } = await admin
     .from('bot_configs')
     .select('voice_config')
-    .eq('tenant_id', tenantUser.tenant_id)
+    .eq('tenant_id', session.tenantId)
     .eq('product_slug', input.productSlug)
     .single();
 
@@ -47,24 +37,24 @@ export async function saveCallTriggersAction(input: CallTriggersInput) {
 
   const merged = {
     ...existingVoiceCfg,
-    trigger_on_call_request:        input.triggerOnCallRequest,
-    call_request_keywords:          input.callRequestKeywords,
-    trigger_on_negative_sentiment:  input.triggerOnNegativeSentiment,
-    negative_sentiment_threshold:   input.negativeSentimentThreshold,
-    trigger_on_no_reply:            input.triggerOnNoReply,
-    no_reply_after_hours:           input.noReplyAfterHours,
-    business_hours_only:            input.businessHoursOnly,
-    business_hours_start:           input.businessHoursStart,
-    business_hours_end:             input.businessHoursEnd,
-    business_hours_timezone:        input.businessHoursTimezone,
-    business_hours_days:            input.businessHoursDays,
-    call_delay_seconds:             input.callDelaySeconds,
+    trigger_on_call_request:       input.triggerOnCallRequest,
+    call_request_keywords:         input.callRequestKeywords,
+    trigger_on_negative_sentiment: input.triggerOnNegativeSentiment,
+    negative_sentiment_threshold:  input.negativeSentimentThreshold,
+    trigger_on_no_reply:           input.triggerOnNoReply,
+    no_reply_after_hours:          input.noReplyAfterHours,
+    business_hours_only:           input.businessHoursOnly,
+    business_hours_start:          input.businessHoursStart,
+    business_hours_end:            input.businessHoursEnd,
+    business_hours_timezone:       input.businessHoursTimezone,
+    business_hours_days:           input.businessHoursDays,
+    call_delay_seconds:            input.callDelaySeconds,
   };
 
   const { error } = await admin
     .from('bot_configs')
     .update({ voice_config: merged })
-    .eq('tenant_id', tenantUser.tenant_id)
+    .eq('tenant_id', session.tenantId)
     .eq('product_slug', input.productSlug);
 
   if (error) return { error: error.message };

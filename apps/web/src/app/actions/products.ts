@@ -1,16 +1,17 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath }          from 'next/cache';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
-import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
+import { getSession }              from '@/lib/session';
 import type { ProductCatalogueItem } from '@alphabot/shared';
 
 // ── Platform admin actions (used by /platform pages) ─────────────────────────
 
 export async function saveProductDefaultsAction(
-  slug: string,
+  slug:          string,
   defaultPrompt: string,
-  defaultModel: string,
+  defaultModel:  string,
 ) {
   const admin = getSupabaseAdminClient();
   const { error } = await admin
@@ -23,9 +24,9 @@ export async function saveProductDefaultsAction(
 }
 
 export async function toggleClientProductAction(
-  tenantId: string,
+  tenantId:    string,
   productSlug: string,
-  active: boolean,
+  active:      boolean,
 ) {
   const supabase = await getSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -73,29 +74,17 @@ export async function toggleClientProductAction(
   return { success: true };
 }
 
-async function getTenantId(): Promise<string | null> {
-  const supabase = await getSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const admin = getSupabaseAdminClient();
-  const { data: tu } = await admin
-    .from('tenant_users')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .single();
-  return tu?.tenant_id ?? null;
-}
+// ── Tenant product catalogue actions ─────────────────────────────────────────
 
 export async function getProductsAction(): Promise<{ products: ProductCatalogueItem[]; error?: string }> {
-  const tenantId = await getTenantId();
-  if (!tenantId) return { products: [], error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { products: [], error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('product_catalogue')
     .select('*')
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', session.tenantId)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });
 
@@ -104,22 +93,22 @@ export async function getProductsAction(): Promise<{ products: ProductCatalogueI
 }
 
 export async function createProductAction(input: {
-  name: string;
+  name:        string;
   description?: string;
-  price_inr?: number | null;
-  category?: string;
-  sku?: string;
+  price_inr?:  number | null;
+  category?:   string;
+  sku?:        string;
 }): Promise<{ product?: ProductCatalogueItem; error?: string }> {
   if (!input.name?.trim()) return { error: 'Name is required' };
 
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { data, error } = await admin
     .from('product_catalogue')
     .insert({
-      tenant_id:   tenantId,
+      tenant_id:   session.tenantId,
       name:        input.name.trim(),
       description: input.description?.trim() || null,
       price_inr:   input.price_inr ?? null,
@@ -134,27 +123,27 @@ export async function createProductAction(input: {
 }
 
 export async function updateProductAction(
-  id: string,
+  id:    string,
   input: Partial<{
-    name: string;
+    name:        string;
     description: string | null;
-    price_inr: number | null;
-    category: string | null;
-    sku: string | null;
-    active: boolean;
+    price_inr:   number | null;
+    category:    string | null;
+    sku:         string | null;
+    active:      boolean;
   }>,
 ): Promise<{ error?: string }> {
   if (!id) return { error: 'Missing id' };
 
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('product_catalogue')
     .update({ ...input, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   return {};
@@ -163,15 +152,15 @@ export async function updateProductAction(
 export async function deleteProductAction(id: string): Promise<{ error?: string }> {
   if (!id) return { error: 'Missing id' };
 
-  const tenantId = await getTenantId();
-  if (!tenantId) return { error: 'Unauthorized' };
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const admin = getSupabaseAdminClient();
   const { error } = await admin
     .from('product_catalogue')
     .delete()
     .eq('id', id)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', session.tenantId);
 
   if (error) return { error: error.message };
   return {};
