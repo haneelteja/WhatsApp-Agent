@@ -582,7 +582,7 @@ function BridgeModeSection({
       <div className="flex items-center justify-between gap-4 bg-violet-50 border border-violet-100 rounded-xl px-4 py-3">
         <div>
           <p className="text-sm font-medium text-violet-900">Enable bridge calls</p>
-          <p className="text-xs text-violet-500 mt-0.5">Shows "Bridge call" toggle inside Make a Call button</p>
+          <p className="text-xs text-violet-500 mt-0.5">Shows &quot;Bridge call&quot; toggle inside Make a Call button</p>
         </div>
         <button
           type="button"
