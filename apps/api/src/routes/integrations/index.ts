@@ -209,17 +209,17 @@ export async function integrationRoutes(fastify: FastifyInstance): Promise<void>
           .order('updated_at', { ascending: false })
           .limit(500);
 
-        exportData = ((data ?? []) as Array<{
+        exportData = ((data ?? []) as unknown as Array<{
           id: string; product_type: string; status: string; stage: string | null;
           created_at: string; updated_at: string;
-          contacts: { phone: string | null; name: string | null } | null;
+          contacts: Array<{ phone: string | null; name: string | null }>;
         }>).map(c => ({
           id:           c.id,
           product_type: c.product_type,
           status:       c.status,
           stage:        c.stage,
-          contact_phone: c.contacts?.phone,
-          contact_name:  c.contacts?.name,
+          contact_phone: c.contacts?.[0]?.phone,
+          contact_name:  c.contacts?.[0]?.name,
           created_at:   c.created_at,
           updated_at:   c.updated_at,
         }));
@@ -235,17 +235,17 @@ export async function integrationRoutes(fastify: FastifyInstance): Promise<void>
           .order('updated_at', { ascending: false })
           .limit(500);
 
-        exportData = ((data ?? []) as Array<{
+        exportData = ((data ?? []) as unknown as Array<{
           id: string; stage: string | null; lead_score: number | null;
           lead_json: Record<string, unknown> | null;
           created_at: string; updated_at: string;
-          contacts: { phone: string | null; name: string | null } | null;
+          contacts: Array<{ phone: string | null; name: string | null }>;
         }>).map(c => ({
           conversation_id: c.id,
           stage:           c.stage,
           lead_score:      c.lead_score,
-          contact_phone:   c.contacts?.phone,
-          contact_name:    c.contacts?.name,
+          contact_phone:   c.contacts?.[0]?.phone,
+          contact_name:    c.contacts?.[0]?.name,
           lead_data:       c.lead_json ?? {},
           created_at:      c.created_at,
           updated_at:      c.updated_at,

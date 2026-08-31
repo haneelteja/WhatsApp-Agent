@@ -6,7 +6,9 @@
 
 import { createHmac } from 'crypto';
 import { getServerClient } from '@alphabot/database';
-import type { Logger } from 'pino';
+
+// Minimal duck-type so both pino.Logger and FastifyBaseLogger satisfy it
+type MinLogger = { error(obj: unknown, msg?: string): void };
 
 type OutboundEvent =
   | 'contact.created'
@@ -19,7 +21,7 @@ export async function fireOutboundWebhook(
   tenantId:  string,
   eventType: OutboundEvent,
   payload:   Record<string, unknown>,
-  log?:      Logger,
+  log?:      MinLogger,
 ): Promise<void> {
   const db = getServerClient();
 

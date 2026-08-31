@@ -242,7 +242,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
           product_type:    conv?.product_type,
           contact_phone:   conv?.contacts?.phone,
           contact_name:    conv?.contacts?.name,
-        }, fastify.log),
+        }),
         'outbound-conversation-resolved',
         fastify.log,
       );
@@ -257,7 +257,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
           product_type:    conv?.product_type,
           contact_phone:   conv?.contacts?.phone,
           contact_name:    conv?.contacts?.name,
-        }, fastify.log),
+        }),
         'outbound-conversation-escalated',
         fastify.log,
       );
