@@ -72,7 +72,7 @@ async function synthesiseSpeech(
       language:      langCode,
       output_format: 'ulaw',
       sample_rate:   8000,
-      speed:         1.1,
+      speed:         1.0,
     }),
     signal: AbortSignal.timeout(10_000),
   });
@@ -235,9 +235,9 @@ export async function handleStreamSession(
   const voiceId   = voiceCfg.tts_voice ?? DEFAULT_VOICE_ID;
 
   const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
-    support_bot:   'You are a helpful customer support assistant. Answer questions accurately using the knowledge base.',
-    sales_bot:     'You are a sales assistant. Understand customer needs and recommend the right product.',
-    lifecycle_bot: 'You are an account management assistant. Help customers with orders, invoices, and payments.',
+    support_bot:   'You are a friendly customer support agent handling an inbound call. Listen carefully, answer accurately using the knowledge base, and help the caller resolve their issue quickly.',
+    sales_bot:     'You are a warm and helpful sales agent on an outbound call. Understand what the caller is looking for, share relevant product information naturally, and guide them toward a decision without being pushy.',
+    lifecycle_bot: 'You are a helpful account manager following up with a customer. Be warm and brief. Address their query or concern and confirm next steps clearly.',
   };
 
   const basePrompt =
@@ -262,23 +262,30 @@ export async function handleStreamSession(
   let conversationHistory  = '';
   let turnCount            = 0;
   let isBotSpeaking        = false;
+  let botSpeakingStartedAt: number | null = null;  // epoch ms — for barge-in guard
   let processingTurn       = false;
+
+  // Minimum ms the bot must have been speaking before a VAD speech_started event
+  // clears its audio. Prevents a throat-clear or background noise killing a response.
+  const MIN_BARGE_IN_DELAY_MS = 1200;
 
   // ─── Process one customer utterance ────────────────────────────────────
   async function processTurn(customerText: string): Promise<void> {
     if (processingTurn || !streamSid) return;
     processingTurn = true;
-    isBotSpeaking  = true;
 
     log.info({ voiceCallId, customerText }, '[Stream] Processing turn');
 
     try {
+      const t0 = Date.now();
       const [kbResults] = await Promise.all([
         lookupKB(tenantId, productSlug, customerText),
       ]);
+      const t1 = Date.now();
 
       const messages = buildMessages(voiceCallId, conversationHistory, customerText);
       const aiResult = await getAIResponse(systemPrompt, messages, kbResults);
+      const t2 = Date.now();
 
       const shouldEnd  = aiResult.content.includes(END_CALL_MARKER) || turnCount >= MAX_TURNS;
       const cleanReply = aiResult.content
@@ -291,8 +298,19 @@ export async function handleStreamSession(
       log.info({ voiceCallId, reply: cleanReply.slice(0, 100) }, '[Stream] Claude reply');
 
       const audio = await synthesiseSpeech(cleanReply, language, voiceId);
+      const t3 = Date.now();
+
+      log.info({
+        voiceCallId,
+        kbMs:    t1 - t0,
+        claudeMs: t2 - t1,
+        ttsMs:   t3 - t2,
+        totalMs: t3 - t0,
+      }, '[Stream] Turn latency');
 
       if (twilioWs.readyState === WebSocket.OPEN && streamSid) {
+        isBotSpeaking        = true;
+        botSpeakingStartedAt = Date.now();
         sendAudio(twilioWs, streamSid, audio);
       }
 
@@ -331,7 +349,10 @@ export async function handleStreamSession(
   // ─── Open Smallest.ai STT WebSocket ────────────────────────────────────
   function openSttWs(): void {
     const langCode = language.startsWith('hi') ? 'hi' : 'en';
-    const url      = `${STT_WS_URL}?model=pulse&language=${langCode}&encoding=mulaw&sample_rate=8000&endpointing=true&punctuate=true&vad_events=true`;
+    // endpointing_silence_duration_ms=700 — wait 700ms of silence after speech ends
+    // before emitting a final transcript. Default (~200ms) is too aggressive and clips
+    // callers mid-sentence. 700ms is a good balance for Indian English conversational pace.
+    const url      = `${STT_WS_URL}?model=pulse&language=${langCode}&encoding=mulaw&sample_rate=8000&endpointing=true&endpointing_silence_duration_ms=700&punctuate=true&vad_events=true`;
 
     sttWs = new WebSocket(url, {
       headers: { Authorization: `Bearer ${getApiKey()}` },
@@ -354,18 +375,25 @@ export async function handleStreamSession(
           const text = msg.transcript.trim();
           log.info({ voiceCallId, text }, '[Stream] STT final');
 
-          // Barge-in: user spoke while bot was playing audio
+          // Barge-in on confirmed transcript: always interrupt
           if (isBotSpeaking && streamSid) {
             clearTwilioAudio(twilioWs, streamSid);
-            isBotSpeaking = false;
+            isBotSpeaking        = false;
+            botSpeakingStartedAt = null;
           }
 
           void processTurn(text);
 
         } else if (msg.type === 'speech_started' && isBotSpeaking && streamSid) {
-          // VAD detected speech — clear bot audio immediately
-          clearTwilioAudio(twilioWs, streamSid);
-          isBotSpeaking = false;
+          // VAD-only barge-in: only interrupt after the bot has been speaking for
+          // MIN_BARGE_IN_DELAY_MS. Guards against a throat-clear or background noise
+          // killing the bot's response immediately after it starts playing.
+          const botAge = botSpeakingStartedAt ? Date.now() - botSpeakingStartedAt : 0;
+          if (botAge >= MIN_BARGE_IN_DELAY_MS) {
+            clearTwilioAudio(twilioWs, streamSid);
+            isBotSpeaking        = false;
+            botSpeakingStartedAt = null;
+          }
 
         } else if (msg.type === 'error') {
           log.error({ voiceCallId, msg }, '[Stream] STT error event');
@@ -416,9 +444,15 @@ export async function handleStreamSession(
           // Open STT first, then synthesise + play greeting
           openSttWs();
 
+          const DEFAULT_GREETINGS: Record<string, string> = {
+            support_bot:   'Hi there! Thanks for calling. How can I help you today?',
+            sales_bot:     'Hi! Thanks for your time. I wanted to quickly share something that might interest you — is now a good moment?',
+            lifecycle_bot: 'Hello! I\'m calling to follow up with you. Is now a good time to talk?',
+          };
           const greeting =
             voiceCfg.greeting_message ??
-            'Hello! I am your support assistant. How can I help you today?';
+            DEFAULT_GREETINGS[productSlug] ??
+            DEFAULT_GREETINGS['support_bot']!;
 
           try {
             isBotSpeaking = true;
@@ -445,7 +479,8 @@ export async function handleStreamSession(
         case 'mark': {
           // Twilio finished playing our audio
           if (msg.mark?.name === 'response_end') {
-            isBotSpeaking = false;
+            isBotSpeaking        = false;
+            botSpeakingStartedAt = null;
           }
           break;
         }

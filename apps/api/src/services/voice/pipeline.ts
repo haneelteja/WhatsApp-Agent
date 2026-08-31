@@ -217,14 +217,16 @@ export function buildVoiceSystemPrompt(
   let prompt = basePrompt + previousContext;
 
   // Voice-specific instructions
-  prompt += `\n\nIMPORTANT — You are responding via VOICE CALL, not text:
-- Keep each response to 2-3 SHORT sentences maximum. Spoken responses must be brief.
-- Do NOT use bullet points, markdown, emojis, or special characters.
-- Do NOT say things like "here is a list" or "please see below".
-- Speak naturally and conversationally.
-- At the end of your response, ask ONE simple follow-up question to keep the conversation going — unless the issue is fully resolved.
-- When the conversation is fully complete (issue resolved, customer satisfied, or customer wants to end), add exactly: ${END_CALL_MARKER}
-- Do NOT add ${END_CALL_MARKER} unless the conversation is genuinely complete.`;
+  prompt += `\n\nYou are speaking on a PHONE CALL — follow these rules strictly:
+- Keep every response to 1-3 short sentences. Brevity is critical — long answers lose callers.
+- Never use bullet points, numbered lists, markdown, emojis, or symbols like *, -, /. Spoken text only.
+- Never say phrases like "here's a list", "please see below", "as I mentioned earlier", or "Certainly!".
+- Use contractions naturally: say "you'll", "it's", "we've", "don't" — not the formal written form.
+- Spell out numbers and abbreviations: say "five hundred rupees", "Monday the fifth", not "₹500" or "5th".
+- If you did not understand something, say "Sorry, I didn't catch that — could you say that again?" naturally.
+- End your turn with a short, natural follow-up only when it genuinely helps move the conversation forward — do not force a question every time.
+- When the conversation is fully complete (issue resolved or caller wants to end), append exactly: ${END_CALL_MARKER}
+- Do NOT append ${END_CALL_MARKER} unless the conversation is genuinely finished.`;
 
   const allBlockedTopics = [
     ...(globalG?.global_blocked_topics ?? []),
@@ -278,10 +280,16 @@ export async function buildGreetingTwiml(ctx: PipelineContext, callContext?: Rec
   const db = getServerClient();
   const { voiceCfg } = await loadVoiceBotContextCached(db, ctx.tenantId, ctx.productSlug);
 
+  const DEFAULT_GREETINGS: Record<string, string> = {
+    support_bot:   'Hi there! Thanks for calling. How can I help you today?',
+    sales_bot:     'Hi! Thanks for your time. I wanted to quickly share something that might interest you — is now a good moment?',
+    lifecycle_bot: 'Hello! I\'m calling to follow up with you. Is now a good time to talk?',
+  };
   const greeting =
     callContext?.['greeting_override'] ??
     voiceCfg.greeting_message ??
-    'Hello! I am your support assistant. How can I help you today?';
+    DEFAULT_GREETINGS[ctx.productSlug] ??
+    DEFAULT_GREETINGS['support_bot']!;
 
   const ttsResult = await ctx.tts.synthesise({
     text:     greeting,
@@ -345,9 +353,9 @@ export async function processTurn(
   }
 
   const DEFAULT_SYSTEM_PROMPTS: Record<string, string> = {
-    support_bot:   'You are a helpful customer support assistant. Answer questions accurately using the knowledge base.',
-    sales_bot:     'You are a sales assistant. Understand customer needs and recommend the right product.',
-    lifecycle_bot: 'You are an account management assistant. Help customers with orders, invoices, and payments.',
+    support_bot:   'You are a friendly customer support agent handling an inbound call. Listen carefully, answer accurately using the knowledge base, and help the caller resolve their issue quickly.',
+    sales_bot:     'You are a warm and helpful sales agent on an outbound call. Understand what the caller is looking for, share relevant product information naturally, and guide them toward a decision without being pushy.',
+    lifecycle_bot: 'You are a helpful account manager following up with a customer. Be warm and brief. Address their query or concern and confirm next steps clearly.',
   };
 
   const baseSystemPrompt =
