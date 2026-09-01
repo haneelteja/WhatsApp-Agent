@@ -1,7 +1,8 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Bot, Clock, MessageSquare, Users, ShieldAlert, Cpu, Phone, Sparkles } from 'lucide-react';
+import { ArrowLeft, Clock, CreditCard, MessageSquare, Users, ShieldAlert, Cpu, Phone, Sparkles } from 'lucide-react';
+import { CollapsibleSection } from '@/components/platform/CollapsibleSection';
 import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
 import { ClientProductsManager } from '@/components/platform/ClientProductsManager';
 import { LlmConfigCard } from '@/components/LlmConfigCard';
@@ -13,7 +14,6 @@ import { ContactEmailEditor } from '@/components/platform/ContactEmailEditor';
 import { WhatsAppNumberSection } from '@/components/platform/WhatsAppNumberSection';
 import { BillingManager } from '@/components/platform/BillingManager';
 import { TenantVoiceConfigCard, type TenantVoiceConfigRow } from '@/components/platform/TenantVoiceConfigCard';
-import { CreditCard } from 'lucide-react';
 import { CopilotSettingsCard } from '@/components/platform/CopilotSettingsCard';
 import { getCopilotConfigAction } from '@/app/actions/copilot-settings';
 
@@ -142,110 +142,104 @@ export default async function ClientDetailPage({
       </div>
 
       {/* Products — interactive manager */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-800">Assigned Products</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Activate or deactivate bots for this client</p>
-        </div>
-        <div className="p-4">
-          <ClientProductsManager tenantId={tenantId} initialProducts={tpRows} />
-        </div>
-      </div>
+      <CollapsibleSection
+        title="Assigned Products"
+        subtitle="Activate or deactivate bots for this client"
+        contentClass="p-4"
+      >
+        <ClientProductsManager tenantId={tenantId} initialProducts={tpRows} />
+      </CollapsibleSection>
 
       {/* WhatsApp Numbers */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
-          <Phone size={15} className="text-indigo-500" />
-          <h3 className="text-sm font-semibold text-slate-800">WhatsApp Numbers</h3>
-          <span className="ml-auto text-xs text-slate-400">One number per bot</span>
-        </div>
-        <div className="px-6 py-4">
-          <p className="text-xs text-slate-400 mb-4">
-            Each active bot needs its own WhatsApp number. The webhook URL for each bot is shown below.
-          </p>
-          <WhatsAppNumberSection
-            tenantId={tenantId}
-            activeBots={tpRows.filter(p => p.active)}
-            waNumbers={(waNumbers ?? []) as { id: string; phone_number: string; provider: string; label: string | null; config_json: Record<string, string>; product_slug: string | null }[]}
-          />
-        </div>
-      </div>
+      <CollapsibleSection
+        icon={<Phone size={15} className="text-indigo-500" />}
+        title="WhatsApp Numbers"
+        rightContent={<span className="text-xs text-slate-400">One number per bot</span>}
+        contentClass="px-6 py-4"
+      >
+        <p className="text-xs text-slate-400 mb-4">
+          Each active bot needs its own WhatsApp number. The webhook URL for each bot is shown below.
+        </p>
+        <WhatsAppNumberSection
+          tenantId={tenantId}
+          activeBots={tpRows.filter(p => p.active)}
+          waNumbers={(waNumbers ?? []) as { id: string; phone_number: string; provider: string; label: string | null; config_json: Record<string, string>; product_slug: string | null }[]}
+        />
+      </CollapsibleSection>
 
       {/* Voice Config */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
-          <Phone size={15} className="text-violet-500" />
-          <h3 className="text-sm font-semibold text-slate-800">Voice Configuration</h3>
-          <span className="ml-auto text-[11px] px-2 py-0.5 bg-violet-50 text-violet-600 rounded-full font-medium border border-violet-100">
+      <CollapsibleSection
+        icon={<Phone size={15} className="text-violet-500" />}
+        title="Voice Configuration"
+        rightContent={
+          <span className="text-[11px] px-2 py-0.5 bg-violet-50 text-violet-600 rounded-full font-medium border border-violet-100">
             Per-client
           </span>
-        </div>
-        <div className="px-6 py-5">
-          <p className="text-xs text-slate-400 mb-5">
-            Configure this client&apos;s outbound caller ID and monthly/daily call limits. The caller ID
-            overrides the platform-level number so each client has their own Exotel number.
-          </p>
-          <TenantVoiceConfigCard
-            tenantId={tenantId}
-            initial={tenantVoiceConfigRow ? (() => {
-              const r = tenantVoiceConfigRow as TenantVoiceConfigRow & { exotel_api_key?: string | null };
-              return {
-                ...r,
-                // Send only last 4 chars for display — never expose full key to browser
-                exotel_api_key:   r.exotel_api_key ? '****' + r.exotel_api_key.slice(-4) : null,
-                exotel_api_token: null,
-              } as TenantVoiceConfigRow;
-            })() : null}
-          />
-        </div>
-      </div>
+        }
+      >
+        <p className="text-xs text-slate-400 mb-5">
+          Configure this client&apos;s outbound caller ID and monthly/daily call limits. The caller ID
+          overrides the platform-level number so each client has their own Exotel number.
+        </p>
+        <TenantVoiceConfigCard
+          tenantId={tenantId}
+          initial={tenantVoiceConfigRow ? (() => {
+            const r = tenantVoiceConfigRow as TenantVoiceConfigRow & { exotel_api_key?: string | null };
+            return {
+              ...r,
+              exotel_api_key:   r.exotel_api_key ? '****' + r.exotel_api_key.slice(-4) : null,
+              exotel_api_token: null,
+            } as TenantVoiceConfigRow;
+          })() : null}
+        />
+      </CollapsibleSection>
 
       {/* Trial info */}
       {activeTrial && (
-        <div className="bg-sky-50 border border-sky-200 rounded-2xl p-5">
-          <div className="flex items-start gap-3">
-            <Clock size={18} className="text-sky-500 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-sky-800">Active Free Trial</p>
-              <p className="text-xs text-sky-600 mt-0.5">
-                Expires {new Date(activeTrial.ends_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                {' '}· {trialDaysLeft} days remaining
-              </p>
-              <p className="text-xs text-sky-500 mt-0.5">Allowed model: {activeTrial.allowed_model}</p>
-            </div>
-          </div>
-        </div>
+        <CollapsibleSection
+          icon={<Clock size={15} className="text-sky-500 shrink-0" />}
+          title="Active Free Trial"
+          rightContent={<span className="text-xs font-medium text-sky-600">{trialDaysLeft}d left</span>}
+          containerClass="bg-sky-50 border border-sky-200 rounded-2xl overflow-hidden"
+          headerClass={`w-full flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-sky-100/50 transition-colors`}
+          titleClass="text-sm font-semibold text-sky-800"
+          contentClass="px-5 py-3 border-t border-sky-200"
+        >
+          <p className="text-xs text-sky-600">
+            Expires {new Date(activeTrial.ends_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            {' '}· {trialDaysLeft} days remaining
+          </p>
+          <p className="text-xs text-sky-500 mt-0.5">Allowed model: {activeTrial.allowed_model}</p>
+        </CollapsibleSection>
       )}
 
       {/* Billing & Subscription */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
-          <CreditCard size={15} className="text-indigo-500" />
-          <h3 className="text-sm font-semibold text-slate-800">Billing & Subscription</h3>
-        </div>
-        <div className="px-6 py-5">
-          <BillingManager
-            tenantId={tenantId}
-            initialPlan={(tenant.plan as 'starter' | 'growth' | 'scale')}
-            initialStatus={(tenant.status as 'active' | 'trial' | 'suspended')}
-            activeBots={tpRows.filter(p => p.active)}
-            subs={(subscriptions ?? []) as { product_type: string; tier: string | null; billing_cycle: string | null; next_billing_date: string | null }[]}
-            trials={trialRows}
-          />
-        </div>
-      </div>
+      <CollapsibleSection
+        icon={<CreditCard size={15} className="text-indigo-500" />}
+        title="Billing & Subscription"
+      >
+        <BillingManager
+          tenantId={tenantId}
+          initialPlan={(tenant.plan as 'starter' | 'growth' | 'scale')}
+          initialStatus={(tenant.status as 'active' | 'trial' | 'suspended')}
+          activeBots={tpRows.filter(p => p.active)}
+          subs={(subscriptions ?? []) as { product_type: string; tier: string | null; billing_cycle: string | null; next_billing_date: string | null }[]}
+          trials={trialRows}
+        />
+      </CollapsibleSection>
 
       {/* Team & Invites */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
-          <Users size={15} className="text-indigo-500" />
-          <h3 className="text-sm font-semibold text-slate-800">Team Members</h3>
-          <span className="ml-auto text-xs text-slate-400">
+      <CollapsibleSection
+        icon={<Users size={15} className="text-indigo-500" />}
+        title="Team Members"
+        rightContent={
+          <span className="text-xs text-slate-400">
             {(tenantUsers ?? []).length} active
             {filteredPendingInvites.length > 0 && ` · ${filteredPendingInvites.length} pending`}
           </span>
-        </div>
-        <div className="px-6 py-4 space-y-4">
+        }
+        contentClass="px-6 py-4 space-y-4"
+      >
           {(tenantUsers ?? []).length > 0 && (
             <div className="divide-y divide-slate-50">
               {(tenantUsers ?? []).map(u => {
@@ -301,8 +295,7 @@ export default async function ClientDetailPage({
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Invite a new member</p>
             <InviteUserForm tenantId={tenantId} />
           </div>
-        </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Client-wide guardrails (Layer 3) */}
       {(() => {
@@ -314,21 +307,20 @@ export default async function ClientDetailPage({
         const initial = (tenantGuardrailsRow?.guardrails_json as LayeredGuardrailsConfig) ?? DEFAULT_G;
         const saveAction = saveTenantGuardrailsByIdAction.bind(null, tenantId);
         return (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
-              <ShieldAlert size={15} className="text-indigo-500" />
-              <h3 className="text-sm font-semibold text-slate-800">Client-Wide Guardrails</h3>
-              <span className="ml-auto text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">
+          <CollapsibleSection
+            icon={<ShieldAlert size={15} className="text-indigo-500" />}
+            title="Client-Wide Guardrails"
+            rightContent={
+              <span className="text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">
                 Applies to all bots
               </span>
-            </div>
-            <div className="px-6 py-5">
-              <p className="text-xs text-slate-400 mb-5">
-                These rules apply to every bot this client uses. They stack on top of global and bot-type guardrails.
-              </p>
-              <TenantGuardrailsForm initial={initial} action={saveAction} accentColor="indigo" />
-            </div>
-          </div>
+            }
+          >
+            <p className="text-xs text-slate-400 mb-5">
+              These rules apply to every bot this client uses. They stack on top of global and bot-type guardrails.
+            </p>
+            <TenantGuardrailsForm initial={initial} action={saveAction} accentColor="indigo" />
+          </CollapsibleSection>
         );
       })()}
 
@@ -350,53 +342,55 @@ export default async function ClientDetailPage({
         };
 
         return (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
-              <Cpu size={15} className="text-indigo-500" />
-              <h3 className="text-sm font-semibold text-slate-800">AI Models</h3>
-              <span className="ml-auto text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">
+          <CollapsibleSection
+            icon={<Cpu size={15} className="text-indigo-500" />}
+            title="AI Models"
+            rightContent={
+              <span className="text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">
                 Overrides platform defaults
               </span>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <p className="text-xs text-slate-400">
-                Configure a dedicated API key and model for this client. These override platform-level defaults and allow separate billing or rate limits per client.
-              </p>
-              <LlmConfigCard label="Client Default" description="Applies to all this client's bots when no per-bot key is set." tenantId={tenantId} productSlug={null} initial={llmMap['__generic__'] ? maskLlm(llmMap['__generic__']!) : null} accent="indigo" />
-              {tpRows.filter(p => p.active).map(p => {
-                const meta = BOT_META[p.product_type] ?? { name: p.product_type, badge: 'bg-gray-100 text-gray-600 border-gray-200' };
-                return (
-                  <LlmConfigCard key={p.product_type} label={meta.name} description={`Override for this client's ${meta.name.toLowerCase()} only.`} tenantId={tenantId} productSlug={p.product_type} initial={llmMap[p.product_type] ? maskLlm(llmMap[p.product_type]!) : null} accent="indigo" />
-                );
-              })}
-            </div>
-          </div>
+            }
+            contentClass="px-6 py-5 space-y-4"
+          >
+            <p className="text-xs text-slate-400">
+              Configure a dedicated API key and model for this client. These override platform-level defaults and allow separate billing or rate limits per client.
+            </p>
+            <LlmConfigCard label="Client Default" description="Applies to all this client's bots when no per-bot key is set." tenantId={tenantId} productSlug={null} initial={llmMap['__generic__'] ? maskLlm(llmMap['__generic__']!) : null} accent="indigo" />
+            {tpRows.filter(p => p.active).map(p => {
+              const meta = BOT_META[p.product_type] ?? { name: p.product_type, badge: 'bg-gray-100 text-gray-600 border-gray-200' };
+              return (
+                <LlmConfigCard key={p.product_type} label={meta.name} description={`Override for this client's ${meta.name.toLowerCase()} only.`} tenantId={tenantId} productSlug={p.product_type} initial={llmMap[p.product_type] ? maskLlm(llmMap[p.product_type]!) : null} accent="indigo" />
+              );
+            })}
+          </CollapsibleSection>
         );
       })()}
 
       {/* AI Copilot settings */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
-          <Sparkles size={15} className="text-emerald-500" />
-          <h3 className="text-sm font-semibold text-slate-800">AI Copilot</h3>
-          <span className={`ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium border ${copilotConfig.enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+      <CollapsibleSection
+        icon={<Sparkles size={15} className="text-emerald-500" />}
+        title="AI Copilot"
+        rightContent={
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border ${copilotConfig.enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
             {copilotConfig.enabled ? 'Enabled' : 'Disabled'}
           </span>
-        </div>
-        <div className="px-6 py-5">
-          <p className="text-xs text-slate-400 mb-5">
-            Configure the AI Copilot chat widget for this client — enable/disable it, set custom instructions, and control which write actions it can propose to users.
-          </p>
-          <CopilotSettingsCard tenantId={tenantId} initial={copilotConfig} />
-        </div>
-      </div>
+        }
+      >
+        <p className="text-xs text-slate-400 mb-5">
+          Configure the AI Copilot chat widget for this client — enable/disable it, set custom instructions, and control which write actions it can propose to users.
+        </p>
+        <CopilotSettingsCard tenantId={tenantId} initial={copilotConfig} />
+      </CollapsibleSection>
 
       {/* Webhook info */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <MessageSquare size={14} className="text-slate-400" />
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Webhook URLs</p>
-        </div>
+      <CollapsibleSection
+        icon={<MessageSquare size={14} className="text-slate-400" />}
+        title="Webhook URLs"
+        titleClass="text-xs font-semibold text-slate-500 uppercase tracking-wider"
+        containerClass="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden"
+        headerClass={`w-full flex items-center gap-2.5 px-5 py-4 text-left hover:bg-slate-100/60 transition-colors`}
+        contentClass="px-5 py-4 space-y-3"
+      >
         <p className="text-xs text-slate-400">
           Configure these URLs in your WhatsApp provider (Twilio / Meta Cloud):
         </p>
@@ -409,7 +403,7 @@ export default async function ClientDetailPage({
             </code>
           </div>
         ))}
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }
