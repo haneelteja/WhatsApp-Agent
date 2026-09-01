@@ -57,15 +57,16 @@ const LANGUAGES = [
 
 // Smallest.ai voice IDs (current TTS provider)
 const VOICES = [
-  { id: 'meher',   label: 'Meher — Indian English + Hindi, Female (recommended)', lang: ['en-IN', 'hi-IN', 'te-IN', 'ta-IN', 'kn-IN', 'mr-IN'] },
-  { id: 'ananya',  label: 'Ananya — Indian English, Female',                      lang: ['en-IN'] },
-  { id: 'arya',    label: 'Arya — Indian English, Female',                        lang: ['en-IN'] },
-  { id: 'rahul',   label: 'Rahul — Indian English, Male',                         lang: ['en-IN'] },
-  { id: 'zara',    label: 'Zara — Indian English, Female',                        lang: ['en-IN'] },
-  { id: 'kavya',   label: 'Kavya — Hindi, Female',                                lang: ['hi-IN'] },
-  { id: 'riya',    label: 'Riya — Hindi, Female',                                 lang: ['hi-IN'] },
-  { id: 'aditya',  label: 'Aditya — Hindi, Male',                                 lang: ['hi-IN'] },
-  { id: 'deepak',  label: 'Deepak — Hindi, Male',                                 lang: ['hi-IN'] },
+  { id: 'meher',   label: 'Meher — Female · Warm, Indian English + Hindi',    lang: ['en-IN', 'hi-IN', 'te-IN', 'ta-IN', 'kn-IN', 'mr-IN'] },
+  { id: 'ananya',  label: 'Ananya — Female · Soft, conversational',           lang: ['en-IN', 'hi-IN'] },
+  { id: 'arya',    label: 'Arya — Female · Crisp, professional',              lang: ['en-IN', 'hi-IN'] },
+  { id: 'zara',    label: 'Zara — Female · Energetic, friendly',              lang: ['en-IN', 'hi-IN'] },
+  { id: 'kavya',   label: 'Kavya — Female · Gentle, regional feel',           lang: ['en-IN', 'hi-IN'] },
+  { id: 'riya',    label: 'Riya — Female · Young, upbeat',                    lang: ['en-IN', 'hi-IN'] },
+  { id: 'rahul',   label: 'Rahul — Male · Confident, natural',                lang: ['en-IN', 'hi-IN'] },
+  { id: 'aditya',  label: 'Aditya — Male · Formal, authoritative',            lang: ['en-IN', 'hi-IN'] },
+  { id: 'deepak',  label: 'Deepak — Male · Deep, persuasive',                 lang: ['en-IN', 'hi-IN'] },
+  { id: 'ishaan',  label: 'Ishaan — Male · Casual, approachable',             lang: ['en-IN', 'hi-IN'] },
 ];
 
 // ─── Bot metadata ─────────────────────────────────────────────────────────────
