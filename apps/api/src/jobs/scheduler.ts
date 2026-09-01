@@ -536,4 +536,24 @@ export function startScheduler(): void {
       console.error('[Scheduler] AI Insights failed:', (err as Error).message)
     );
   });
+
+  // Startup catch-up: generate insights if none in last 24h — fixes Render hibernation
+  // The nightly cron fires at 00:30 UTC but Render free tier sleeps at night.
+  // Whenever the server wakes up (any incoming request), this runs once and catches up.
+  setTimeout(() => {
+    void withJobLock('ai_insights_startup', 82800, async () => {
+      const db = getServerClient();
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count } = await db
+        .from('ai_insights')
+        .select('*', { count: 'exact', head: true })
+        .gte('generated_at', since);
+      if ((count ?? 0) === 0) {
+        console.log('[Insights] Startup catch-up: no insights in last 24h, generating now...');
+        await runInsightsForAllTenants();
+      }
+    }).catch(err =>
+      console.error('[Insights] Startup catch-up failed:', (err as Error).message)
+    );
+  }, 15_000);
 }

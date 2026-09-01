@@ -95,7 +95,13 @@ export function AiInsightsPanel({ insight }: { insight: InsightRow | null }) {
           </div>
         </div>
         <div className="px-5 py-8 text-center">
-          <p className="text-sm text-gray-400">No insights yet — your first analysis will run at 6 AM IST today.</p>
+          <p className="text-sm text-gray-400">
+            {(() => {
+              const nowUtc = new Date();
+              const istHour = Math.floor((nowUtc.getUTCHours() * 60 + nowUtc.getUTCMinutes() + 330) / 60) % 24;
+              return `No insights yet — your first analysis will run at 6 AM IST ${istHour >= 6 ? 'tomorrow' : 'today'}.`;
+            })()}
+          </p>
         </div>
       </div>
     );
