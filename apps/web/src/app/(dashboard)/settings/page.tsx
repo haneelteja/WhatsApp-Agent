@@ -19,6 +19,7 @@ import { VoiceWorkingHoursCard, type WorkingHoursInitial } from '@/components/da
 import { VoiceCallSummaryCard, type CallSummaryInitial } from '@/components/dashboard/VoiceCallSummaryCard';
 import { InternalNumbersManager } from '@/components/dashboard/InternalNumbersManager';
 import { listInternalNumbers } from '@/app/actions/internal-numbers';
+import { DashboardCollapsibleSection } from '@/components/dashboard/DashboardCollapsibleSection';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ export default async function SettingsPage({
     return (
       <SettingsShell activeTab={activeTab}>
         <div className="space-y-5">
-          <Section icon={<Building2 size={16} />} title="Workspace" hint="Read-only account details. Share your Tenant ID with support when reporting issues.">
+          <DashboardCollapsibleSection icon={<Building2 size={16} />} title="Workspace" hint="Read-only account details. Share your Tenant ID with support when reporting issues.">
             <div className="divide-y divide-green-50">
               <InfoRow label="Name"      value={(tenant?.['name'] as string) ?? '—'} />
               <InfoRow label="Provider"  value={(tenant?.['provider'] as string) ?? '—'} capitalize />
@@ -159,9 +160,9 @@ export default async function SettingsPage({
                 <ChevronRight size={14} className="text-gray-400 group-hover:text-emerald-500 transition-colors" />
               </Link>
             </div>
-          </Section>
+          </DashboardCollapsibleSection>
 
-          <Section icon={<Phone size={16} />} title="WhatsApp Numbers" hint="Connect your Meta phone numbers to bots. Each number routes incoming messages to the assigned bot. Add the Phone Number ID from your Meta App Dashboard.">
+          <DashboardCollapsibleSection icon={<Phone size={16} />} title="WhatsApp Numbers" hint="Connect your Meta phone numbers to bots. Each number routes incoming messages to the assigned bot. Add the Phone Number ID from your Meta App Dashboard.">
             <WhatsAppNumbersManager
               numbers={numbers!.map(n => ({
                 id:              n['id'] as string,
@@ -174,13 +175,13 @@ export default async function SettingsPage({
               activeBots={activeBots.map(p => p['product_type'] as 'support_bot' | 'sales_bot' | 'lifecycle_bot')}
               webhookBase={`${apiBase}/api/webhook/${tenant?.['id'] ?? ''}`}
             />
-          </Section>
+          </DashboardCollapsibleSection>
 
-          <Section icon={<ShieldOff size={16} />} title="Internal Team Numbers" hint="Messages from these numbers are silently ignored — no bot reply, no lead created. Add your team members' WhatsApp numbers here so internal tests don't appear as leads.">
+          <DashboardCollapsibleSection icon={<ShieldOff size={16} />} title="Internal Team Numbers" hint="Messages from these numbers are silently ignored — no bot reply, no lead created. Add your team members' WhatsApp numbers here so internal tests don't appear as leads.">
             <InternalNumbersManager initialNumbers={internalNumbers} />
-          </Section>
+          </DashboardCollapsibleSection>
 
-          <Section icon={<Bot size={16} />} title="Bot Products" hint="Activate or disable bots included in your plan. Only active bots respond to WhatsApp messages. Deactivating a bot does not delete its conversation history.">
+          <DashboardCollapsibleSection icon={<Bot size={16} />} title="Bot Products" hint="Activate or disable bots included in your plan. Only active bots respond to WhatsApp messages. Deactivating a bot does not delete its conversation history.">
             <BotProductsSection
               tenantId={(tenant?.['id'] as string) ?? ''}
               apiBase={apiBase}
@@ -193,15 +194,14 @@ export default async function SettingsPage({
                 product_slug: (n['product_slug'] ?? null) as string | null,
               }))}
             />
-          </Section>
-
+          </DashboardCollapsibleSection>
 
           {activeBots.length > 0 && (
-            <Section icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup" hint="Paste the Webhook URL and Verify Token into your Meta App Dashboard under WhatsApp → Configuration to activate message delivery.">
+            <DashboardCollapsibleSection icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup" hint="Paste the Webhook URL and Verify Token into your Meta App Dashboard under WhatsApp → Configuration to activate message delivery.">
               <div className="px-5 py-4">
                 <WhatsAppSetupSection bots={botWebhooks} />
               </div>
-            </Section>
+            </DashboardCollapsibleSection>
           )}
         </div>
       </SettingsShell>
