@@ -22,6 +22,7 @@ import { buttonTemplateRoutes } from './routes/button-templates/index.js';
 import { broadcastRoutes }      from './routes/broadcast/index.js';
 import { integrationRoutes }   from './routes/integrations/index.js';
 import { startScheduler } from './jobs/scheduler.js';
+import { runInsightsForAllTenants } from './services/insights/generator.js';
 import { getServerClient } from '@alphabot/database';
 import { connectRedis, getRedis } from './lib/redis.js';
 import { initSentry, captureException } from './lib/sentry.js';
@@ -118,6 +119,18 @@ server.get('/health', async () => {
 
   const healthy = checks['database'] === 'ok';
   return { status: healthy ? 'ok' : 'degraded', ts: new Date().toISOString(), checks };
+});
+
+// ─── Admin: manual insights trigger ──────────────────────────────────────────
+server.post('/api/admin/run-insights', async (request, reply) => {
+  const secret = process.env['CRON_SECRET'];
+  if (!secret || request.headers['x-cron-secret'] !== secret) {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
+  void runInsightsForAllTenants().catch(err =>
+    server.log.error({ err }, '[Admin] run-insights failed')
+  );
+  return { ok: true, message: 'Insights generation started in background' };
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
