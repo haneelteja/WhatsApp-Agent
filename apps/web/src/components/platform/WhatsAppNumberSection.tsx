@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Phone, Plus, Edit2, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Phone, Plus, Edit2, Check, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 import { upsertWhatsAppNumberAction, type WaProvider } from '@/app/actions/whatsapp-numbers';
 
 const BOT_META: Record<string, { name: string; color: string; bg: string; border: string }> = {
@@ -43,9 +43,10 @@ function NumberForm({
   existing:    WaNumber | null;
   onDone:      () => void;
 }) {
-  const [pending, startTransition] = useTransition();
-  const [error,   setError]        = useState<string | null>(null);
-  const [saved,   setSaved]        = useState(false);
+  const [pending,    startTransition] = useTransition();
+  const [error,      setError]        = useState<string | null>(null);
+  const [saved,      setSaved]        = useState(false);
+  const [showSecret, setShowSecret]   = useState(false);
 
   const [provider,     setProvider]     = useState<WaProvider>((existing?.provider as WaProvider) ?? 'meta_cloud');
   const [phoneNumber,  setPhoneNumber]  = useState(existing?.phone_number ?? '');
@@ -130,7 +131,24 @@ function NumberForm({
           </div>
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Access Token</label>
-            <input type="password" value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="Permanent access token" className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono" />
+            <div className="relative">
+              <input
+                type={showSecret ? 'text' : 'password'}
+                value={accessToken}
+                onChange={e => setAccessToken(e.target.value)}
+                placeholder="Permanent access token"
+                autoComplete="new-password"
+                className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret(s => !s)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                tabIndex={-1}
+              >
+                {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Verify Token</label>
@@ -142,7 +160,12 @@ function NumberForm({
       {provider === 'interakt' && (
         <div>
           <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">API Key</label>
-          <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Interakt API key" className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono" />
+          <div className="relative">
+            <input type={showSecret ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Interakt API key" autoComplete="new-password" className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono" />
+            <button type="button" onClick={() => setShowSecret(s => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors" tabIndex={-1}>
+              {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
         </div>
       )}
 
@@ -154,7 +177,12 @@ function NumberForm({
           </div>
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">API Token</label>
-            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="WATI API token" className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono" />
+            <div className="relative">
+              <input type={showSecret ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="WATI API token" autoComplete="new-password" className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono" />
+              <button type="button" onClick={() => setShowSecret(s => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors" tabIndex={-1}>
+                {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -163,7 +191,12 @@ function NumberForm({
         <div className="space-y-2.5">
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">API Key</label>
-            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Gupshup API key" className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono" />
+            <div className="relative">
+              <input type={showSecret ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Gupshup API key" autoComplete="new-password" className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-300 font-mono" />
+              <button type="button" onClick={() => setShowSecret(s => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors" tabIndex={-1}>
+                {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">App Name</label>
