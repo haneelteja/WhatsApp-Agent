@@ -1,7 +1,7 @@
 'use server';
 
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, unstable_noStore as noStore } from 'next/cache';
 
 export interface InsightSuggestion {
   fingerprint: string;
@@ -20,6 +20,7 @@ export interface InsightRow {
 }
 
 export async function getLatestInsightsAction(tenantId: string): Promise<InsightRow | null> {
+  noStore(); // insights are written by the API server — always fetch fresh, never use Next.js data cache
   const admin = getSupabaseAdminClient();
   const { data } = await admin
     .from('ai_insights')
