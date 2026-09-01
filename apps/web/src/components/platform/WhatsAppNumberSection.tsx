@@ -84,7 +84,10 @@ function NumberForm({
   }
 
   return (
-    <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+    <form
+      onSubmit={e => { e.preventDefault(); handleSave(); }}
+      className="mt-3 space-y-3 border-t border-slate-100 pt-3"
+    >
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Provider</label>
@@ -173,8 +176,7 @@ function NumberForm({
 
       <div className="flex items-center gap-3">
         <button
-          type="button"
-          onClick={handleSave}
+          type="submit"
           disabled={pending || !phoneNumber}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
@@ -185,7 +187,7 @@ function NumberForm({
           Cancel
         </button>
       </div>
-    </div>
+    </form>
   );
 }
 
