@@ -18,6 +18,7 @@ import {
   Target,
   MessageSquareMore,
   Plug,
+  CalendarClock,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -29,8 +30,9 @@ const BASE_NAV = [
   { href: '/guardrails',       label: 'Guardrails',     icon: ShieldCheck      },
   { href: '/call-triggers',    label: 'Triggers',       icon: Zap              },
   { href: '/button-templates', label: 'Buttons',        icon: MessageSquareMore },
-  { href: '/campaigns',        label: 'Campaigns',      icon: Megaphone        },
-  { href: '/analytics',        label: 'Analytics',      icon: BarChart2        },
+  { href: '/campaigns',            label: 'Campaigns',  icon: Megaphone    },
+  { href: '/scheduled-messages',  label: 'Scheduled',  icon: CalendarClock },
+  { href: '/analytics',           label: 'Analytics',  icon: BarChart2    },
   { href: '/billing',          label: 'Billing',        icon: CreditCard       },
   { href: '/settings',         label: 'Settings',       icon: Settings         },
 ];
@@ -55,7 +57,7 @@ export function DashboardNav({
   const supabase = getSupabaseBrowserClient();
 
   const AGENT_HREFS      = new Set(['/dashboard', '/conversations']);
-  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/integrations', '/knowledge-base', '/orders', '/analytics', '/settings']);
+  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/integrations', '/knowledge-base', '/orders', '/analytics', '/scheduled-messages', '/settings']);
 
   const navItems = (() => {
     const items = [...BASE_NAV];

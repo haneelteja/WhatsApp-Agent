@@ -4,6 +4,7 @@ import { runDailyReports } from '../lib/email/daily-report.js';
 import { WhatsAppGateway } from '../services/whatsapp/gateway.js';
 import { dispatchPendingVoiceCalls, processCampaignContacts } from '../services/campaign/index.js';
 import { processScheduledBroadcasts } from '../services/broadcast/index.js';
+import { processScheduledMessages } from '../services/scheduled-messages/sender.js';
 import { isWithinBusinessHours } from '../lib/business-hours.js';
 import { runInsightsForAllTenants } from '../services/insights/generator.js';
 import { withJobLock } from '../lib/redis.js';
@@ -502,6 +503,13 @@ export function startScheduler(): void {
   cron.schedule('* * * * *', () => {
     void withJobLock('scheduled_broadcasts', 55, () => processScheduledBroadcasts()).catch(err =>
       console.error('[Scheduler] Broadcast processing failed:', (err as Error).message)
+    );
+  });
+
+  // Scheduled messages — every minute  [TTL: 55s]
+  cron.schedule('* * * * *', () => {
+    void withJobLock('scheduled_messages_dispatch', 55, () => processScheduledMessages()).catch(err =>
+      console.error('[Scheduler] Scheduled messages failed:', (err as Error).message)
     );
   });
 

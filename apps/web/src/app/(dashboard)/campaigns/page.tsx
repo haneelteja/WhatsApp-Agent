@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import type { LucideIcon } from 'lucide-react';
 import {
   Megaphone, MessageSquare, Phone, Users, CheckCircle2,
-  Clock, PlayCircle, PauseCircle, Ban, PhoneCall,
+  Clock, PlayCircle, PauseCircle, Ban, PhoneCall, CalendarClock,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -141,6 +141,18 @@ export default async function CampaignsPage() {
           className="text-sm font-medium bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-colors"
         >
           + New Campaign
+        </Link>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-100">
+        <span className="px-4 py-2.5 text-sm font-semibold text-emerald-700 border-b-2 border-emerald-600">Campaigns</span>
+        <Link
+          href="/scheduled-messages"
+          className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <CalendarClock size={14} />
+          Scheduled Messages
         </Link>
       </div>
 

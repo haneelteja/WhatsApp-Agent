@@ -20,6 +20,7 @@ import { campaignRoutes } from './routes/campaigns/index.js';
 import { inboundRoutes } from './routes/inbound/index.js';
 import { buttonTemplateRoutes } from './routes/button-templates/index.js';
 import { broadcastRoutes }      from './routes/broadcast/index.js';
+import { scheduledMessageRoutes } from './routes/scheduled-messages/index.js';
 import { integrationRoutes }   from './routes/integrations/index.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { runInsightsForAllTenants } from './services/insights/generator.js';
@@ -98,6 +99,7 @@ await server.register(campaignRoutes,       { prefix: '/api/campaigns' });
 await server.register(inboundRoutes,          { prefix: '/api/inbound' });
 await server.register(buttonTemplateRoutes,   { prefix: '/api/button-templates' });
 await server.register(broadcastRoutes,        { prefix: '/api/broadcast' });
+await server.register(scheduledMessageRoutes, { prefix: '/api/scheduled-messages' });
 await server.register(integrationRoutes,      { prefix: '/api/integrations' });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
