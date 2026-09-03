@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   Building2, Phone, Bot, Link2, Bell, CreditCard, ChevronRight,
   Users, Mail, Clock, Trash2, Info, Cpu, MessageSquare, ShieldOff,
+  UserCircle2,
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
@@ -20,6 +21,8 @@ import { VoiceCallSummaryCard, type CallSummaryInitial } from '@/components/dash
 import { InternalNumbersManager } from '@/components/dashboard/InternalNumbersManager';
 import { listInternalNumbers } from '@/app/actions/internal-numbers';
 import { DashboardCollapsibleSection } from '@/components/dashboard/DashboardCollapsibleSection';
+import { PersonaEditor } from '@/components/dashboard/PersonaEditor';
+import { getBotPersonasAction } from '@/app/actions/bot-persona';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -352,9 +355,10 @@ export default async function SettingsPage({
 
   // ── AI Models data ──────────────────────────────────────────────────────────
   if (activeTab === 'models') {
-    const [{ data: llmRows }, { data: llmProducts }] = await Promise.all([
+    const [{ data: llmRows }, { data: llmProducts }, personas] = await Promise.all([
       admin.from('llm_configs').select('id, product_slug, provider, api_key, model, base_url, validation_status, validation_error, validated_at, credit_info, created_at').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
+      getBotPersonasAction(),
     ]);
 
     const configMap: Record<string, RawLlmConfig | null> = { __generic__: null };
@@ -448,6 +452,17 @@ export default async function SettingsPage({
             <p className="text-center py-8 text-sm text-gray-400">
               No active bots found. Activate bots from the Workspace tab to configure per-bot models.
             </p>
+          )}
+
+          {activeSlugs.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Bot size={14} className="text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-700">Bot Persona</h3>
+                <span className="ml-auto text-[11px] text-gray-400">Injected as identity preamble before the system prompt</span>
+              </div>
+              <PersonaEditor activeSlugs={activeSlugs} personas={personas} />
+            </div>
           )}
         </div>
       </SettingsShell>

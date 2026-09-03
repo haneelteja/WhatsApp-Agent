@@ -2,14 +2,23 @@ import { unstable_cache } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession } from '@/lib/session';
-import { MessageSquare, Zap, TrendingUp, AlertCircle } from 'lucide-react';
+import { MessageSquare, Zap, TrendingUp, AlertCircle, GitBranch } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { getStageFunnelAction } from '@/app/actions/stage-funnel';
 
 // Lazy-load Recharts (~200 KB) — not needed for initial paint
 const AnalyticsCharts = dynamic(
   () => import('@/components/dashboard/AnalyticsCharts').then((m) => ({ default: m.AnalyticsCharts })),
   {
     loading: () => <div className="h-72 animate-pulse rounded-2xl bg-gray-100" />,
+    ssr: false,
+  },
+);
+
+const ConversationFunnel = dynamic(
+  () => import('@/components/dashboard/ConversationFunnel').then((m) => ({ default: m.ConversationFunnel })),
+  {
+    loading: () => <div className="h-40 animate-pulse rounded-2xl bg-gray-100" />,
     ssr: false,
   },
 );
@@ -54,8 +63,11 @@ export default async function AnalyticsPage() {
   if (!session) redirect('/login');
 
   const { tenantId } = session;
-  const { totalConvs, openConvs, resolvedConvs, escalatedTotal, tokenRow, weekEvents, monthEvents } =
-    await getAnalyticsData(tenantId);
+  const [analyticsData, funnelRows] = await Promise.all([
+    getAnalyticsData(tenantId),
+    getStageFunnelAction(tenantId, 30),
+  ]);
+  const { totalConvs, openConvs, resolvedConvs, escalatedTotal, tokenRow, weekEvents, monthEvents } = analyticsData;
 
   // Aggregate totals
   const totalTokens    = (tokenRow as { tokens_used?: number } | null)?.tokens_used ?? 0;
@@ -156,6 +168,16 @@ export default async function AnalyticsPage() {
 
       {/* Charts */}
       <AnalyticsCharts dailyData={dailyData} productData={productData} />
+
+      {/* Stage Funnel */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <GitBranch size={15} className="text-gray-400" />
+          <h3 className="text-sm font-semibold text-gray-700">Conversation Stage Funnel</h3>
+          <span className="text-xs text-gray-400 ml-1">Last 30 days</span>
+        </div>
+        <ConversationFunnel rows={funnelRows} />
+      </div>
     </div>
   );
 }

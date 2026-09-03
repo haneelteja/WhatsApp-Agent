@@ -17,6 +17,7 @@ import { detectSentimentText } from '../../services/sentiment/detector.js';
 import { isWithinBusinessHours } from '../../lib/business-hours.js';
 import { dispatchCall } from '../../services/voice/call-manager.js';
 import { getProductCatalogue } from '../../lib/product-cache.js';
+import { buildStagePromptBlock } from '../../lib/stage-definitions.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -723,6 +724,23 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     // has a custom system_prompt that doesn't include it.
     let systemPrompt = baseSystemPrompt + (productType !== 'lifecycle_bot' ? SALES_LEAD_INSTRUCTION : '');
 
+    // Inject persona preamble when bot_config has persona fields set
+    const bc = botConfig as (typeof botConfig & {
+      persona_name?: string | null;
+      persona_role?: string | null;
+      company_description?: string | null;
+      company_values?: string | null;
+      conversation_purpose?: string | null;
+    }) | null;
+    if (bc?.persona_name || bc?.company_description) {
+      const personaLines: string[] = [];
+      if (bc.persona_name)         personaLines.push(`You are ${bc.persona_name}${bc.persona_role ? `, ${bc.persona_role}` : ''}.`);
+      if (bc.company_description)  personaLines.push(`Company: ${bc.company_description}`);
+      if (bc.company_values)       personaLines.push(`Values: ${bc.company_values}`);
+      if (bc.conversation_purpose) personaLines.push(`Your purpose in this conversation: ${bc.conversation_purpose}`);
+      systemPrompt = personaLines.join('\n') + '\n\n' + systemPrompt;
+    }
+
     // Inject archive summary (Tier 3) — older turns compressed into the system prompt
     if (archiveBlock) {
       systemPrompt += `\n\n---\n${archiveBlock}`;
@@ -791,11 +809,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const aiVarPairs = Object.entries(convAiVars);
 
     systemPrompt += `\n\n---\nCONVERSATION STATE:
-Stage: ${convStage} (greeting → qualifying → resolving → following_up → closing)
+${buildStagePromptBlock(productType, convStage)}
 ${aiVarPairs.length > 0 ? `Captured info: ${aiVarPairs.map(([k, v]) => `${k}=${v}`).join(', ')}` : 'No customer info captured yet.'}
 
 To update state, append these markers at the VERY END of your response (they are stripped before reaching the customer):
-[STAGE:<new_stage>] — advance when the conversation naturally moves to a new phase
+[STAGE:<new_stage>] — advance when the conversation naturally moves to a new phase (use a valid stage ID from the list above)
 [ENTITY:<key>=<value>] — capture extracted customer info (e.g. [ENTITY:email=alice@example.com] [ENTITY:order_id=ORD-123])`;
 
     // ── Inject interactive button templates ───────────────────────────────────
@@ -950,6 +968,22 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
       fireForget(
         db.from('conversations').update(stateUpdate).eq('id', conversation.id),
         'update-conversation-state',
+        fastify.log,
+      );
+    }
+
+    // Log stage transition to funnel analytics table (non-blocking, only on actual change)
+    if (stageMatch && stageMatch[1] !== convStage) {
+      fireForget(
+        db.from('conversation_stage_events').insert({
+          conversation_id: conversation.id,
+          tenant_id:       tenantId,
+          product_type:    productType,
+          from_stage:      convStage,
+          to_stage:        stageMatch[1],
+          trigger:         'llm_marker',
+        }),
+        'log-stage-event',
         fastify.log,
       );
     }
