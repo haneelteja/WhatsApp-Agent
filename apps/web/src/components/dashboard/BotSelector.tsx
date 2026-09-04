@@ -25,13 +25,14 @@ const BOT_COLOR: Record<string, { bg: string; icon: string }> = {
 const LOCAL_PRIMARY_KEY = 'alphabot_primary_bot';
 
 export function BotSelector({ bots }: { bots: ActiveBot[] }) {
-  const searchParams   = useSearchParams();
-  const pathname       = usePathname();
-  const router         = useRouter();
-  const [open, setOpen]         = useState(false);
+  const searchParams    = useSearchParams();
+  const pathname        = usePathname();
+  const router          = useRouter();
+  const [open, setOpen]           = useState(false);
   const [primarySlug, setPrimary] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
+  // All hooks must be declared before any early return
   useEffect(() => {
     try {
       const saved = localStorage.getItem(LOCAL_PRIMARY_KEY);
@@ -39,11 +40,20 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
     } catch {}
   }, [bots]);
 
-  const urlSlug    = searchParams.get('bot');
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [open]);
+
+  const urlSlug     = searchParams.get('bot');
   const currentSlug = urlSlug ?? primarySlug;
   const activeBot   = bots.find(b => b.slug === currentSlug);
+  const isScoped    = BOT_SCOPED_PATHS.has(pathname) || pathname.startsWith('/conversations/');
 
-  const isScoped = BOT_SCOPED_PATHS.has(pathname) || pathname.startsWith('/conversations/');
   if (!isScoped || bots.length === 0) return null;
 
   function selectBot(slug: string | null) {
@@ -56,15 +66,6 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
   }
 
   const isDefaultingToPrimary = !urlSlug && !!primarySlug;
-
-  useEffect(() => {
-    if (!open) return;
-    function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [open]);
 
   return (
     <div ref={ref} className="relative">
