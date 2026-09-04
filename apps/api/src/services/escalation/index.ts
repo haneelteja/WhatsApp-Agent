@@ -2,6 +2,7 @@ import { getServerClient } from '@alphabot/database';
 import type { Conversation } from '@alphabot/shared';
 import { WhatsAppGateway } from '../whatsapp/gateway.js';
 import type { WhatsAppProvider } from '@alphabot/shared';
+import { classifyAndPersistOutcome } from '../../lib/outcome-classifier.js';
 
 export interface EscalationResult {
   escalationId: string;
@@ -161,6 +162,9 @@ export async function releaseToBot(
 
   // Non-blocking: send CSAT survey to the customer
   void sendCsatSurvey(conversationId);
+
+  // Non-blocking: classify why this conversation closed (AI outcome taxonomy)
+  void classifyAndPersistOutcome(conversationId, 'ai');
 }
 
 // ─── CSAT survey dispatcher ───────────────────────────────────────────────────

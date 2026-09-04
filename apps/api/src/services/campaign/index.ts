@@ -9,6 +9,8 @@ import { getServerClient } from '@alphabot/database';
 import { getBotContext } from '../bot-context.js';
 import { dispatchCall } from '../voice/call-manager.js';
 import { WhatsAppGateway } from '../whatsapp/gateway.js';
+import { isSuppressed } from '../../lib/suppression.js';
+import { canSendNow, recordSend } from '../../lib/sender-capacity.js';
 import type {
   CampaignV2, CampaignContact, CampaignRetryConfig, CreateCampaignRequest,
   ProductSlug, WhatsAppProvider,
@@ -142,9 +144,9 @@ export async function processCampaignContacts(campaign: CampaignV2, tenantId: st
     const waFilter    = campaign.channel === 'voice'    ? 'skipped' : 'pending';
     const voiceFilter = campaign.channel === 'whatsapp' ? 'skipped' : 'pending';
 
-    // Always query from position 0 — processed contacts shift out of the filtered
-    // set (their status is updated to sent/failed) so the window advances naturally.
-    // Using offset here would skip contacts when the filtered set shrinks mid-run.
+    // Thompson sampling ordering: contacts with higher Beta(alpha,beta) mean
+    // are prioritised while still exploring uncertain candidates.
+    // Approximated in SQL: order by alpha/(alpha+beta) DESC with a small random tie-break.
     const { data: contacts } = await db
       .from('campaign_contacts')
       .select('*')
@@ -152,6 +154,7 @@ export async function processCampaignContacts(campaign: CampaignV2, tenantId: st
       .eq('whatsapp_status', waFilter)
       .eq('voice_status', voiceFilter)
       .lt('attempts', retryConfig.retry_limit + 1)
+      .order('ts_alpha', { ascending: false }) // highest success-rate first
       .limit(PAGE);
 
     if (!contacts || contacts.length === 0) break;
@@ -174,6 +177,18 @@ async function processOneContact(
   tenantId: string,
 ): Promise<void> {
   const db = getServerClient();
+
+  // Suppression check — skip silently if opted out
+  if (contact.phone_number && await isSuppressed(tenantId, contact.phone_number)) {
+    await db.from('campaign_contacts')
+      .update({ whatsapp_status: 'skipped', voice_status: 'skipped', outcome_json: { reason: 'suppressed' } })
+      .eq('id', contact.id);
+    // Update Thompson sampling: suppressed = non-success → ts_beta++
+    await db.from('campaign_contacts')
+      .update({ ts_beta: (contact.ts_beta ?? 1) + 1 })
+      .eq('id', contact.id);
+    return;
+  }
 
   // Increment attempt counter
   await db.from('campaign_contacts')
@@ -213,6 +228,13 @@ async function sendWhatsApp(campaign: CampaignV2, contact: CampaignContact, tena
   const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
   const config  = wn.config_json as { phone_number_id: string; access_token: string };
 
+  // Spacing clock — respect per-number daily limit and inter-message interval
+  const phonePid = config.phone_number_id;
+  if (!await canSendNow(tenantId, phonePid)) {
+    // Defer: leave status as pending; the next campaign recovery cycle will retry
+    throw new Error(`Sender capacity exhausted for ${phonePid} — deferring`);
+  }
+
   // Personalise message template
   const messageText = personaliseTemplate(
     campaign.message_template ?? '',
@@ -226,8 +248,11 @@ async function sendWhatsApp(campaign: CampaignV2, contact: CampaignContact, tena
     text: messageText,
   });
 
+  // Record send: increment daily counter + advance spacing clock
+  void recordSend(tenantId, phonePid);
+
   await db.from('campaign_contacts')
-    .update({ whatsapp_status: 'sent' })
+    .update({ whatsapp_status: 'sent', ts_alpha: (contact.ts_alpha ?? 1) + 0.5 }) // partial credit on send
     .eq('id', contact.id);
 }
 

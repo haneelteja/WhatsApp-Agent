@@ -208,6 +208,8 @@ export interface CampaignContact {
   attempts:         number;
   last_attempt_at:  string | null;
   created_at:       string;
+  ts_alpha:         number;  // Thompson sampling: success prior
+  ts_beta:          number;  // Thompson sampling: failure prior
 }
 
 // ─── API Request/Response shapes ─────────────────────────────────────────────

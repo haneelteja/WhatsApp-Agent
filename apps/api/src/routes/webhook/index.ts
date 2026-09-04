@@ -19,6 +19,11 @@ import { dispatchCall } from '../../services/voice/call-manager.js';
 import { getProductCatalogue } from '../../lib/product-cache.js';
 import { buildStagePromptBlock } from '../../lib/stage-definitions.js';
 import { toolEnabled, TOOL_IDS } from '../../lib/tool-registry.js';
+import { isOptOutMessage, isSuppressed, writeSuppression } from '../../lib/suppression.js';
+import { classifyMessageKind, KIND_CLASSIFIER_VERSION } from '../../lib/message-kind.js';
+import { maybeUpdateChatSummary } from '../../lib/chat-summary.js';
+import { classifyAndPersistOutcome } from '../../lib/outcome-classifier.js';
+import { createHash } from 'crypto';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -417,6 +422,35 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     fastify.log.info({ contact: contact ? (contact as Contact).id : null, contactError, isBsuid }, '[Webhook] contact upsert');
     if (!contact) return;
 
+    // ── Opt-out / suppression guard ────────────────────────────────────────────
+    // Checked immediately after contact identification.
+    // Opt-out takes precedence over everything — including CSAT, escalation, and AI.
+    const contactPhone = (contact as Contact).phone ?? incoming.from;
+    if (incoming.text && isOptOutMessage(incoming.text)) {
+      // Write suppression record (idempotent)
+      void writeSuppression(tenantId, contactPhone, 'user_opt_out');
+      // Mark any open conversation for this contact as opted_out (non-blocking, best-effort)
+      void db
+        .from('conversations')
+        .update({ terminal_outcome: 'opted_out', outcome_set_by: 'system', outcome_set_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .eq('contact_id', (contact as Contact).id)
+        .in('status', ['open', 'escalated']);
+      // Acknowledge opt-out to the customer
+      await gateway.sendMessage(config.phone_number_id, config.access_token, {
+        type: 'text',
+        to:   incoming.from,
+        text:  "You've been unsubscribed and won't receive further messages from us. Reply START to re-subscribe anytime.",
+      });
+      return;
+    }
+
+    // Check if this contact is already suppressed (e.g. earlier opt-out)
+    if (contactPhone && await isSuppressed(tenantId, contactPhone)) {
+      fastify.log.info({ tenantId, phone: contactPhone }, '[Webhook] suppressed contact — dropping reply');
+      return;
+    }
+
     // ── CSAT response detection ───────────────────────────────────────────────
     // If we're awaiting a CSAT rating and the customer replies with 1-5, record it and exit.
     const memJson = ((contact as Contact).memory_json ?? {}) as unknown as Record<string, unknown>;
@@ -515,6 +549,18 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       fastify.log.error({ msgError }, 'Failed to store incoming message');
       return;
     }
+
+    // Classify message kind (non-blocking) — human_reply / auto_reply / opt_out / unrelated
+    const msgKind = classifyMessageKind(incoming.text, incoming.type !== 'text' ? incoming.type : null);
+    fireForget(
+      db.from('messages').update({
+        message_kind:            msgKind,
+        kind_classifier_version: KIND_CLASSIFIER_VERSION,
+        kind_classified_at:      new Date().toISOString(),
+      }).eq('conversation_id', conversation.id).eq('role', 'user').order('timestamp', { ascending: false }).limit(1),
+      'classify-message-kind',
+      fastify.log,
+    );
 
     // Non-blocking: classify customer sentiment and persist to contact memory
     if (incoming.text) {
@@ -1064,13 +1110,30 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
       ? cleanContent.substring(0, effectiveMaxLength).trimEnd() + '…'
       : cleanContent;
 
+    // SHA-256 of the base system prompt — used for prompt A/B attribution.
+    // Hash only the stable portion (before dynamic KB/history context is appended).
+    const promptDigest = createHash('sha256').update(baseSystemPrompt).digest('hex').slice(0, 16);
+
     // ── Store AI reply (capture ID for delivery status update) ────────────
     const { data: storedMsg } = await db.from('messages').insert({
-      conversation_id: conversation.id,
-      role: 'assistant',
-      content: replyText,
-      confidence_score: aiResult.confidenceScore,
+      conversation_id:    conversation.id,
+      role:               'assistant',
+      content:            replyText,
+      confidence_score:   aiResult.confidenceScore,
+      message_kind:       'outbound',
+      system_prompt_digest: promptDigest,
     }).select('id').single();
+
+    // Non-blocking: update rolling chat_summary every 5 turns
+    if (incoming.text) {
+      void maybeUpdateChatSummary(
+        conversation.id,
+        (conversation as Conversation & { chat_summary?: Record<string, unknown> }).chat_summary ?? null,
+        allHistory.length + 1,
+        incoming.text,
+        replyText,
+      );
+    }
 
     // Track token usage (DB insert triggers aggregate table update via trigger)
     const totalTokens = aiResult.inputTokens + aiResult.outputTokens;
@@ -1090,15 +1153,23 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
     // Optimistically increment Redis counter so the next quota check is accurate
     fireForget(incrementTokenCounter(tenantId, totalTokens), 'increment-token-counter', fastify.log);
 
-    // ── Auto-escalate on sales lead detection ────────────────────────────
-    if (isSalesLead && conversation.status === 'open') {
-      fastify.log.info({ tenantId, conversationId: conversation.id }, '[Webhook] Sales lead detected — escalating');
+    // ── Auto-escalate on sales lead detection (confidence-gated) ────────────
+    // Only escalate when the heuristic lead score meets the bot's configured threshold.
+    // This prevents flooding human agents with low-quality or greeting-stage signals.
+    const escalationScoreThreshold =
+      (botConfig as unknown as { escalation_score_threshold?: number } | null)?.escalation_score_threshold ?? 40;
+    const latestVarsForScore = entityMatches.length > 0
+      ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
+      : convAiVars;
+    const latestStageForScore = (stageMatch ? stageMatch[1] : convStage) ?? 'greeting';
+    const currentLeadScore = calcLeadScore(latestVarsForScore, latestStageForScore);
+
+    if (isSalesLead && conversation.status === 'open' && currentLeadScore >= escalationScoreThreshold) {
+      fastify.log.info({ tenantId, conversationId: conversation.id, score: currentLeadScore, threshold: escalationScoreThreshold }, '[Webhook] Sales lead detected — escalating');
       const escalationResult = await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
-      const latestVars2 = entityMatches.length > 0
-        ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
-        : convAiVars;
-      const latestStage2 = (stageMatch ? stageMatch[1] : convStage) ?? 'greeting';
-      void generateLeadSummary(escalationResult.escalationId, conversation.id, latestVars2, latestStage2, fastify.log);
+      void generateLeadSummary(escalationResult.escalationId, conversation.id, latestVarsForScore, latestStageForScore, fastify.log);
+    } else if (isSalesLead && currentLeadScore < escalationScoreThreshold) {
+      fastify.log.info({ tenantId, score: currentLeadScore, threshold: escalationScoreThreshold }, '[Webhook] Sales lead signal below threshold — continuing AI flow');
     }
     // ── Feature: Escalation Policy — confidence-based reprompt ladder ──────
     // Replaces the old single-threshold hardcut with configurable per-bot policy:

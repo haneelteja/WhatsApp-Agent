@@ -8,6 +8,8 @@ import { processScheduledMessages } from '../services/scheduled-messages/sender.
 import { isWithinBusinessHours } from '../lib/business-hours.js';
 import { runInsightsForAllTenants } from '../services/insights/generator.js';
 import { withJobLock } from '../lib/redis.js';
+import { businessDaysCutoff } from '../lib/business-days.js';
+import { resetAllDailyCounts } from '../lib/sender-capacity.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -32,9 +34,8 @@ async function processFollowUps(): Promise<void> {
 
   for (const config of configs) {
     try {
-      const cutoff = new Date(
-        Date.now() - config.idle_days * 24 * 60 * 60 * 1000
-      ).toISOString();
+      // Use business-days cutoff so weekends don't count as silence days
+      const cutoff = businessDaysCutoff(config.idle_days);
 
       const { data: allConversations } = await db
         .from('conversations')
@@ -234,7 +235,9 @@ async function processLeadFollowUps(): Promise<void> {
       'Last follow-up from us — our offer still stands. Let us know if you\'d like to proceed!',
     ];
 
-    const cutoff = new Date(Date.now() - delayHours * 3_600_000).toISOString();
+    // Use business-days: delay hours are treated as business hours (Mon-Fri only)
+    const delayDays = Math.ceil(delayHours / 8); // 1 business day ≈ 8 working hours
+    const cutoff    = businessDaysCutoff(Math.max(1, delayDays));
 
     const { data: escalationRows } = await db
       .from('escalations')
@@ -544,6 +547,13 @@ export function startScheduler(): void {
       console.error('[Scheduler] AI Insights failed:', (err as Error).message)
     );
   });
+
+  // Sender capacity daily reset — midnight UTC  [TTL: 82800s = 23h]
+  cron.schedule('0 0 * * *', () => {
+    void withJobLock('sender_capacity_reset', 82800, () => resetAllDailyCounts()).catch(err =>
+      console.error('[Scheduler] Sender capacity reset failed:', (err as Error).message)
+    );
+  }, { timezone: 'UTC' });
 
   // Startup catch-up: generate insights if none in last 24h — fixes Render hibernation
   // The nightly cron fires at 00:30 UTC but Render free tier sleeps at night.

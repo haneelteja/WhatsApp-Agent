@@ -2,9 +2,11 @@ import { unstable_cache } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession } from '@/lib/session';
-import { MessageSquare, Zap, TrendingUp, AlertCircle, GitBranch } from 'lucide-react';
+import { MessageSquare, Zap, TrendingUp, AlertCircle, GitBranch, Target } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { getStageFunnelAction } from '@/app/actions/stage-funnel';
+import { getOutcomeAnalyticsAction } from '@/app/actions/outcome-analytics';
+import { OutcomeBreakdown } from '@/components/dashboard/OutcomeBreakdown';
 
 // Lazy-load Recharts (~200 KB) — not needed for initial paint
 const AnalyticsCharts = dynamic(
@@ -63,9 +65,10 @@ export default async function AnalyticsPage() {
   if (!session) redirect('/login');
 
   const { tenantId } = session;
-  const [analyticsData, funnelRows] = await Promise.all([
+  const [analyticsData, funnelRows, outcomeRows] = await Promise.all([
     getAnalyticsData(tenantId),
     getStageFunnelAction(tenantId, 30),
+    getOutcomeAnalyticsAction(30),
   ]);
   const { totalConvs, openConvs, resolvedConvs, escalatedTotal, tokenRow, weekEvents, monthEvents } = analyticsData;
 
@@ -177,6 +180,16 @@ export default async function AnalyticsPage() {
           <span className="text-xs text-gray-400 ml-1">Last 30 days</span>
         </div>
         <ConversationFunnel rows={funnelRows} />
+      </div>
+
+      {/* Conversation Outcome Breakdown */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Target size={15} className="text-gray-400" />
+          <h3 className="text-sm font-semibold text-gray-700">Conversation Outcomes</h3>
+          <span className="text-xs text-gray-400 ml-1">Last 30 days · AI-classified</span>
+        </div>
+        <OutcomeBreakdown rows={outcomeRows} />
       </div>
     </div>
   );
