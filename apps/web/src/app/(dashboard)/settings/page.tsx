@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Building2, Phone, Bot, Link2, Bell, CreditCard, ChevronRight,
   Users, Mail, Clock, Trash2, Info, Cpu, MessageSquare, ShieldOff,
-  UserCircle2, Wrench,
+  UserCircle2, Wrench, Tag,
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
@@ -25,6 +25,8 @@ import { PersonaEditor } from '@/components/dashboard/PersonaEditor';
 import { getBotPersonasAction } from '@/app/actions/bot-persona';
 import { ToolManifestEditor } from '@/components/dashboard/ToolManifestEditor';
 import { getBotToolsAction } from '@/app/actions/bot-tools';
+import { DispositionCategoryManager } from '@/components/dashboard/DispositionCategoryManager';
+import { getDispositionCategoriesAction } from '@/app/actions/disposition';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,11 +120,12 @@ export default async function SettingsPage({
 
   if (activeTab === 'workspace') {
     const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
-    const [tenantRes, numbersRes, productsRes, { numbers: internalNumbers }] = await Promise.all([
+    const [tenantRes, numbersRes, productsRes, { numbers: internalNumbers }, dispCategories] = await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
       admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
       listInternalNumbers(),
+      getDispositionCategoriesAction(),
     ]);
     tenant   = tenantRes.data as Record<string, unknown> | null;
     numbers  = (numbersRes.data ?? []) as Record<string, unknown>[];
@@ -208,6 +211,17 @@ export default async function SettingsPage({
               </div>
             </DashboardCollapsibleSection>
           )}
+
+          {/* Lead Disposition Categories */}
+          <DashboardCollapsibleSection
+            icon={<Tag size={16} />}
+            title="Lead Disposition Categories"
+            hint="Custom labels for unresponsive contacts. Use these to track why a lead went cold and what to do next."
+          >
+            <div className="px-5 py-4">
+              <DispositionCategoryManager initialCategories={dispCategories} />
+            </div>
+          </DashboardCollapsibleSection>
         </div>
       </SettingsShell>
     );

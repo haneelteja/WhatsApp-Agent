@@ -16,6 +16,8 @@ import { ContactsTabClient } from '@/components/dashboard/ContactsTabClient';
 import { BroadcastCreateForm } from '@/components/dashboard/BroadcastCreateForm';
 import { BroadcastList }       from '@/components/dashboard/BroadcastList';
 import { listBroadcasts }      from '@/app/actions/broadcasts';
+import { UnresponsiveLeadsTab } from '@/components/dashboard/UnresponsiveLeadsTab';
+import { getUnresponsiveLeadsAction, getDispositionCategoriesAction } from '@/app/actions/disposition';
 import type { ContactSentiment } from '@alphabot/shared';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
@@ -123,7 +125,7 @@ export default async function ConversationsPage({
 }) {
   const { tab: tabParam, bot: botParam, status: statusParam, sentiment: sentimentFilter = 'all', q: search = '' } = await searchParams;
 
-  const activeTab = tabParam === 'voice' ? 'voice' : tabParam === 'contacts' ? 'contacts' : tabParam === 'broadcasts' ? 'broadcasts' : 'chats';
+  const activeTab = tabParam === 'voice' ? 'voice' : tabParam === 'contacts' ? 'contacts' : tabParam === 'broadcasts' ? 'broadcasts' : tabParam === 'unresponsive' ? 'unresponsive' : 'chats';
   const botFilter    = botParam    && VALID_BOTS.has(botParam)       ? botParam    : null;
   const statusFilter = statusParam && VALID_STATUSES.has(statusParam) ? statusParam : null;
 
@@ -145,10 +147,11 @@ export default async function ConversationsPage({
 
   // ── Tab switcher ─────────────────────────────────────────────────────────────
   const tabs = [
-    { key: 'chats',      label: 'Chats',      icon: MessageSquare },
-    { key: 'voice',      label: 'Voice',      icon: Phone },
-    { key: 'contacts',   label: 'Contacts',   icon: Users },
-    { key: 'broadcasts', label: 'Broadcasts', icon: Megaphone },
+    { key: 'chats',        label: 'Chats',        icon: MessageSquare },
+    { key: 'voice',        label: 'Voice',        icon: Phone },
+    { key: 'contacts',     label: 'Contacts',     icon: Users },
+    { key: 'broadcasts',   label: 'Broadcasts',   icon: Megaphone },
+    { key: 'unresponsive', label: 'Unresponsive', icon: Clock },
   ];
 
   // ── Data fetching (only the active tab) ──────────────────────────────────────
@@ -297,6 +300,17 @@ export default async function ConversationsPage({
     };
   }
 
+  // Unresponsive leads data
+  let unresponsiveLeads: Awaited<ReturnType<typeof getUnresponsiveLeadsAction>> = [];
+  let dispositionCategories: Awaited<ReturnType<typeof getDispositionCategoriesAction>> = [];
+
+  if (activeTab === 'unresponsive') {
+    [unresponsiveLeads, dispositionCategories] = await Promise.all([
+      getUnresponsiveLeadsAction(),
+      getDispositionCategoriesAction(),
+    ]);
+  }
+
   // Broadcasts data
   let broadcastRows: Awaited<ReturnType<typeof listBroadcasts>>['broadcasts'] = [];
   let broadcastGroups: { id: string; name: string; color: string; emoji: string }[] = [];
@@ -359,10 +373,11 @@ export default async function ConversationsPage({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-gray-900">
-            {activeTab === 'chats'      ? 'Conversations' :
-             activeTab === 'voice'      ? 'Voice Calls' :
-             activeTab === 'broadcasts' ? 'Broadcasts' :
-                                          'Contacts'}
+            {activeTab === 'chats'        ? 'Conversations' :
+             activeTab === 'voice'        ? 'Voice Calls' :
+             activeTab === 'broadcasts'   ? 'Broadcasts' :
+             activeTab === 'unresponsive' ? 'Unresponsive Leads' :
+                                            'Contacts'}
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
             {activeTab === 'chats'
@@ -375,6 +390,8 @@ export default async function ConversationsPage({
               ? 'AI voice call log — outbound escalations and campaigns'
               : activeTab === 'broadcasts'
               ? 'Send marketing or festival messages to your contacts on schedule'
+              : activeTab === 'unresponsive'
+              ? 'Contacts who stopped responding after all follow-ups — categorise and re-engage'
               : 'All customers who have messaged your bot'}
           </p>
         </div>
@@ -731,6 +748,13 @@ export default async function ConversationsPage({
             {sentimentFilter !== 'all' ? ` · filtered by ${sentimentFilter}` : ''}
             {search ? ` · matching &ldquo;${search}&rdquo;` : ''}
           </p>
+        </div>
+      )}
+
+      {/* ── UNRESPONSIVE LEADS TAB ──────────────────────────────────────────── */}
+      {activeTab === 'unresponsive' && (
+        <div role="tabpanel" id="tabpanel-unresponsive" aria-label="Unresponsive Leads">
+          <UnresponsiveLeadsTab leads={unresponsiveLeads} categories={dispositionCategories} />
         </div>
       )}
 

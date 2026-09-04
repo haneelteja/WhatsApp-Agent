@@ -10,6 +10,7 @@ import { runInsightsForAllTenants } from '../services/insights/generator.js';
 import { withJobLock } from '../lib/redis.js';
 import { businessDaysCutoff } from '../lib/business-days.js';
 import { resetAllDailyCounts } from '../lib/sender-capacity.js';
+import { classifyAndPersistOutcome } from '../lib/outcome-classifier.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -305,9 +306,15 @@ async function processLeadFollowUps(): Promise<void> {
         });
 
         newMessages.push({ conversation_id: conv.id, role: 'assistant', content: message });
-        convUpdates.push({ id: conv.id, count: followUpIdx + 1 });
+        const newCount = followUpIdx + 1;
+        convUpdates.push({ id: conv.id, count: newCount });
 
-        console.log(`[LeadFollowUp] Sent follow-up #${followUpIdx + 1} to conversation ${conv.id}`);
+        // When the last follow-up fires, auto-classify this conversation as unresponsive
+        if (newCount >= messages.length) {
+          void classifyAndPersistOutcome(conv.id, 'system', 'unresponsive');
+        }
+
+        console.log(`[LeadFollowUp] Sent follow-up #${newCount} to conversation ${conv.id}`);
       } catch (err) {
         console.error(`[LeadFollowUp] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
       }

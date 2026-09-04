@@ -416,4 +416,56 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       return { success: true };
     }
   );
+
+  // ─── PATCH /api/conversations/:id/disposition — set category + notes ──────
+  fastify.patch<{
+    Params: { id: string };
+    Body: { category_id?: string | null; notes?: string | null };
+  }>(
+    '/:id/disposition',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const db = getServerClient();
+      const { category_id, notes } = request.body;
+
+      const { error } = await db
+        .from('conversations')
+        .update({
+          disposition_category_id: category_id ?? null,
+          disposition_notes:       notes ?? null,
+          disposition_set_by:      request.userId,
+          disposition_set_at:      new Date().toISOString(),
+        })
+        .eq('id', request.params.id)
+        .eq('tenant_id', request.tenantId);
+
+      if (error) return reply.status(500).send({ success: false, error: error.message });
+      return { success: true };
+    }
+  );
+
+  // ─── POST /api/conversations/:id/re-engage — reopen + clear terminal outcome
+  fastify.post<{ Params: { id: string } }>(
+    '/:id/re-engage',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const db = getServerClient();
+
+      const { error } = await db
+        .from('conversations')
+        .update({
+          status:                  'open',
+          terminal_outcome:        null,
+          outcome_set_by:          null,
+          outcome_set_at:          null,
+          lead_follow_up_count:    0,
+          updated_at:              new Date().toISOString(),
+        })
+        .eq('id', request.params.id)
+        .eq('tenant_id', request.tenantId);
+
+      if (error) return reply.status(500).send({ success: false, error: error.message });
+      return { success: true };
+    }
+  );
 }
