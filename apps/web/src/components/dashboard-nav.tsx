@@ -118,12 +118,15 @@ export function DashboardNav({
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
           const navHref = botParam ? `${href}?bot=${botParam}` : href;
+          // Derive a stable tour-id from the href path segment
+          const tourId = href.replace(/^\//, '').replace(/\//g, '-') || 'overview';
           return (
             <Link
               key={href}
               href={navHref}
               onClick={onLinkClick}
               aria-current={active ? 'page' : undefined}
+              data-tour-id={tourId}
               className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group ${
                 active
                   /* active: #6ee7b7 emerald-300 on #071c0f — ~5:1 contrast ✓ */

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { Topbar } from '@/components/topbar';
+import { GuidedTour } from '@/components/dashboard/GuidedTour';
 import type { ActiveBot } from '@/components/dashboard/BotSelector';
 
 export function DashboardShell({
@@ -12,6 +13,7 @@ export function DashboardShell({
   userRole,
   hasLifecycleBot,
   activeBots = [],
+  tourCompleted = true,
 }: {
   children: React.ReactNode;
   tenantName: string;
@@ -19,6 +21,7 @@ export function DashboardShell({
   userRole: string;
   hasLifecycleBot: boolean;
   activeBots?: ActiveBot[];
+  tourCompleted?: boolean;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -41,6 +44,8 @@ export function DashboardShell({
   }, [sidebarOpen]);
 
   return (
+    <>
+    <GuidedTour initialCompleted={tourCompleted} />
     <div className="flex h-screen bg-[#f3fdf5] overflow-hidden">
       {/* Mobile backdrop */}
       {sidebarOpen && (
@@ -85,5 +90,6 @@ export function DashboardShell({
         </main>
       </div>
     </div>
+    </>
   );
 }

@@ -22,7 +22,7 @@ const getTenantContext = cache(async () => {
   const admin = getSupabaseAdminClient();
   const { data: tenantUser } = await admin
     .from('tenant_users')
-    .select('role, tenant_id, tenants(name, copilot_config)')
+    .select('role, tenant_id, tour_completed_at, tenants(name, copilot_config)')
     .eq('user_id', user.id)
     .single();
 
@@ -69,6 +69,7 @@ const getTenantContext = cache(async () => {
     copilotEnabled,
     hasLifecycleBot,
     activeBots,
+    tourCompleted:   !!(tenantUser as { tour_completed_at?: string | null }).tour_completed_at,
   };
 });
 
@@ -126,6 +127,7 @@ export default async function DashboardLayout({
         userRole={ctx.userRole}
         hasLifecycleBot={ctx.hasLifecycleBot}
         activeBots={ctx.activeBots}
+        tourCompleted={ctx.tourCompleted}
       >
         {children}
       </DashboardShell>
