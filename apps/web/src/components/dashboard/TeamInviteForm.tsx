@@ -26,7 +26,8 @@ export function TeamInviteForm() {
         <UserPlus size={14} />
         Invite a team member
       </h3>
-      <form action={formAction} className="flex flex-col sm:flex-row gap-3">
+      {/* key resets uncontrolled inputs on successful invite */}
+      <form key={state?.success ? 'sent' : 'idle'} action={formAction} className="flex flex-col sm:flex-row gap-3">
         <input
           name="email"
           type="email"
