@@ -8,6 +8,39 @@ import type { ProductCatalogueItem } from '@alphabot/shared';
 
 // ── Platform admin actions (used by /platform pages) ─────────────────────────
 
+export async function createBotProductAction(input: {
+  name:           string;
+  slug:           string;
+  description?:   string;
+  default_prompt: string;
+  default_model:  string;
+}): Promise<{ error?: string }> {
+  if (!input.name?.trim())   return { error: 'Name is required' };
+  if (!input.slug?.trim())   return { error: 'Slug is required' };
+  if (!input.default_prompt?.trim()) return { error: 'Default system prompt is required' };
+  if (!input.default_model?.trim()) return { error: 'Default AI model is required' };
+  if (!/^[a-z][a-z0-9_]*$/.test(input.slug.trim())) {
+    return { error: 'Slug must start with a letter and contain only lowercase letters, numbers, and underscores' };
+  }
+
+  const admin = getSupabaseAdminClient();
+  const { error } = await admin
+    .from('products')
+    .insert({
+      slug:           input.slug.trim(),
+      name:           input.name.trim(),
+      description:    input.description?.trim() || null,
+      default_prompt: input.default_prompt.trim(),
+      default_model:  input.default_model.trim(),
+      active:         true,
+    });
+
+  if (error) return { error: error.message };
+  revalidatePath('/platform/products');
+  revalidatePath('/platform/guardrails');
+  return {};
+}
+
 export async function saveProductDefaultsAction(
   slug:          string,
   defaultPrompt: string,

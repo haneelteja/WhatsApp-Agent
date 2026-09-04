@@ -23,10 +23,16 @@ const DEFAULT_BOT_TYPE: LayeredGuardrailsConfig = {
   on_blocked_topic:    'escalate',
 };
 
-const BOT_TYPES = [
-  { slug: 'support_bot',   name: 'Support Bot',   desc: 'Q&A, issue resolution, escalations',  badge: 'bg-sky-100 text-sky-700 border-sky-200',          icon: '🤖' },
-  { slug: 'sales_bot',     name: 'Sales Bot',     desc: 'Lead qualification & warm handoff',   badge: 'bg-violet-100 text-violet-700 border-violet-200',  icon: '💼' },
-  { slug: 'lifecycle_bot', name: 'Lifecycle Bot', desc: 'Orders, invoicing, payments',         badge: 'bg-orange-100 text-orange-700 border-orange-200',  icon: '🔄' },
+// Palette cycles for dynamically-added products
+const BADGE_PALETTE = [
+  'bg-sky-100 text-sky-700 border-sky-200',
+  'bg-violet-100 text-violet-700 border-violet-200',
+  'bg-orange-100 text-orange-700 border-orange-200',
+  'bg-teal-100 text-teal-700 border-teal-200',
+  'bg-rose-100 text-rose-700 border-rose-200',
+  'bg-amber-100 text-amber-700 border-amber-200',
+  'bg-indigo-100 text-indigo-700 border-indigo-200',
+  'bg-pink-100 text-pink-700 border-pink-200',
 ];
 
 function SummaryPill({ count, singular }: { count: number; singular: string }) {
@@ -41,9 +47,10 @@ function SummaryPill({ count, singular }: { count: number; singular: string }) {
 export default async function PlatformGuardrailsPage() {
   const admin = getSupabaseAdminClient();
 
-  const [{ data: settingsRow }, { data: botTypeRows }] = await Promise.all([
+  const [{ data: settingsRow }, { data: botTypeRows }, { data: products }] = await Promise.all([
     admin.from('platform_settings').select('value').eq('key', 'guardrails').single(),
     admin.from('bot_type_guardrails').select('product_slug, guardrails_json'),
+    admin.from('products').select('slug, name, description, active').order('slug'),
   ]);
 
   const globalGuardrails = (settingsRow?.value as PlatformGuardrails) ?? DEFAULT_GLOBAL;
@@ -51,6 +58,9 @@ export default async function PlatformGuardrailsPage() {
   for (const r of botTypeRows ?? []) {
     botTypeMap[r.product_slug] = r.guardrails_json as LayeredGuardrailsConfig;
   }
+
+  // Only show active products
+  const activeProducts = (products ?? []).filter(p => p.active);
 
   return (
     <div className="p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
@@ -107,20 +117,23 @@ export default async function PlatformGuardrailsPage() {
         </div>
 
         <div className="space-y-3">
-          {BOT_TYPES.map(bt => {
-            const g = { ...DEFAULT_BOT_TYPE, ...(botTypeMap[bt.slug] ?? {}) };
+          {activeProducts.map((p, idx) => {
+            const g = { ...DEFAULT_BOT_TYPE, ...(botTypeMap[p.slug] ?? {}) };
             const topicsCount   = g.blocked_topics.length;
             const keywordsCount = g.blocked_keywords.length;
+            const badge = BADGE_PALETTE[idx % BADGE_PALETTE.length]!;
 
             const header = (
               <div className="flex items-center gap-3 w-full min-w-0">
                 <ShieldCheck size={14} className="text-slate-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-slate-800">{bt.name}</span>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${bt.badge}`}>
-                      {bt.desc}
-                    </span>
+                    <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                    {p.description && (
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badge}`}>
+                        {p.description}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     <SummaryPill count={topicsCount}   singular="topic"   />
@@ -136,16 +149,24 @@ export default async function PlatformGuardrailsPage() {
             );
 
             return (
-              <CollapsibleCard key={bt.slug} header={header} defaultOpen={false}>
-                <BotTypeGuardrailsForm productSlug={bt.slug} initial={g} />
+              <CollapsibleCard key={p.slug} header={header} defaultOpen={false}>
+                <BotTypeGuardrailsForm productSlug={p.slug} initial={g} />
               </CollapsibleCard>
             );
           })}
         </div>
 
-        <p className="text-[11px] text-slate-400 mt-3 text-center">
-          Click a bot card to expand and configure its defaults. Changes apply to all clients using that bot type.
-        </p>
+        {activeProducts.length === 0 && (
+          <p className="text-sm text-slate-400 text-center py-6">
+            No active products. Add a product on the Products page first.
+          </p>
+        )}
+
+        {activeProducts.length > 0 && (
+          <p className="text-[11px] text-slate-400 mt-3 text-center">
+            Click a bot card to expand and configure its defaults. Changes apply to all clients using that bot type.
+          </p>
+        )}
       </div>
     </div>
   );
