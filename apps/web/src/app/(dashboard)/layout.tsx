@@ -39,7 +39,7 @@ const getTenantContext = cache(async () => {
 
   const { data: activeProducts } = await admin
     .from('tenant_products')
-    .select('product_type')
+    .select('product_type, product_slug, instance_name')
     .eq('tenant_id', tenantId)
     .eq('active', true);
 
@@ -50,7 +50,14 @@ const getTenantContext = cache(async () => {
   };
   const activeBots = (activeProducts ?? [])
     .filter(p => BOT_NAME[p.product_type])
-    .map(p => ({ slug: p.product_type, name: BOT_NAME[p.product_type]! }));
+    .map(p => {
+      const slug = (p as { product_slug?: string | null }).product_slug ?? p.product_type;
+      const baseName = BOT_NAME[p.product_type]!;
+      const instanceName = (p as { instance_name?: string | null }).instance_name;
+      const isDefault = slug === p.product_type;
+      const name = isDefault || !instanceName ? baseName : `${baseName} — ${instanceName}`;
+      return { slug, name };
+    });
 
   const hasLifecycleBot = activeBots.some(b => b.slug === 'lifecycle_bot');
 

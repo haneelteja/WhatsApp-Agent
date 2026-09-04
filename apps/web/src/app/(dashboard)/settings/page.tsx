@@ -235,7 +235,7 @@ export default async function SettingsPage({
   if (activeTab === 'bots') {
     const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
     const [{ data: botProducts }, { data: botNumbers }, { data: llmRows }] = await Promise.all([
-      admin.from('tenant_products').select('product_type, tier, active').eq('tenant_id', tenantId),
+      admin.from('tenant_products').select('product_type, product_slug, instance_name, tier, active').eq('tenant_id', tenantId),
       admin.from('whatsapp_numbers').select('id, phone_number, provider, label, product_slug').eq('tenant_id', tenantId),
       admin.from('llm_configs').select('product_slug, credit_info').eq('tenant_id', tenantId),
     ]);
@@ -245,7 +245,13 @@ export default async function SettingsPage({
         <BotsTabContent
           tenantId={tenantId}
           apiBase={apiBase}
-          botProducts={(botProducts ?? []) as { product_type: string; tier: string; active: boolean }[]}
+          botProducts={(botProducts ?? []).map(p => ({
+            product_type:  p.product_type,
+            product_slug:  (p as { product_slug?: string | null }).product_slug ?? p.product_type,
+            instance_name: (p as { instance_name?: string | null }).instance_name ?? 'Default',
+            tier:          p.tier,
+            active:        p.active,
+          }))}
           numbers={(botNumbers ?? []) as { id: string; phone_number: string; provider: string; label: string | null; product_slug: string | null }[]}
           tokenUsage={(llmRows ?? []) as { product_slug: string | null; credit_info: { usage: number | null; limit: number | null; is_free_tier: boolean } | null }[]}
         />

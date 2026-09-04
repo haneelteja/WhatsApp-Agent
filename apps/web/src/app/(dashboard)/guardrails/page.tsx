@@ -52,11 +52,12 @@ export default async function GuardrailsPage({
   // Auto-seed bot_configs for active products that don't have one yet
   if (tenantId && (products ?? []).length > 0) {
     const existingSlugs = new Set((botConfigs ?? []).map(c => c.product_slug));
-    const missing = (products ?? []).filter(p => p.active && !existingSlugs.has(p.product_type));
+    const missing = (products ?? []).filter(p => p.active && !existingSlugs.has((p as { product_slug?: string | null }).product_slug ?? p.product_type));
     for (const p of missing) {
+      const pSlug = (p as { product_slug?: string | null }).product_slug ?? p.product_type;
       await admin.from('bot_configs').insert({
         tenant_id:            tenantId,
-        product_slug:         p.product_type,
+        product_slug:         pSlug,
         system_prompt:        null,
         ai_model:             null,
         confidence_threshold: 0.6,
@@ -82,7 +83,7 @@ export default async function GuardrailsPage({
   const productDefaults: Record<string, string> = {};
   for (const p of productCatalog ?? []) productDefaults[p.slug] = p.default_prompt;
 
-  const activeSlugs = new Set((products ?? []).map(p => p.product_type));
+  const activeSlugs = new Set((products ?? []).map(p => (p as { product_slug?: string | null }).product_slug ?? p.product_type));
   const allConfigs = ((botConfigs ?? []) as (BotConfig & { product: Product | null })[])
     .filter(c => activeSlugs.has(c.product_slug));
   const resolvedConfigs = selectedBot

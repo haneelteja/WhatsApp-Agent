@@ -8,6 +8,39 @@ import { randomUUID }             from 'crypto';
 type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
 type WaProvider  = 'meta_cloud' | 'twilio' | 'interakt' | 'wati' | 'gupshup';
 
+const DEFAULT_BOT_CONFIG = {
+  confidence_threshold: 0.6,
+  escalation_triggers: [
+    'speak to human', 'talk to agent', 'human please', 'escalate',
+    'complaint', 'refund', 'dispute', 'urgent',
+  ],
+  guardrails_json: {
+    blocked_topics: [], blocked_keywords: [], max_response_length: 1000,
+    tone: 'professional',
+    content_filters: { no_personal_data: false, no_external_links: false, no_phone_numbers_in_response: false },
+    on_blocked_topic: 'escalate',
+  },
+};
+
+async function ensureBotConfig(adminClient: ReturnType<typeof getSupabaseAdminClient>, tenantId: string, productSlug: string) {
+  const { data: existing } = await adminClient
+    .from('bot_configs')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('product_slug', productSlug)
+    .maybeSingle();
+
+  if (!existing) {
+    await adminClient.from('bot_configs').insert({
+      tenant_id:    tenantId,
+      product_slug: productSlug,
+      ...DEFAULT_BOT_CONFIG,
+    });
+  }
+}
+
+// Activate the default (first) instance of a bot type.
+// Uses product_slug = product_type for backward compatibility.
 export async function activateTenantProductAction(productType: ProductType) {
   const session = await getSession();
   if (!session) return { error: 'Not authenticated' };
@@ -16,40 +49,54 @@ export async function activateTenantProductAction(productType: ProductType) {
   const admin = getSupabaseAdminClient();
 
   await admin.from('tenant_products').upsert(
-    { tenant_id: session.tenantId, product_type: productType, active: true, tier: 'base' },
-    { onConflict: 'tenant_id,product_type' },
+    {
+      tenant_id:     session.tenantId,
+      product_type:  productType,
+      product_slug:  productType,      // default instance slug = type
+      instance_name: 'Default',
+      active:        true,
+      tier:          'base',
+    },
+    { onConflict: 'tenant_id,product_slug' },
   );
 
-  const { data: existing } = await admin
-    .from('bot_configs')
-    .select('id')
-    .eq('tenant_id', session.tenantId)
-    .eq('product_slug', productType)
-    .maybeSingle();
-
-  if (!existing) {
-    await admin.from('bot_configs').insert({
-      tenant_id:    session.tenantId,
-      product_slug: productType,
-      confidence_threshold: 0.6,
-      escalation_triggers: [
-        'speak to human', 'talk to agent', 'human please', 'escalate',
-        'complaint', 'refund', 'dispute', 'urgent',
-      ],
-      guardrails_json: {
-        blocked_topics: [], blocked_keywords: [], max_response_length: 1000,
-        tone: 'professional',
-        content_filters: { no_personal_data: false, no_external_links: false, no_phone_numbers_in_response: false },
-        on_blocked_topic: 'escalate',
-      },
-    });
-  }
+  await ensureBotConfig(admin, session.tenantId, productType);
 
   revalidatePath('/settings');
   return { success: true };
 }
 
-export async function deactivateTenantProductAction(productType: ProductType) {
+// Add an additional named instance of any bot type.
+// Generates a unique product_slug = '{type}_{6hex}'.
+export async function addBotInstanceAction(productType: ProductType, instanceName: string) {
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  if (!['admin', 'client_manager'].includes(session.role)) return { error: 'Admins only' };
+
+  const uid         = randomUUID().replace(/-/g, '').slice(0, 6);
+  const productSlug = `${productType}_${uid}`;
+  const label       = instanceName.trim() || `Instance ${uid}`;
+
+  const admin = getSupabaseAdminClient();
+  const { error } = await admin.from('tenant_products').insert({
+    tenant_id:     session.tenantId,
+    product_type:  productType,
+    product_slug:  productSlug,
+    instance_name: label,
+    active:        true,
+    tier:          'base',
+  });
+
+  if (error) return { error: error.message };
+
+  await ensureBotConfig(admin, session.tenantId, productSlug);
+
+  revalidatePath('/settings');
+  return { success: true, productSlug };
+}
+
+// Deactivate a specific bot instance by its product_slug.
+export async function deactivateTenantProductAction(productSlug: string) {
   const session = await getSession();
   if (!session) return { error: 'Not authenticated' };
   if (!['admin', 'client_manager'].includes(session.role)) return { error: 'Admins only' };
@@ -59,7 +106,7 @@ export async function deactivateTenantProductAction(productType: ProductType) {
     .from('tenant_products')
     .update({ active: false })
     .eq('tenant_id', session.tenantId)
-    .eq('product_type', productType);
+    .eq('product_slug', productSlug);
 
   revalidatePath('/settings');
   return { success: true };
