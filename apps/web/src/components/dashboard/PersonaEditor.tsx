@@ -90,7 +90,7 @@ function PersonaPanel({ productSlug, initial }: PersonaPanelProps) {
                 placeholder="e.g. Aria"
                 {...field('persona_name')}
               />
-              <p className="text-[10px] text-gray-400 mt-1">Becomes "You are Aria, …" in the prompt</p>
+              <p className="text-[10px] text-gray-400 mt-1">Becomes &ldquo;You are Aria, …&rdquo; in the prompt</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Role / Title</label>
