@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { Topbar } from '@/components/topbar';
+import type { ActiveBot } from '@/components/dashboard/BotSelector';
 
 export function DashboardShell({
   children,
@@ -10,12 +11,14 @@ export function DashboardShell({
   email,
   userRole,
   hasLifecycleBot,
+  activeBots = [],
 }: {
   children: React.ReactNode;
   tenantName: string;
   email: string;
   userRole: string;
   hasLifecycleBot: boolean;
+  activeBots?: ActiveBot[];
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +78,7 @@ export function DashboardShell({
           email={email}
           tenantName={tenantName}
           onMenuClick={() => setSidebarOpen(true)}
+          activeBots={activeBots}
         />
         <main className="flex-1 overflow-auto">
           {children}

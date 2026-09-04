@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Plus, BookOpen, Trash2, ChevronRight, X,
@@ -102,6 +103,10 @@ function StepIndicator({ current }: { current: WizardStep }) {
 
 export default function KnowledgeBasePage() {
 
+  // ── Bot filter ─────────────────────────────────────────────────────────────
+  const searchParams  = useSearchParams();
+  const botParam      = searchParams.get('bot');
+
   // ── Collections tab state ──────────────────────────────────────────────────
   const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media' | 'catalogue'>('collections');
   const [collections,  setCollections]  = useState<CollectionRow[]>([]);
@@ -173,6 +178,11 @@ export default function KnowledgeBasePage() {
   }, []);
 
   useEffect(() => { void loadCollections(); }, [loadCollections]);
+
+  const visibleCollections = useMemo(() => {
+    if (!botParam) return collections;
+    return collections.filter(c => c.kb_collection_bots.some(b => b.product_slug === botParam));
+  }, [collections, botParam]);
 
   // ── Collection CRUD ────────────────────────────────────────────────────────
   async function handleCreate() {
@@ -502,9 +512,16 @@ export default function KnowledgeBasePage() {
             </div>
           )}
 
-          {!loading && collections.length > 0 && (
+          {!loading && collections.length > 0 && visibleCollections.length === 0 && botParam && (
+            <div className="py-10 text-center">
+              <p className="text-sm font-semibold text-gray-600">No collections for this bot</p>
+              <p className="text-xs text-gray-400 mt-1">Create a collection and link it to this bot when editing.</p>
+            </div>
+          )}
+
+          {!loading && visibleCollections.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {collections.map((col) => (
+              {visibleCollections.map((col) => (
                 <div key={col.id} className="relative bg-white rounded-2xl border border-green-100 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all group">
                   <Link href={`/knowledge-base/${col.id}`} className="block p-5 pr-10">
                     <div className="flex items-center justify-between mb-3">

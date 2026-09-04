@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   MessageSquare,
   LayoutDashboard,
@@ -53,8 +53,10 @@ export function DashboardNav({
   hasLifecycleBot: boolean;
   onLinkClick?: () => void;
 }) {
-  const pathname = usePathname();
-  const router   = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  const botParam     = searchParams.get('bot');
   const supabase = getSupabaseBrowserClient();
 
   const ADMIN_ONLY_HREFS = new Set(['/audit']);
@@ -115,10 +117,11 @@ export function DashboardNav({
         </p>
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+          const navHref = botParam ? `${href}?bot=${botParam}` : href;
           return (
             <Link
               key={href}
-              href={href}
+              href={navHref}
               onClick={onLinkClick}
               aria-current={active ? 'page' : undefined}
               className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group ${

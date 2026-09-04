@@ -1,7 +1,10 @@
 'use client';
 
+import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import { Bell, ChevronRight, Menu } from 'lucide-react';
+import { BotSelector } from '@/components/dashboard/BotSelector';
+import type { ActiveBot } from '@/components/dashboard/BotSelector';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':       'Overview',
@@ -39,10 +42,12 @@ export function Topbar({
   email,
   tenantName,
   onMenuClick,
+  activeBots = [],
 }: {
   email: string;
   tenantName: string;
   onMenuClick?: () => void;
+  activeBots?: ActiveBot[];
 }) {
   const pathname = usePathname();
   const title    = getTitle(pathname);
@@ -87,6 +92,11 @@ export function Topbar({
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
+        {activeBots.length > 0 && (
+          <Suspense>
+            <BotSelector bots={activeBots} />
+          </Suspense>
+        )}
         <button
           type="button"
           aria-label="Notifications"

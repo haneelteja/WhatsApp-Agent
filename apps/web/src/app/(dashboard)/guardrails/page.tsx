@@ -17,7 +17,12 @@ const DEFAULT_TENANT_G: LayeredGuardrailsConfig = {
   on_blocked_topic:    'escalate',
 };
 
-export default async function GuardrailsPage() {
+export default async function GuardrailsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ bot?: string }>;
+}) {
+  const { bot: selectedBot } = await searchParams;
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
 
@@ -78,16 +83,26 @@ export default async function GuardrailsPage() {
   for (const p of productCatalog ?? []) productDefaults[p.slug] = p.default_prompt;
 
   const activeSlugs = new Set((products ?? []).map(p => p.product_type));
-  const resolvedConfigs = ((botConfigs ?? []) as (BotConfig & { product: Product | null })[])
+  const allConfigs = ((botConfigs ?? []) as (BotConfig & { product: Product | null })[])
     .filter(c => activeSlugs.has(c.product_slug));
+  const resolvedConfigs = selectedBot
+    ? allConfigs.filter(c => c.product_slug === selectedBot)
+    : allConfigs;
   const tenantGuardrails = (tenantGuardrailsRow?.guardrails_json as LayeredGuardrailsConfig) ?? DEFAULT_TENANT_G;
+
+  const BOT_NAME: Record<string, string> = {
+    support_bot: 'Support Bot', sales_bot: 'Sales Bot', lifecycle_bot: 'Lifecycle Bot',
+  };
+  const selectedBotName = selectedBot ? (BOT_NAME[selectedBot] ?? selectedBot) : null;
 
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Guardrails</h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Control what your bots can and cannot do.
+          {selectedBotName
+            ? <>Rules for <span className="font-semibold text-gray-700">{selectedBotName}</span></>
+            : 'Control what your bots can and cannot do.'}
         </p>
       </div>
 
@@ -132,7 +147,7 @@ export default async function GuardrailsPage() {
           <ShieldAlert size={16} className="text-emerald-600" />
           <h3 className="text-sm font-semibold text-gray-700">Layer 4 — Per-Bot Configuration</h3>
           <span className="ml-auto text-[11px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-semibold border border-emerald-200">
-            Individual bots
+            {selectedBotName ?? 'Individual bots'}
           </span>
         </div>
         <div className="px-5 py-5">

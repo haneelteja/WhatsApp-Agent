@@ -37,12 +37,22 @@ const getTenantContext = cache(async () => {
   const rawCfg      = tenantObj?.copilot_config ?? {};
   const copilotEnabled = typeof rawCfg['enabled'] === 'boolean' ? rawCfg['enabled'] : true;
 
-  const [{ data: lb }, { data: sb }] = await Promise.all([
-    admin.from('tenant_products').select('product_type')
-      .eq('tenant_id', tenantId).eq('product_type', 'lifecycle_bot').eq('active', true).maybeSingle(),
-    admin.from('tenant_products').select('product_type')
-      .eq('tenant_id', tenantId).eq('product_type', 'sales_bot').eq('active', true).maybeSingle(),
-  ]);
+  const { data: activeProducts } = await admin
+    .from('tenant_products')
+    .select('product_type')
+    .eq('tenant_id', tenantId)
+    .eq('active', true);
+
+  const BOT_NAME: Record<string, string> = {
+    support_bot:   'Support Bot',
+    sales_bot:     'Sales Bot',
+    lifecycle_bot: 'Lifecycle Bot',
+  };
+  const activeBots = (activeProducts ?? [])
+    .filter(p => BOT_NAME[p.product_type])
+    .map(p => ({ slug: p.product_type, name: BOT_NAME[p.product_type]! }));
+
+  const hasLifecycleBot = activeBots.some(b => b.slug === 'lifecycle_bot');
 
   return {
     user,
@@ -50,8 +60,8 @@ const getTenantContext = cache(async () => {
     userRole:        tenantUser.role ?? '',
     tenantId,
     copilotEnabled,
-    hasLifecycleBot: !!lb,
-    hasSalesBot:     !!sb,
+    hasLifecycleBot,
+    activeBots,
   };
 });
 
@@ -108,6 +118,7 @@ export default async function DashboardLayout({
         email={ctx.user.email ?? ''}
         userRole={ctx.userRole}
         hasLifecycleBot={ctx.hasLifecycleBot}
+        activeBots={ctx.activeBots}
       >
         {children}
       </DashboardShell>
