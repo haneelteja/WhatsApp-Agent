@@ -1,7 +1,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Clock, CreditCard, MessageSquare, Users, ShieldAlert, Cpu, Phone, Sparkles } from 'lucide-react';
+import { ArrowLeft, Clock, CreditCard, MessageSquare, Users, ShieldAlert, Cpu, Phone, Sparkles, AlertTriangle } from 'lucide-react';
 import { CollapsibleSection } from '@/components/platform/CollapsibleSection';
 import { TenantGuardrailsForm } from '@/components/platform/TenantGuardrailsForm';
 import { ClientProductsManager } from '@/components/platform/ClientProductsManager';
@@ -16,6 +16,7 @@ import { BillingManager } from '@/components/platform/BillingManager';
 import { TenantVoiceConfigCard, type TenantVoiceConfigRow } from '@/components/platform/TenantVoiceConfigCard';
 import { CopilotSettingsCard } from '@/components/platform/CopilotSettingsCard';
 import { getCopilotConfigAction } from '@/app/actions/copilot-settings';
+import { ClientDangerZone } from '@/components/platform/ClientDangerZone';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
   support_bot:   { name: 'Support Bot',   desc: 'Q&A, issue resolution, escalations',  textColor: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200' },
@@ -380,6 +381,22 @@ export default async function ClientDetailPage({
           Configure the AI Copilot chat widget for this client — enable/disable it, set custom instructions, and control which write actions it can propose to users.
         </p>
         <CopilotSettingsCard tenantId={tenantId} initial={copilotConfig} />
+      </CollapsibleSection>
+
+      {/* Danger Zone */}
+      <CollapsibleSection
+        icon={<AlertTriangle size={14} className="text-red-400" />}
+        title="Danger Zone"
+        titleClass="text-xs font-semibold text-red-500 uppercase tracking-wider"
+        containerClass="bg-red-50/40 border border-red-200 rounded-2xl overflow-hidden"
+        headerClass="w-full flex items-center gap-2.5 px-5 py-4 text-left hover:bg-red-50 transition-colors"
+        contentClass="px-5 py-4"
+      >
+        <ClientDangerZone
+          tenantId={tenantId}
+          tenantName={(tenant.name as string) ?? 'this client'}
+          status={(tenant.status as 'active' | 'trial' | 'suspended')}
+        />
       </CollapsibleSection>
 
       {/* Webhook info */}
