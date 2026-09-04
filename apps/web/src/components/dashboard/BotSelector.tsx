@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
-import { ChevronDown, Bot } from 'lucide-react';
+import { ChevronDown, Bot, Star } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
 export interface ActiveBot {
@@ -22,14 +22,25 @@ const BOT_COLOR: Record<string, { bg: string; icon: string }> = {
   lifecycle_bot: { bg: 'bg-orange-100', icon: 'text-orange-500' },
 };
 
+const LOCAL_PRIMARY_KEY = 'alphabot_primary_bot';
+
 export function BotSelector({ bots }: { bots: ActiveBot[] }) {
-  const searchParams = useSearchParams();
-  const pathname     = usePathname();
-  const router       = useRouter();
-  const [open, setOpen] = useState(false);
+  const searchParams   = useSearchParams();
+  const pathname       = usePathname();
+  const router         = useRouter();
+  const [open, setOpen]         = useState(false);
+  const [primarySlug, setPrimary] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  const currentSlug = searchParams.get('bot');
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_PRIMARY_KEY);
+      if (saved && bots.some(b => b.slug === saved)) setPrimary(saved);
+    } catch {}
+  }, [bots]);
+
+  const urlSlug    = searchParams.get('bot');
+  const currentSlug = urlSlug ?? primarySlug;
   const activeBot   = bots.find(b => b.slug === currentSlug);
 
   const isScoped = BOT_SCOPED_PATHS.has(pathname) || pathname.startsWith('/conversations/');
@@ -44,6 +55,8 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
     setOpen(false);
   }
 
+  const isDefaultingToPrimary = !urlSlug && !!primarySlug;
+
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
@@ -52,8 +65,6 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [open]);
-
-  const botColors = activeBot ? (BOT_COLOR[activeBot.slug] ?? BOT_COLOR['support_bot']!) : null;
 
   return (
     <div ref={ref} className="relative">
@@ -68,6 +79,7 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
       >
         <Bot size={13} className={activeBot ? 'text-emerald-600' : 'text-gray-400'} />
         <span>{activeBot?.name ?? 'All Bots'}</span>
+        {isDefaultingToPrimary && <Star size={9} className="text-amber-400" />}
         <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -89,13 +101,15 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
 
             {bots.map(bot => {
               const colors = BOT_COLOR[bot.slug] ?? BOT_COLOR['support_bot']!;
+              const isActive = currentSlug === bot.slug;
+              const isPrimary = bot.slug === primarySlug;
               return (
                 <button
                   key={bot.slug}
                   type="button"
                   onClick={() => selectBot(bot.slug)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg transition-colors text-left ${
-                    currentSlug === bot.slug
+                    isActive
                       ? 'bg-emerald-50 text-emerald-700 font-semibold'
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
@@ -103,7 +117,8 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
                   <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${colors.bg}`}>
                     <Bot size={10} className={colors.icon} />
                   </div>
-                  {bot.name}
+                  <span className="flex-1">{bot.name}</span>
+                  {isPrimary && <Star size={9} className="text-amber-400 shrink-0" />}
                 </button>
               );
             })}

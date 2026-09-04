@@ -27,6 +27,7 @@ import { ToolManifestEditor } from '@/components/dashboard/ToolManifestEditor';
 import { getBotToolsAction } from '@/app/actions/bot-tools';
 import { DispositionCategoryManager } from '@/components/dashboard/DispositionCategoryManager';
 import { getDispositionCategoriesAction } from '@/app/actions/disposition';
+import { BotsTabContent } from '@/components/dashboard/BotsTabContent';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ function maskLlmConfig(row: RawLlmConfig): LlmConfigCardProps['initial'] {
 
 const TABS = [
   { key: 'workspace',    label: 'Workspace'     },
+  { key: 'bots',         label: 'Bots'          },
   { key: 'team',         label: 'Team'          },
   { key: 'models',       label: 'AI Models'     },
   { key: 'voice',        label: 'Voice'         },
@@ -189,19 +191,21 @@ export default async function SettingsPage({
             <InternalNumbersManager initialNumbers={internalNumbers} />
           </DashboardCollapsibleSection>
 
-          <DashboardCollapsibleSection icon={<Bot size={16} />} title="Bot Products" hint="Activate or disable bots included in your plan. Only active bots respond to WhatsApp messages. Deactivating a bot does not delete its conversation history.">
-            <BotProductsSection
-              tenantId={(tenant?.['id'] as string) ?? ''}
-              apiBase={apiBase}
-              tenantProducts={products as { product_type: string; tier: string; active: boolean }[]}
-              numbers={numbers!.map(n => ({
-                id:           n['id'] as string,
-                phone_number: n['phone_number'] as string,
-                provider:     n['provider'] as string,
-                label:        (n['label'] ?? null) as string | null,
-                product_slug: (n['product_slug'] ?? null) as string | null,
-              }))}
-            />
+          <DashboardCollapsibleSection icon={<Bot size={16} />} title="Bot Products" hint="Manage your active bots, assign phone numbers, and configure each bot individually.">
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600">
+                  {(products as { active: boolean }[]).filter(p => p.active).length} bot{(products as { active: boolean }[]).filter(p => p.active).length !== 1 ? 's' : ''} active
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">Configure bots, assign numbers, and set your primary bot in the Bots tab.</p>
+              </div>
+              <Link
+                href="/settings?tab=bots"
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+              >
+                Manage Bots <ChevronRight size={12} />
+              </Link>
+            </div>
           </DashboardCollapsibleSection>
 
           {activeBots.length > 0 && (
@@ -223,6 +227,28 @@ export default async function SettingsPage({
             </div>
           </DashboardCollapsibleSection>
         </div>
+      </SettingsShell>
+    );
+  }
+
+  // ── Bots data ────────────────────────────────────────────────────────────────
+  if (activeTab === 'bots') {
+    const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
+    const [{ data: botProducts }, { data: botNumbers }, { data: llmRows }] = await Promise.all([
+      admin.from('tenant_products').select('product_type, tier, active').eq('tenant_id', tenantId),
+      admin.from('whatsapp_numbers').select('id, phone_number, provider, label, product_slug').eq('tenant_id', tenantId),
+      admin.from('llm_configs').select('product_slug, credit_info').eq('tenant_id', tenantId),
+    ]);
+
+    return (
+      <SettingsShell activeTab={activeTab}>
+        <BotsTabContent
+          tenantId={tenantId}
+          apiBase={apiBase}
+          botProducts={(botProducts ?? []) as { product_type: string; tier: string; active: boolean }[]}
+          numbers={(botNumbers ?? []) as { id: string; phone_number: string; provider: string; label: string | null; product_slug: string | null }[]}
+          tokenUsage={(llmRows ?? []) as { product_slug: string | null; credit_info: { usage: number | null; limit: number | null; is_free_tier: boolean } | null }[]}
+        />
       </SettingsShell>
     );
   }
