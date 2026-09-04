@@ -3,6 +3,7 @@
 import { revalidatePath }         from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession }             from '@/lib/session';
+import { writeAuditLog }          from '@/lib/audit';
 
 export interface CallTriggersInput {
   productSlug:                  string;
@@ -58,6 +59,17 @@ export async function saveCallTriggersAction(input: CallTriggersInput) {
     .eq('product_slug', input.productSlug);
 
   if (error) return { error: error.message };
+
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      'call_triggers.updated',
+    entityType:  'bot_config',
+    entityId:    input.productSlug,
+    description: `Updated call triggers for ${input.productSlug.replace(/_/g, ' ')}`,
+    metadata: { productSlug: input.productSlug, triggerOnCallRequest: input.triggerOnCallRequest, triggerOnNegativeSentiment: input.triggerOnNegativeSentiment },
+  });
 
   revalidatePath('/call-triggers');
   return { success: true };

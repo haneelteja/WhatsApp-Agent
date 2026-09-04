@@ -3,6 +3,7 @@
 import { revalidatePath }         from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession }             from '@/lib/session';
+import { writeAuditLog }          from '@/lib/audit';
 import type { LayeredGuardrailsConfig } from '@alphabot/shared';
 
 export async function saveTenantGuardrailsAction(guardrails: LayeredGuardrailsConfig) {
@@ -20,6 +21,15 @@ export async function saveTenantGuardrailsAction(guardrails: LayeredGuardrailsCo
     });
 
   if (error) return { error: error.message };
+
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      'guardrails.updated',
+    entityType:  'tenant_guardrails',
+    description: 'Updated workspace-wide guardrails',
+  });
 
   revalidatePath('/dashboard/settings');
   return { success: true };

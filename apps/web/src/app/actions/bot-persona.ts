@@ -3,6 +3,7 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession } from '@/lib/session';
 import { revalidatePath } from 'next/cache';
+import { writeAuditLog } from '@/lib/audit';
 
 export interface BotPersona {
   product_slug:         string;
@@ -50,6 +51,18 @@ export async function saveBotPersonaAction(
     );
 
   if (error) return { error: error.message };
+
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      'bot.persona.updated',
+    entityType:  'bot_config',
+    entityId:    productSlug,
+    description: `Updated bot persona for ${productSlug.replace(/_/g, ' ')} (name: "${persona.persona_name ?? 'unset'}")`,
+    metadata: { productSlug, personaName: persona.persona_name },
+  });
+
   revalidatePath('/settings');
   return {};
 }

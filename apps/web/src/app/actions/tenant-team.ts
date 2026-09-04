@@ -4,6 +4,7 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession }             from '@/lib/session';
 import { revalidatePath }         from 'next/cache';
 import { sendEmail }              from '@/lib/email';
+import { writeAuditLog }          from '@/lib/audit';
 
 export async function sendTeamInviteAction(_prevState: unknown, formData: FormData) {
   const email = (formData.get('email') as string | null)?.trim().toLowerCase() ?? '';
@@ -83,6 +84,17 @@ export async function sendTeamInviteAction(_prevState: unknown, formData: FormDa
     `,
   });
 
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      'member.invited',
+    entityType:  'team_invite',
+    entityId:    email,
+    description: `Invited ${email} as ${role}`,
+    metadata: { email, role },
+  });
+
   revalidatePath('/team');
   return { success: true, inviteUrl };
 }
@@ -103,6 +115,17 @@ export async function removeTeamMemberAction(userId: string) {
     .delete()
     .eq('user_id', userId)
     .eq('tenant_id', session.tenantId);
+
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      'member.removed',
+    entityType:  'tenant_user',
+    entityId:    userId,
+    description: `Removed team member (user ID: ${userId})`,
+    metadata: { removed_user_id: userId },
+  });
 
   revalidatePath('/team');
   return { success: true };

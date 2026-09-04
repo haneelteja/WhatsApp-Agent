@@ -3,6 +3,7 @@
 import { revalidatePath }         from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession }             from '@/lib/session';
+import { writeAuditLog }          from '@/lib/audit';
 import type { GuardrailsConfig }  from '@alphabot/shared';
 
 export interface SaveBotConfigInput {
@@ -90,6 +91,17 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
 
   if (error) return { error: error.message };
   if (!updated) return { error: 'Bot config not found — activate your bot in Settings first' };
+
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      'bot.config.updated',
+    entityType:  'bot_config',
+    entityId:    input.productSlug,
+    description: `Updated bot configuration for ${input.productSlug.replace(/_/g, ' ')} (confidence: ${input.confidenceThreshold}%)`,
+    metadata: { productSlug: input.productSlug, confidenceThreshold: input.confidenceThreshold, kbOnlyMode: input.kbOnlyMode },
+  });
 
   revalidatePath('/settings');
   revalidatePath('/call-triggers');

@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient }  from '@/lib/supabase/admin';
 import { revalidatePath }          from 'next/cache';
 import { getSession }              from '@/lib/session';
+import { writeAuditLog }           from '@/lib/audit';
 
 export async function createBroadcast(
   name:         string,
@@ -50,6 +51,17 @@ export async function createBroadcast(
       } catch { /* intentionally ignored */ }
     })();
   }
+
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      'broadcast.created',
+    entityType:  'broadcast',
+    entityId:    broadcastId,
+    description: `Created broadcast "${name.trim()}" (${scheduledAt ? 'scheduled' : 'immediate'}, audience: ${audienceType})`,
+    metadata: { broadcastId, audienceType, scheduled: !!scheduledAt, scheduledAt },
+  });
 
   revalidatePath('/conversations');
   return { id: broadcastId };

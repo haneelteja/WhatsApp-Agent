@@ -5,16 +5,32 @@ import { Download, Search, Filter } from 'lucide-react';
 import type { AuditLogEntry } from '@/app/actions/audit';
 
 const ACTION_META: Record<string, { label: string; color: string }> = {
-  'tenant.suspended':  { label: 'Suspended',    color: 'bg-amber-100 text-amber-800 ring-amber-200'   },
-  'tenant.activated':  { label: 'Activated',    color: 'bg-emerald-100 text-emerald-800 ring-emerald-200' },
-  'tenant.deleted':    { label: 'Deleted',      color: 'bg-red-100 text-red-800 ring-red-200'         },
-  'bot.activated':     { label: 'Bot On',       color: 'bg-sky-100 text-sky-800 ring-sky-200'         },
-  'bot.deactivated':   { label: 'Bot Off',      color: 'bg-slate-100 text-slate-600 ring-slate-200'   },
-  'member.invited':    { label: 'Invited',      color: 'bg-violet-100 text-violet-800 ring-violet-200' },
-  'member.removed':    { label: 'Removed',      color: 'bg-red-100 text-red-700 ring-red-200'         },
-  'guardrails.updated':{ label: 'Guardrails',   color: 'bg-indigo-100 text-indigo-800 ring-indigo-200' },
-  'billing.updated':   { label: 'Billing',      color: 'bg-orange-100 text-orange-800 ring-orange-200' },
-  'copilot.updated':   { label: 'Copilot',      color: 'bg-teal-100 text-teal-800 ring-teal-200'      },
+  // Platform-level
+  'tenant.suspended':          { label: 'Suspended',       color: 'bg-amber-100 text-amber-800 ring-amber-200'     },
+  'tenant.activated':          { label: 'Activated',       color: 'bg-emerald-100 text-emerald-800 ring-emerald-200' },
+  'tenant.deleted':            { label: 'Deleted',         color: 'bg-red-100 text-red-800 ring-red-200'           },
+  // Team
+  'member.invited':            { label: 'Invited',         color: 'bg-violet-100 text-violet-800 ring-violet-200'  },
+  'member.removed':            { label: 'Removed',         color: 'bg-red-100 text-red-700 ring-red-200'           },
+  // Bot
+  'bot.activated':             { label: 'Bot On',          color: 'bg-sky-100 text-sky-800 ring-sky-200'           },
+  'bot.deactivated':           { label: 'Bot Off',         color: 'bg-slate-100 text-slate-600 ring-slate-200'     },
+  'bot.config.updated':        { label: 'Bot Config',      color: 'bg-sky-100 text-sky-800 ring-sky-200'           },
+  'bot.persona.updated':       { label: 'Bot Persona',     color: 'bg-sky-100 text-sky-700 ring-sky-200'           },
+  // Guardrails
+  'guardrails.updated':        { label: 'Guardrails',      color: 'bg-indigo-100 text-indigo-800 ring-indigo-200'  },
+  // Campaigns & broadcasts
+  'broadcast.created':         { label: 'Broadcast',       color: 'bg-emerald-100 text-emerald-800 ring-emerald-200' },
+  'campaign.created':          { label: 'Campaign',        color: 'bg-teal-100 text-teal-800 ring-teal-200'        },
+  // Scheduled messages
+  'scheduled_message.created': { label: 'Scheduled Msg',  color: 'bg-blue-100 text-blue-800 ring-blue-200'        },
+  'scheduled_message.cancelled':{ label: 'Msg Cancelled', color: 'bg-slate-100 text-slate-600 ring-slate-200'     },
+  // Triggers
+  'call_triggers.updated':     { label: 'Triggers',        color: 'bg-orange-100 text-orange-800 ring-orange-200'  },
+  // Billing / AI
+  'billing.updated':           { label: 'Billing',         color: 'bg-orange-100 text-orange-800 ring-orange-200'  },
+  'copilot.updated':           { label: 'Copilot',         color: 'bg-teal-100 text-teal-800 ring-teal-200'       },
+  'llm.config.updated':        { label: 'AI Model',        color: 'bg-purple-100 text-purple-800 ring-purple-200'  },
 };
 
 function ActionBadge({ action }: { action: string }) {

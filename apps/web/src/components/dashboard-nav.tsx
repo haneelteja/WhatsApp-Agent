@@ -19,6 +19,7 @@ import {
   MessageSquareMore,
   Plug,
   CalendarClock,
+  ClipboardList,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -56,6 +57,7 @@ export function DashboardNav({
   const router   = useRouter();
   const supabase = getSupabaseBrowserClient();
 
+  const ADMIN_ONLY_HREFS = new Set(['/audit']);
   const AGENT_HREFS      = new Set(['/dashboard', '/conversations']);
   const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/integrations', '/knowledge-base', '/orders', '/analytics', '/scheduled-messages', '/settings']);
 
@@ -67,8 +69,13 @@ export function DashboardNav({
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
       items.splice(guardrailsIdx + 1, 0, ORDERS_ITEM);
     }
-    if (userRole === 'agent') return items.filter(i => AGENT_HREFS.has(i.href));
-    if (userRole === 'supervisor') return items.filter(i => SUPERVISOR_HREFS.has(i.href));
+    // Audit log — admin and client_manager only
+    if (['admin', 'client_manager'].includes(userRole)) {
+      const analyticsIdx = items.findIndex(i => i.href === '/analytics');
+      items.splice(analyticsIdx + 1, 0, { href: '/audit', label: 'Activity Log', icon: ClipboardList });
+    }
+    if (userRole === 'agent') return items.filter(i => !ADMIN_ONLY_HREFS.has(i.href) && AGENT_HREFS.has(i.href));
+    if (userRole === 'supervisor') return items.filter(i => !ADMIN_ONLY_HREFS.has(i.href) && SUPERVISOR_HREFS.has(i.href));
     return items;
   })();
 

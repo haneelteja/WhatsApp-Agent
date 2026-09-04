@@ -1,6 +1,7 @@
 'use server';
 
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getSession } from '@/lib/session';
 
 export interface AuditLogEntry {
   id:           string;
@@ -52,4 +53,18 @@ export async function getAuditLogsAction(
   }));
 
   return { logs };
+}
+
+/** Called from the client dashboard — scoped to the session's tenant, admin/manager only. */
+export async function getClientAuditLogsAction(
+  limit = 300,
+): Promise<{ logs: AuditLogEntry[]; error?: string }> {
+  const session = await getSession();
+  if (!session) return { logs: [], error: 'Not authenticated' };
+
+  if (!['admin', 'client_manager'].includes(session.role)) {
+    return { logs: [], error: 'Insufficient permissions' };
+  }
+
+  return getAuditLogsAction(session.tenantId, limit);
 }

@@ -4,6 +4,7 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { unstable_noStore as noStore } from 'next/cache';
+import { writeAuditLog } from '@/lib/audit';
 
 export interface ScheduledMessageRow {
   id: string;
@@ -183,6 +184,17 @@ export async function createScheduledMessageAction(input: CreateScheduledMessage
     return { error: recErr.message };
   }
 
+  void writeAuditLog({
+    tenantId:    tenantId,
+    actorId:     user?.id ?? null,
+    actorEmail:  user?.email ?? null,
+    action:      'scheduled_message.created',
+    entityType:  'scheduled_message',
+    entityId:    msg.id,
+    description: `Created scheduled message "${input.name}" (${input.recurrence?.type ?? 'once'}, ${input.recipients.length} recipients)`,
+    metadata: { name: input.name, recipientCount: input.recipients.length, recurrenceType: input.recurrence?.type },
+  });
+
   revalidatePath('/scheduled-messages');
   return { id: msg.id };
 }
@@ -196,6 +208,17 @@ export async function cancelScheduledMessageAction(id: string): Promise<{ error?
     .update({ status: 'cancelled' })
     .eq('id', id)
     .eq('tenant_id', tenantId);
+  if (!error) {
+    void writeAuditLog({
+      tenantId,
+      actorId:    null,
+      actorEmail: null,
+      action:      'scheduled_message.cancelled',
+      entityType:  'scheduled_message',
+      entityId:    id,
+      description: `Cancelled scheduled message (ID: ${id})`,
+    });
+  }
   revalidatePath('/scheduled-messages');
   return error ? { error: error.message } : {};
 }
