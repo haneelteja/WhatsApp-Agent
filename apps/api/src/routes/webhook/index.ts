@@ -18,6 +18,7 @@ import { isWithinBusinessHours } from '../../lib/business-hours.js';
 import { dispatchCall } from '../../services/voice/call-manager.js';
 import { getProductCatalogue } from '../../lib/product-cache.js';
 import { buildStagePromptBlock } from '../../lib/stage-definitions.js';
+import { toolEnabled, TOOL_IDS } from '../../lib/tool-registry.js';
 
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
@@ -599,6 +600,10 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       botConfig?.system_prompt ??
       (botConfig?.product as Product | null)?.default_prompt ??
       DEFAULT_SYSTEM_PROMPTS[productType];
+
+    // Resolve tool manifest — falls back to defaults for bots without a row yet
+    const allowedTools = ((botConfig as unknown as { allowed_tools?: string[] } | null)?.allowed_tools) ?? [];
+
     const escalationTriggers: string[] =
       botConfig?.escalation_triggers?.length
         ? botConfig.escalation_triggers
@@ -700,29 +705,33 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     fastify.log.info(historyStats, '[Webhook] history assembled');
 
     const contactData = contact as Contact;
-    const kbResults = incoming.text
+    const kbResults = incoming.text && toolEnabled(allowedTools, TOOL_IDS.KNOWLEDGE_BASE)
       ? await lookupKB(tenantId, productType, incoming.text)
       : [];
 
     const contactMemory = formatContactMemory(contactData.memory_json as unknown as Record<string, unknown> | null);
 
-    // Fetch active button templates for this bot (null product_slug = all bots)
-    const { data: buttonTemplatesRaw, error: btnTplError } = await db
-      .from('interactive_button_templates')
-      .select('name, description, type, template_json, trigger_keywords')
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .or(`product_slug.eq.${productType},product_slug.is.null`);
-    if (btnTplError) {
-      fastify.log.error({ btnTplError, tenantId }, '[Webhook] Failed to fetch button templates');
+    // Fetch active button templates — skipped when button_templates tool is disabled
+    let buttonTemplates: ButtonTemplate[] = [];
+    if (toolEnabled(allowedTools, TOOL_IDS.BUTTON_TEMPLATES)) {
+      const { data: btnRaw, error: btnTplError } = await db
+        .from('interactive_button_templates')
+        .select('name, description, type, template_json, trigger_keywords')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .or(`product_slug.eq.${productType},product_slug.is.null`);
+      if (btnTplError) {
+        fastify.log.error({ btnTplError, tenantId }, '[Webhook] Failed to fetch button templates');
+      }
+      buttonTemplates = (btnRaw ?? []) as ButtonTemplate[];
     }
-    const buttonTemplates = (buttonTemplatesRaw ?? []) as ButtonTemplate[];
     fastify.log.info({ count: buttonTemplates.length, tenantId }, '[Webhook] button templates loaded');
 
     // ── Build effective system prompt with guardrails injected ───────────
     // Always append SALES_LEAD_INSTRUCTION so it applies even when the DB
     // has a custom system_prompt that doesn't include it.
-    let systemPrompt = baseSystemPrompt + (productType !== 'lifecycle_bot' ? SALES_LEAD_INSTRUCTION : '');
+    const wantLeadScoring = toolEnabled(allowedTools, TOOL_IDS.LEAD_SCORING) && productType !== 'lifecycle_bot';
+    let systemPrompt = baseSystemPrompt + (wantLeadScoring ? SALES_LEAD_INSTRUCTION : '');
 
     // Inject persona preamble when bot_config has persona fields set
     const bc = botConfig as (typeof botConfig & {
@@ -780,10 +789,27 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       systemPrompt += `\nThe customer is writing in ${langHint}. Respond in the same language and script.`;
     }
 
-    // ── Inject product catalogue (sales_bot only) ────────────────────────────
+    // ── Intent signal detection (sales + lifecycle bots when tool enabled) ───
+    if (toolEnabled(allowedTools, TOOL_IDS.INTENT_SIGNALS)) {
+      systemPrompt += `\n\n---\nINTENT SIGNAL DETECTION:
+Tag this conversation with customer intent by appending [SIGNAL:x] markers at the VERY END of your response (stripped before the customer sees them). Use at most 3 signals per reply. Only signal what is clearly present in the customer's message:
+[SIGNAL:pricing_inquiry] — customer asked about price or cost
+[SIGNAL:urgency] — customer expressed time pressure or deadline
+[SIGNAL:budget_mentioned] — customer named a specific budget or spending limit
+[SIGNAL:competitor_mentioned] — customer referenced a competing product or vendor
+[SIGNAL:decision_maker] — customer indicated they are the decision-maker
+[SIGNAL:objection_price] — customer raised price as a concern or barrier
+[SIGNAL:ready_to_buy] — customer expressed clear buying intent or readiness
+[SIGNAL:needs_demo] — customer requested a demo, sample, or trial
+[SIGNAL:technical_question] — customer asked a detailed technical question
+[SIGNAL:complaint] — customer expressed dissatisfaction or a complaint
+[SIGNAL:referral] — customer was referred by someone or mentioned a referral`;
+    }
+
+    // ── Inject product catalogue (sales_bot only, when tool enabled) ─────────
     // Active products are fetched from the product_catalogue table (Redis-cached,
     // 5 min TTL) and appended to the system prompt so the bot can quote exact prices.
-    if (productType === 'sales_bot') {
+    if (productType === 'sales_bot' && toolEnabled(allowedTools, TOOL_IDS.PRODUCT_CATALOGUE)) {
       const catalogue = await getProductCatalogue(tenantId);
       if (catalogue.length > 0) {
         const catalogueText = catalogue.map(p => {
@@ -940,14 +966,19 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
     const stageMatch    = rawContent.match(/\[STAGE:(\w+)\]/);
     const entityMatches = [...rawContent.matchAll(/\[ENTITY:(\w+)=([^\]]+)\]/g)];
 
+    // Intent signals — extract [SIGNAL:x] markers (explainable lead scoring)
+    const signalMatches  = [...rawContent.matchAll(/\[SIGNAL:([\w_]+)\]/g)];
+    const newSignals     = [...new Set(signalMatches.map(m => m[1]!))];
+
     // Interactive buttons — extract [BUTTONS:template_name] marker
     const buttonsMatch       = rawContent.match(/\[BUTTONS:([^\]]+)\]/);
     const buttonTemplateName = buttonsMatch?.[1]?.trim().toLowerCase() ?? null;
-    fastify.log.info({ buttonTemplateName, rawSnippet: rawContent.slice(-120) }, '[Webhook] AI response tail + buttons marker');
+    fastify.log.info({ buttonTemplateName, signals: newSignals, rawSnippet: rawContent.slice(-120) }, '[Webhook] AI response markers');
 
     // Strip all control markers before sending to customer
     const cleanContent = rawContent
       .replace(/\[SALES_LEAD\]/g, '')
+      .replace(/\[SIGNAL:[\w_]+\]/g, '')
       .replace(/\[SEND_CATALOGUE\]/g, '')
       .replace(/\[STAGE:\w+\]/g, '')
       .replace(/\[ENTITY:[^\]]+\]/g, '')
@@ -984,6 +1015,17 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
           trigger:         'llm_marker',
         }),
         'log-stage-event',
+        fastify.log,
+      );
+    }
+
+    // Persist intent signals non-blocking — merge new signals into existing set
+    if (newSignals.length > 0) {
+      const convSignals = (conversation as Conversation & { intent_signals?: string[] }).intent_signals ?? [];
+      const mergedSignals = [...new Set([...convSignals, ...newSignals])];
+      fireForget(
+        db.from('conversations').update({ intent_signals: mergedSignals }).eq('id', conversation.id),
+        'update-intent-signals',
         fastify.log,
       );
     }

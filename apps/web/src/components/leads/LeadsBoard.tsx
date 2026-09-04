@@ -21,6 +21,8 @@ export interface LeadData {
   updated_at: string;
   lead_score: number;
   lead_follow_up_count: number;
+  intent_signals:  string[];
+  intent_reasoning: string | null;
   contacts: {
     id: string;
     phone: string | null;
@@ -294,6 +296,23 @@ function LeadDrawer({
             </section>
           )}
 
+          {/* Intent signals */}
+          {(lead.intent_signals ?? []).length > 0 && (
+            <section>
+              <h4 className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2">Intent Signals</h4>
+              <div className="flex flex-wrap gap-1.5">
+                {(lead.intent_signals ?? []).map(sig => (
+                  <span key={sig} className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs ring-1 ring-indigo-200">
+                    {sig.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+              {lead.intent_reasoning && (
+                <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">{lead.intent_reasoning}</p>
+              )}
+            </section>
+          )}
+
           {/* Captured entities */}
           {varList.length > 0 && (
             <section>
@@ -540,6 +559,11 @@ function LeadCard({
             <AlertTriangle size={8} /> Stale
           </span>
         )}
+        {(lead.intent_signals ?? []).slice(0, 3).map(sig => (
+          <span key={sig} className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] ring-1 ring-indigo-200">
+            {sig.replace(/_/g, ' ')}
+          </span>
+        ))}
       </div>
 
       {/* AI summary (1 line) */}

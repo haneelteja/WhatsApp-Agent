@@ -112,7 +112,7 @@ export default async function LeadsPage() {
     .from('conversations')
     .select(`
       id, stage, ai_vars, status, updated_at, product_type,
-      lead_score, lead_follow_up_count,
+      lead_score, lead_follow_up_count, intent_signals, intent_reasoning,
       contacts(id, phone, name, memory_json),
       escalations(id, trigger_reason, status, created_at, ai_summary)
     `)
