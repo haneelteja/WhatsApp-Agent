@@ -161,7 +161,7 @@ function AddInstanceForm({
   return (
     <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
       <p className="text-[11px] font-semibold text-slate-500">Name this {meta.name} instance</p>
-      <p className="text-[10px] text-slate-400">E.g. "Hindi", "North India", "Tier 1 Support"</p>
+      <p className="text-[10px] text-slate-400">E.g. &quot;Hindi&quot;, &quot;North India&quot;, &quot;Tier 1 Support&quot;</p>
       <div className="flex items-center gap-2">
         <input
           ref={inputRef}
