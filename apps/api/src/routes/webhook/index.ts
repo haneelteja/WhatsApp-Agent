@@ -22,7 +22,6 @@ import { toolEnabled, TOOL_IDS } from '../../lib/tool-registry.js';
 import { isOptOutMessage, isSuppressed, writeSuppression } from '../../lib/suppression.js';
 import { classifyMessageKind, KIND_CLASSIFIER_VERSION } from '../../lib/message-kind.js';
 import { maybeUpdateChatSummary } from '../../lib/chat-summary.js';
-import { classifyAndPersistOutcome } from '../../lib/outcome-classifier.js';
 import { createHash } from 'crypto';
 
 // Default system prompts used only when no bot_config row exists yet

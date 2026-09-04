@@ -181,11 +181,11 @@ async function processOneContact(
   // Suppression check — skip silently if opted out
   if (contact.phone_number && await isSuppressed(tenantId, contact.phone_number)) {
     await db.from('campaign_contacts')
-      .update({ whatsapp_status: 'skipped', voice_status: 'skipped', outcome_json: { reason: 'suppressed' } })
-      .eq('id', contact.id);
-    // Update Thompson sampling: suppressed = non-success → ts_beta++
-    await db.from('campaign_contacts')
-      .update({ ts_beta: (contact.ts_beta ?? 1) + 1 })
+      .update({
+        whatsapp_status: 'skipped',
+        voice_status:    'skipped',
+        ts_beta:         (contact.ts_beta ?? 1) + 1,
+      })
       .eq('id', contact.id);
     return;
   }
