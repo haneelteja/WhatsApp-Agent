@@ -19,8 +19,8 @@ type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
 
 export interface BotProduct {
   product_type:  string;
-  product_slug:  string;   // routing key — product_type for first, product_type_xxxx for extras
-  instance_name: string;   // display label
+  product_slug:  string;
+  instance_name: string;
   tier:          string;
   active:        boolean;
 }
@@ -51,13 +51,13 @@ const LOCAL_PRIMARY_KEY = 'alphabot_primary_bot';
 const ALL_TYPES: ProductType[] = ['support_bot', 'sales_bot', 'lifecycle_bot'];
 
 const BOT_META: Record<ProductType, {
-  name:       string;
-  tagline:    string;
-  description:string;
-  icon:       React.ElementType;
-  bg:         string;
-  color:      string;
-  price:      string;
+  name:        string;
+  tagline:     string;
+  description: string;
+  icon:        React.ElementType;
+  bg:          string;
+  color:       string;
+  price:       string;
 }> = {
   support_bot: {
     name:        'Support Bot',
@@ -131,13 +131,13 @@ function AddInstanceForm({
   onCancel,
 }: {
   productType: ProductType;
-  onAdded: (bot: BotProduct) => void;
+  onAdded:  (bot: BotProduct) => void;
   onCancel: () => void;
 }) {
   const meta = BOT_META[productType];
-  const [name, setName] = useState('');
-  const [pending, startTx] = useTransition();
-  const [error, setError] = useState('');
+  const [name, setName]     = useState('');
+  const [pending, startTx]  = useTransition();
+  const [error, setError]   = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -197,33 +197,41 @@ function BotInstanceCard({
   isPrimary,
   onSetPrimary,
   onDeactivated,
+  onNumberChange,
 }: {
-  bot:           BotProduct;
-  tenantId:      string;
-  apiBase:       string;
-  numbers:       WaNumber[];
-  tokenUsage:    BotTokenUsage[];
-  isPrimary:     boolean;
-  onSetPrimary:  (slug: string) => void;
-  onDeactivated: (slug: string) => void;
+  bot:            BotProduct;
+  tenantId:       string;
+  apiBase:        string;
+  numbers:        WaNumber[];       // full list — card derives available from this
+  tokenUsage:     BotTokenUsage[];
+  isPrimary:      boolean;
+  onSetPrimary:   (slug: string) => void;
+  onDeactivated:  (slug: string) => void;
+  onNumberChange: (numberId: string, newSlug: string | null) => void;
 }) {
   const meta       = BOT_META[bot.product_type as ProductType] ?? BOT_META['support_bot'];
   const Icon       = meta.icon;
   const webhookUrl = `${apiBase}/api/webhook/${tenantId}/${bot.product_slug}`;
-  const assigned   = numbers.filter(n => n.product_slug === bot.product_slug);
-  const unassigned = numbers.filter(n => !n.product_slug);
-  const usage      = tokenUsage.find(u => u.product_slug === bot.product_slug)
-                  ?? tokenUsage.find(u => !u.product_slug)
-                  ?? null;
   const isDefault  = bot.product_slug === bot.product_type;
 
-  const [expanded,  setExpanded]  = useState(false);
-  const [pending,   startTx]      = useTransition();
-  const [assigning, setAssigning] = useState(false);
-  const [selectNum, setSelectNum] = useState('');
+  // Each bot gets exactly ONE assigned number
+  const assigned = numbers.find(n => n.product_slug === bot.product_slug) ?? null;
+  // Available = numbers not assigned to any bot (so shared exclusivity)
+  const available = numbers.filter(n => n.product_slug === null);
+
+  const usage = tokenUsage.find(u => u.product_slug === bot.product_slug)
+             ?? tokenUsage.find(u => !u.product_slug)
+             ?? null;
+
+  const [expanded,   setExpanded]   = useState(false);
+  const [pending,    startTx]       = useTransition();
+  const [assigning,  setAssigning]  = useState(false);
+  const [selectNum,  setSelectNum]  = useState('');
+
+  const displayName = isDefault ? meta.name : `${meta.name} — ${bot.instance_name}`;
 
   function handleDeactivate() {
-    if (!confirm(`Deactivate "${isDefault ? meta.name : bot.instance_name}"? It will stop responding immediately.`)) return;
+    if (!confirm(`Deactivate "${displayName}"? It will stop responding immediately.`)) return;
     startTx(async () => {
       await deactivateTenantProductAction(bot.product_slug);
       onDeactivated(bot.product_slug);
@@ -233,6 +241,7 @@ function BotInstanceCard({
   async function handleAssign(numberId: string) {
     setAssigning(true);
     await assignNumberToBotAction(numberId, bot.product_slug as 'support_bot' | 'sales_bot' | 'lifecycle_bot');
+    onNumberChange(numberId, bot.product_slug);
     setAssigning(false);
     setSelectNum('');
   }
@@ -240,10 +249,9 @@ function BotInstanceCard({
   async function handleUnassign(numberId: string) {
     setAssigning(true);
     await assignNumberToBotAction(numberId, null);
+    onNumberChange(numberId, null);
     setAssigning(false);
   }
-
-  const displayName = isDefault ? meta.name : `${meta.name} — ${bot.instance_name}`;
 
   return (
     <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${isPrimary ? 'border-emerald-300 ring-1 ring-emerald-200' : 'border-green-100'}`}>
@@ -269,12 +277,13 @@ function BotInstanceCard({
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5">{meta.tagline}</p>
 
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            {assigned.length > 0 ? assigned.map(n => (
-              <span key={n.id} className="inline-flex items-center gap-1 text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                <Phone size={9} />{n.phone_number}
+          {/* Single assigned number pill */}
+          <div className="mt-2">
+            {assigned ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                <Phone size={9} />{assigned.phone_number}
               </span>
-            )) : (
+            ) : (
               <span className="text-[10px] text-amber-500 flex items-center gap-1">
                 <Phone size={9} />No number assigned
               </span>
@@ -326,34 +335,37 @@ function BotInstanceCard({
             </div>
           </div>
 
+          {/* Number assignment — exactly one per bot */}
           <div>
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1">
-              <Phone size={10} />Assigned Numbers
+              <Phone size={10} />WhatsApp Number
             </p>
-            {assigned.length > 0 && (
-              <div className="space-y-1.5 mb-2">
-                {assigned.map(n => (
-                  <div key={n.id} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-slate-100 px-3 py-2">
-                    <span className="text-xs font-mono text-slate-700">{n.phone_number}</span>
-                    {n.label && <span className="text-[10px] text-slate-400">{n.label}</span>}
-                    <button type="button" disabled={assigning}
-                      onClick={() => handleUnassign(n.id)}
-                      className="text-[10px] text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40">
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
 
-            {unassigned.length > 0 && (
+            {assigned ? (
+              /* Show assigned number with option to remove */
+              <div className="flex items-center justify-between gap-2 bg-white rounded-lg border border-slate-100 px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Phone size={11} className="text-emerald-500 shrink-0" />
+                  <span className="text-xs font-mono text-slate-700 truncate">{assigned.phone_number}</span>
+                  {assigned.label && <span className="text-[10px] text-slate-400 truncate">{assigned.label}</span>}
+                </div>
+                <button type="button" disabled={assigning}
+                  onClick={() => handleUnassign(assigned.id)}
+                  className="text-[10px] font-semibold text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40 shrink-0 whitespace-nowrap">
+                  {assigning ? '…' : 'Remove'}
+                </button>
+              </div>
+            ) : available.length > 0 ? (
+              /* Show dropdown of unassigned numbers */
               <div className="flex items-center gap-2">
                 <select value={selectNum} disabled={assigning}
                   onChange={e => setSelectNum(e.target.value)}
                   className="flex-1 text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-300 disabled:opacity-50">
-                  <option value="" disabled>Add a number…</option>
-                  {unassigned.map(n => (
-                    <option key={n.id} value={n.id}>{n.phone_number}{n.label ? ` — ${n.label}` : ''}</option>
+                  <option value="" disabled>Select a number…</option>
+                  {available.map(n => (
+                    <option key={n.id} value={n.id}>
+                      {n.phone_number}{n.label ? ` — ${n.label}` : ''}
+                    </option>
                   ))}
                 </select>
                 {selectNum && (
@@ -363,10 +375,12 @@ function BotInstanceCard({
                   </button>
                 )}
               </div>
-            )}
-
-            {unassigned.length === 0 && assigned.length === 0 && (
-              <p className="text-xs text-slate-400 italic">No phone numbers added yet.</p>
+            ) : (
+              <p className="text-xs text-slate-400 italic">
+                {numbers.length === 0
+                  ? 'No phone numbers added yet — add one in the Workspace tab.'
+                  : 'All numbers are already assigned to other bots.'}
+              </p>
             )}
           </div>
 
@@ -396,6 +410,7 @@ function BotTypeGroup({
   onSetPrimary,
   onDeactivated,
   onInstanceAdded,
+  onNumberChange,
 }: {
   productType:     ProductType;
   instances:       BotProduct[];
@@ -407,6 +422,7 @@ function BotTypeGroup({
   onSetPrimary:    (slug: string) => void;
   onDeactivated:   (slug: string) => void;
   onInstanceAdded: (bot: BotProduct) => void;
+  onNumberChange:  (numberId: string, newSlug: string | null) => void;
 }) {
   const meta = BOT_META[productType];
   const Icon = meta.icon;
@@ -425,10 +441,8 @@ function BotTypeGroup({
           type="button"
           onClick={() => setShowAddForm(v => !v)}
           className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-          title="Add another instance"
         >
-          <Plus size={11} />
-          Add another
+          <Plus size={11} />Add another
         </button>
       </div>
 
@@ -444,6 +458,7 @@ function BotTypeGroup({
           isPrimary={primarySlug === bot.product_slug}
           onSetPrimary={onSetPrimary}
           onDeactivated={onDeactivated}
+          onNumberChange={onNumberChange}
         />
       ))}
 
@@ -464,8 +479,8 @@ function BotTypeGroup({
 // ── Inactive Type Card (zero instances) ───────────────────────────────────────
 
 function InactiveTypeCard({ productType, onActivated }: { productType: ProductType; onActivated: (bot: BotProduct) => void }) {
-  const meta    = BOT_META[productType];
-  const Icon    = meta.icon;
+  const meta   = BOT_META[productType];
+  const Icon   = meta.icon;
   const [pending, startTx] = useTransition();
 
   function handleActivate() {
@@ -502,8 +517,10 @@ function InactiveTypeCard({ productType, onActivated }: { productType: ProductTy
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function BotsTabContent({ tenantId, apiBase, botProducts: initialProducts, numbers, tokenUsage }: Props) {
-  const [products, setProducts] = useState(initialProducts);
+export function BotsTabContent({ tenantId, apiBase, botProducts: initialProducts, numbers: initialNumbers, tokenUsage }: Props) {
+  const [products, setProducts]   = useState(initialProducts);
+  // numbers in state so assignment changes reflect instantly across all bot cards
+  const [numbers,  setNumbers]    = useState(initialNumbers);
   const [primarySlug, setPrimaryState] = useState<string | null>(null);
 
   useEffect(() => {
@@ -540,6 +557,11 @@ export function BotsTabContent({ tenantId, apiBase, botProducts: initialProducts
     if (!primarySlug) setPrimary(bot.product_slug);
   }
 
+  // Update local numbers state so dropdowns reflect instantly (no re-fetch needed)
+  function handleNumberChange(numberId: string, newSlug: string | null) {
+    setNumbers(prev => prev.map(n => n.id === numberId ? { ...n, product_slug: newSlug } : n));
+  }
+
   const active   = products.filter(p => p.active);
   const inactive = ALL_TYPES.filter(t => !active.some(p => p.product_type === t));
 
@@ -573,8 +595,8 @@ export function BotsTabContent({ tenantId, apiBase, botProducts: initialProducts
       {active.length > 1 && (
         <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            <span className="font-semibold text-slate-600">Primary bot</span> — default when you open Conversations or Knowledge Base without a specific bot selected. Tap ⭐ to change.
-            {' '}<span className="font-semibold text-slate-600">Add another</span> — run multiple instances of the same bot on different numbers with independent KB and guardrails.
+            <span className="font-semibold text-slate-600">Each bot</span> can have one WhatsApp number assigned — numbers are exclusive and cannot be shared between bots.{' '}
+            <span className="font-semibold text-slate-600">Primary bot</span> is the default view when no bot is selected. Tap ⭐ to change.
           </p>
         </div>
       )}
@@ -593,6 +615,7 @@ export function BotsTabContent({ tenantId, apiBase, botProducts: initialProducts
           onSetPrimary={setPrimary}
           onDeactivated={handleDeactivated}
           onInstanceAdded={handleInstanceAdded}
+          onNumberChange={handleNumberChange}
         />
       ))}
 
