@@ -2,8 +2,21 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { Eye, EyeOff } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { acceptInviteAction } from '@/app/actions/invites';
+
+const PW_RULES = [
+  { label: 'At least 8 characters',   test: (p: string) => p.length >= 8 },
+  { label: 'One uppercase letter',     test: (p: string) => /[A-Z]/.test(p) },
+  { label: 'One lowercase letter',     test: (p: string) => /[a-z]/.test(p) },
+  { label: 'One number',               test: (p: string) => /[0-9]/.test(p) },
+  { label: 'One special character',    test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+];
+
+function isPasswordValid(p: string) {
+  return PW_RULES.every(r => r.test(p));
+}
 
 export function AcceptInviteForm({
   token,
@@ -18,21 +31,27 @@ export function AcceptInviteForm({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [name,     setName]     = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm,  setConfirm]  = useState('');
-  const [error,    setError]    = useState<string | null>(null);
+  const [name,        setName]        = useState('');
+  const [password,    setPassword]    = useState('');
+  const [confirm,     setConfirm]     = useState('');
+  const [showPw,      setShowPw]      = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pwTouched,   setPwTouched]   = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+
+  const confirmMismatch = confirm.length > 0 && password !== confirm;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setPwTouched(true);
 
-    if (password !== confirm) {
-      setError('Passwords do not match');
+    if (!isPasswordValid(password)) {
+      setError('Password does not meet all requirements.');
       return;
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (password !== confirm) {
+      setError('Passwords do not match.');
       return;
     }
 
@@ -52,7 +71,6 @@ export function AcceptInviteForm({
       });
 
       if (signInError) {
-        // Account created but sign-in failed — redirect to login
         router.push('/login?message=Account+created.+Please+sign+in.');
         return;
       }
@@ -77,8 +95,11 @@ export function AcceptInviteForm({
       </div>
 
       <div className="space-y-3">
+        {/* Full name */}
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name</label>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Full Name <span className="text-red-500">*</span>
+          </label>
           <input
             type="text"
             required
@@ -88,31 +109,94 @@ export function AcceptInviteForm({
             className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-300"
           />
         </div>
+
+        {/* Password */}
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Password</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="At least 8 characters"
-            className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-300"
-          />
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Password <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showPw ? 'text' : 'password'}
+              required
+              value={password}
+              onChange={e => { setPassword(e.target.value); setPwTouched(true); }}
+              placeholder="Create a strong password"
+              autoComplete="new-password"
+              className={`w-full text-sm border rounded-xl px-4 py-2.5 pr-11 focus:outline-none focus:ring-2 focus:ring-emerald-300 transition ${
+                pwTouched && !isPasswordValid(password) ? 'border-red-300' : 'border-gray-200'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+            >
+              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+
+          {/* Password strength checklist */}
+          {pwTouched && (
+            <ul className="mt-2 space-y-1 px-1">
+              {PW_RULES.map(rule => {
+                const ok = rule.test(password);
+                return (
+                  <li key={rule.label} className={`flex items-center gap-2 text-[11px] font-medium ${ok ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold ${ok ? 'bg-emerald-100' : 'bg-red-100'}`}>
+                      {ok ? '✓' : '✗'}
+                    </span>
+                    {rule.label}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* Always-visible hint when not yet touched */}
+          {!pwTouched && (
+            <p className="mt-1.5 text-[11px] text-gray-400">
+              Must include uppercase, lowercase, number, and special character.
+            </p>
+          )}
         </div>
+
+        {/* Confirm password */}
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Confirm Password</label>
-          <input
-            type="password"
-            required
-            value={confirm}
-            onChange={e => setConfirm(e.target.value)}
-            placeholder="Repeat password"
-            className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-300"
-          />
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Confirm Password <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showConfirm ? 'text' : 'password'}
+              required
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              placeholder="Repeat your password"
+              autoComplete="new-password"
+              className={`w-full text-sm border rounded-xl px-4 py-2.5 pr-11 focus:outline-none focus:ring-2 focus:ring-emerald-300 transition ${
+                confirmMismatch ? 'border-red-300' : 'border-gray-200'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
+            >
+              {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+          {confirmMismatch && (
+            <p className="mt-1 text-[11px] font-medium text-red-500">Passwords do not match</p>
+          )}
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>
+      )}
 
       <button
         type="submit"
