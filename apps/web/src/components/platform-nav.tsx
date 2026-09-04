@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck, Box, Cpu, CreditCard, BarChart2, Phone } from 'lucide-react';
+import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck, Box, Cpu, CreditCard, BarChart2, Phone, ClipboardList } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const NAV_ITEMS = [
@@ -46,6 +46,27 @@ export function PlatformNav({ role }: { role: string }) {
         <p className="text-slate-600 text-[10px] font-semibold uppercase tracking-widest px-3 pb-2">
           Management
         </p>
+          {role === 'manager' && (() => {
+          const href  = '/platform/audit';
+          const active = pathname === href || pathname.startsWith(href + '/');
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group ${
+                active
+                  ? 'bg-indigo-500/10 text-indigo-400'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+              }`}
+            >
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-indigo-400" />
+              )}
+              <ClipboardList size={15} className="shrink-0" />
+              <span className="font-medium">Audit Log</span>
+            </Link>
+          );
+        })()}
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/');
           return (

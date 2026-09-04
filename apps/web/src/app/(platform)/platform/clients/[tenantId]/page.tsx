@@ -1,4 +1,5 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Clock, CreditCard, MessageSquare, Users, ShieldAlert, Cpu, Phone, Sparkles, AlertTriangle } from 'lucide-react';
@@ -17,6 +18,9 @@ import { TenantVoiceConfigCard, type TenantVoiceConfigRow } from '@/components/p
 import { CopilotSettingsCard } from '@/components/platform/CopilotSettingsCard';
 import { getCopilotConfigAction } from '@/app/actions/copilot-settings';
 import { ClientDangerZone } from '@/components/platform/ClientDangerZone';
+import { AuditLogTable } from '@/components/platform/AuditLogTable';
+import { getAuditLogsAction } from '@/app/actions/audit';
+import { ClipboardList } from 'lucide-react';
 
 const PRODUCT_CONFIG: Record<string, { name: string; desc: string; textColor: string; bg: string; border: string }> = {
   support_bot:   { name: 'Support Bot',   desc: 'Q&A, issue resolution, escalations',  textColor: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200' },
@@ -86,6 +90,23 @@ export default async function ClientDetailPage({
   }
 
   const copilotConfig = await getCopilotConfigAction(tenantId);
+
+  // Check if current user is a platform manager
+  const serverClient = await createClient();
+  const { data: { user: platformUser } } = await serverClient.auth.getUser();
+  let platformRole: string | null = null;
+  if (platformUser) {
+    const { data: puRow } = await supabase
+      .from('platform_users')
+      .select('role')
+      .eq('user_id', platformUser.id)
+      .maybeSingle();
+    platformRole = puRow?.role ?? null;
+  }
+
+  const auditResult = platformRole === 'manager'
+    ? await getAuditLogsAction(tenantId, 200)
+    : { logs: [] };
 
   if (!tenant) notFound();
 
@@ -382,6 +403,25 @@ export default async function ClientDetailPage({
         </p>
         <CopilotSettingsCard tenantId={tenantId} initial={copilotConfig} />
       </CollapsibleSection>
+
+      {/* Audit Log — manager only */}
+      {platformRole === 'manager' && (
+        <CollapsibleSection
+          icon={<ClipboardList size={15} className="text-indigo-500" />}
+          title="Audit Log"
+          rightContent={
+            <span className="text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium border border-indigo-100">
+              Manager only
+            </span>
+          }
+          contentClass="px-5 py-4"
+        >
+          <p className="text-xs text-slate-400 mb-4">
+            All platform actions taken on this client — suspensions, deletions, config changes — with timestamp and actor.
+          </p>
+          <AuditLogTable logs={auditResult.logs} showTenant={false} />
+        </CollapsibleSection>
+      )}
 
       {/* Danger Zone */}
       <CollapsibleSection
