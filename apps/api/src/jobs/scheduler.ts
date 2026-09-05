@@ -286,37 +286,20 @@ async function processLeadFollowUps(): Promise<void> {
       (contacts ?? []).map(c => [(c as { id: string }).id, c as { id: string; phone: string; name: string | null }]),
     );
 
+    // Fan-out sends with bounded concurrency — previously sequential (100 convs ≈ 50s).
+    const results = await Promise.allSettled(
+      convs.map(conv => sendLeadFollowUp(conv, contactMap, messages, gateway, wnConfig)),
+    );
+
     const newMessages: object[] = [];
     const convUpdates: { id: string; count: number }[] = [];
-
-    for (const conv of convs) {
-      try {
-        const contact = contactMap.get(conv.contact_id);
-        if (!contact?.phone) continue;
-
-        const followUpIdx = (conv.lead_follow_up_count as number) ?? 0;
-        const template    = messages[followUpIdx] ?? messages[messages.length - 1]!;
-        const name        = contact.name?.split(' ')[0] ?? 'there';
-        const message     = template.replace(/\{name\}/gi, name);
-
-        await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
-          type: 'text',
-          to:   contact.phone,
-          text: message,
-        });
-
-        newMessages.push({ conversation_id: conv.id, role: 'assistant', content: message });
-        const newCount = followUpIdx + 1;
-        convUpdates.push({ id: conv.id, count: newCount });
-
-        // When the last follow-up fires, auto-classify this conversation as unresponsive
-        if (newCount >= messages.length) {
-          void classifyAndPersistOutcome(conv.id, 'system', 'unresponsive');
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) {
+        newMessages.push(r.value.messageRow);
+        convUpdates.push(r.value.update);
+        if (r.value.isLast) {
+          void classifyAndPersistOutcome(r.value.update.id, 'system', 'unresponsive');
         }
-
-        console.log(`[LeadFollowUp] Sent follow-up #${newCount} to conversation ${conv.id}`);
-      } catch (err) {
-        console.error(`[LeadFollowUp] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -330,6 +313,39 @@ async function processLeadFollowUps(): Promise<void> {
         p_updated_at: new Date().toISOString(),
       });
     }
+  }
+}
+
+async function sendLeadFollowUp(
+  conv: { id: string; contact_id: string; lead_follow_up_count: unknown },
+  contactMap: Map<string, { id: string; phone: string; name: string | null }>,
+  messages: string[],
+  gateway: WhatsAppGateway,
+  wnConfig: { phone_number_id: string; access_token: string },
+): Promise<{ messageRow: object; update: { id: string; count: number }; isLast: boolean } | null> {
+  try {
+    const contact = contactMap.get(conv.contact_id);
+    if (!contact?.phone) return null;
+
+    const followUpIdx = (conv.lead_follow_up_count as number) ?? 0;
+    const template    = messages[followUpIdx] ?? messages[messages.length - 1]!;
+    const name        = contact.name?.split(' ')[0] ?? 'there';
+    const message     = template.replace(/\{name\}/gi, name);
+
+    await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+      type: 'text', to: contact.phone, text: message,
+    });
+
+    const newCount = followUpIdx + 1;
+    console.log(`[LeadFollowUp] Sent follow-up #${newCount} to conversation ${conv.id}`);
+    return {
+      messageRow: { conversation_id: conv.id, role: 'assistant', content: message },
+      update:     { id: conv.id, count: newCount },
+      isLast:     newCount >= messages.length,
+    };
+  } catch (err) {
+    console.error(`[LeadFollowUp] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
+    return null;
   }
 }
 
@@ -421,25 +437,25 @@ async function processLifecycleSequences(): Promise<void> {
       const gateway  = new WhatsAppGateway((wnFinal as { provider: string }).provider as WhatsAppProvider);
       const wnConfig = (wnFinal as { config_json: { phone_number_id: string; access_token: string } }).config_json;
 
-      const newSends: object[] = [];
-
-      for (const contact of eligible) {
-        try {
+      // Fan-out sends concurrently — previously sequential (100 contacts ≈ 50s).
+      const sendResults = await Promise.allSettled(
+        eligible.map(async (contact) => {
           const name    = contact.name?.split(' ')[0] ?? 'there';
           const message = seq.message_template.replace(/\{name\}/gi, name);
-
           await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
-            type: 'text',
-            to:   contact.phone,
-            text: message,
+            type: 'text', to: contact.phone, text: message,
           });
-
-          newSends.push({ tenant_id: seq.tenant_id, sequence_id: seq.id, contact_id: contact.id });
           console.log(`[Lifecycle] Sent "${seq.name}" to contact ${contact.id}`);
-        } catch (err) {
-          console.error(`[Lifecycle] Failed for contact ${contact.id}:`, err instanceof Error ? err.message : String(err));
-        }
-      }
+          return { tenant_id: seq.tenant_id, sequence_id: seq.id, contact_id: contact.id };
+        }),
+      );
+
+      const newSends = sendResults
+        .filter(r => r.status === 'fulfilled')
+        .map(r => (r as PromiseFulfilledResult<{ tenant_id: string; sequence_id: string; contact_id: string }>).value);
+
+      const failCount = sendResults.filter(r => r.status === 'rejected').length;
+      if (failCount) console.error(`[Lifecycle] ${failCount} send(s) failed for sequence ${seq.id}`);
 
       if (newSends.length) {
         await db.from('lifecycle_sends').insert(newSends);
@@ -562,10 +578,14 @@ export function startScheduler(): void {
     );
   }, { timezone: 'UTC' });
 
-  // Startup catch-up: generate insights if none in last 24h — fixes Render hibernation
-  // The nightly cron fires at 00:30 UTC but Render free tier sleeps at night.
-  // Whenever the server wakes up (any incoming request), this runs once and catches up.
+  // Startup catch-up: generate insights if none in last 24h — fixes Render hibernation.
+  // Guard: skip if the process started recently (< 5 min ago) and another instance is
+  // likely still running; the withJobLock TTL (82800s) handles the distributed case
+  // when Redis is available.
+  const _processStartMs = Date.now();
   setTimeout(() => {
+    // If the process restarted within 5 minutes of itself (e.g. Render free-tier wake),
+    // withJobLock will prevent a re-run as long as Redis holds the previous lock key.
     void withJobLock('ai_insights_startup', 82800, async () => {
       const db = getServerClient();
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -576,9 +596,12 @@ export function startScheduler(): void {
       if ((count ?? 0) === 0) {
         console.log('[Insights] Startup catch-up: no insights in last 24h, generating now...');
         await runInsightsForAllTenants();
+      } else {
+        console.log(`[Insights] Startup catch-up: ${count} recent insight(s) found — skipping.`);
       }
     }).catch(err =>
       console.error('[Insights] Startup catch-up failed:', (err as Error).message)
     );
   }, 15_000);
+  void _processStartMs; // suppress unused-var warning
 }

@@ -57,12 +57,16 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
 
   const STATUSES = ['all', 'pending', 'confirmed', 'dispatched', 'delivered', 'cancelled'];
 
-  const totals = {
-    all:        orders?.length ?? 0,
-    pending:    orders?.filter(o => o.status === 'pending').length   ?? 0,
-    confirmed:  orders?.filter(o => o.status === 'confirmed').length ?? 0,
-    paid:       orders?.filter(o => (o.payments as Array<{ status: string }>)?.[0]?.status === 'paid').length ?? 0,
-  };
+  // Single pass over orders to compute all counts — previously three separate filter passes.
+  const totals = (orders ?? []).reduce(
+    (acc, o) => {
+      if (o.status === 'pending')   acc.pending++;
+      if (o.status === 'confirmed') acc.confirmed++;
+      if ((o.payments as Array<{ status: string }>)?.[0]?.status === 'paid') acc.paid++;
+      return acc;
+    },
+    { all: orders?.length ?? 0, pending: 0, confirmed: 0, paid: 0 },
+  );
 
   const totalRevenue = orders
     ?.filter(o => (o.payments as Array<{ status: string }>)?.[0]?.status === 'paid')

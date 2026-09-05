@@ -1,6 +1,29 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getServerClient } from '@alphabot/database';
 
+// Module-level singleton — previously instantiated inside generateInsightsForTenant
+// which created a new SDK client object on every call (one per tenant per run).
+const _anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+
+// Minimal concurrency limiter — avoids adding a new package dependency.
+function pLimit(concurrency: number) {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  return <T>(fn: () => Promise<T>): Promise<T> =>
+    new Promise((resolve, reject) => {
+      const run = () => {
+        active++;
+        fn()
+          .then(resolve, reject)
+          .finally(() => {
+            active--;
+            if (queue.length) queue.shift()!();
+          });
+      };
+      if (active < concurrency) run(); else queue.push(run);
+    });
+}
+
 export interface Suggestion {
   fingerprint: string;
   title: string;
@@ -73,9 +96,7 @@ export async function generateInsightsForTenant(tenantId: string): Promise<void>
 
   const context = contextLines.join('\n');
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const response = await client.messages.create({
+  const response = await _anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1200,
     messages: [{
@@ -153,11 +174,17 @@ export async function runInsightsForAllTenants(): Promise<void> {
   const uniqueIds = [...new Set((tenants ?? []).map((t) => (t as { tenant_id: string }).tenant_id))];
   console.log(`[Insights] Running for ${uniqueIds.length} tenants`);
 
-  for (const tenantId of uniqueIds) {
-    try {
-      await generateInsightsForTenant(tenantId);
-    } catch (err) {
-      console.error(`[Insights] Failed for tenant ${tenantId}:`, err instanceof Error ? err.message : String(err));
-    }
-  }
+  // Process up to 5 tenants concurrently — previously sequential (50 tenants ≈ 2.5 min).
+  const limit = pLimit(5);
+  await Promise.allSettled(
+    uniqueIds.map(tenantId =>
+      limit(async () => {
+        try {
+          await generateInsightsForTenant(tenantId);
+        } catch (err) {
+          console.error(`[Insights] Failed for tenant ${tenantId}:`, err instanceof Error ? err.message : String(err));
+        }
+      }),
+    ),
+  );
 }

@@ -24,6 +24,7 @@ export async function chatCompletion(params: {
   system?:     string;
   max_tokens?: number;
   apiKey?:     string;
+  _retried?:   boolean;
 }): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
   const apiKey = params.apiKey ?? process.env['ANTHROPIC_API_KEY'];
   if (!apiKey) throw new Error('No Anthropic API key configured. Set ANTHROPIC_API_KEY in environment variables.');
@@ -60,6 +61,13 @@ export async function chatCompletion(params: {
       const j = JSON.parse(body) as AnthropicResponse;
       detail = j?.error?.message ?? detail;
     } catch { /* use raw body */ }
+
+    // Retry once on transient overload (529) or internal error (500) with a 2s delay
+    if ((res.status === 529 || res.status === 500) && !params._retried) {
+      await new Promise(r => setTimeout(r, 2000));
+      return chatCompletion({ ...params, _retried: true });
+    }
+
     throw new Error(`Anthropic API error ${res.status}: ${detail}`);
   }
 

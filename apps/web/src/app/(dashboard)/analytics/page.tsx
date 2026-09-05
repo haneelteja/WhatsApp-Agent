@@ -25,40 +25,42 @@ const ConversationFunnel = dynamic(
   },
 );
 
-// Cache the 7 DB queries server-side for 5 minutes per tenant.
-// Dates are computed inside the cached function so the query windows are
-// fixed at cache-fill time — up to 5-minute staleness is fine for analytics.
-const getAnalyticsData = unstable_cache(
-  async (tenantId: string) => {
-    const admin          = getSupabaseAdminClient();
-    const sevenDaysAgo   = new Date(Date.now() - 7  * 86400000).toISOString();
-    const thirtyDaysAgo  = new Date(Date.now() - 30 * 86400000).toISOString();
-    const currentMonth   = new Date().toISOString().slice(0, 7) + '-01'; // "YYYY-MM-01" matches DATE column
+// Cache is keyed per tenant — each tenant gets its own 5-minute slot.
+// Previously keyed only ['analytics'] which caused all tenants to share
+// one cache entry (data isolation bug).
+function getAnalyticsData(tenantId: string) {
+  return unstable_cache(
+    async () => {
+      const admin          = getSupabaseAdminClient();
+      const sevenDaysAgo   = new Date(Date.now() - 7  * 86400000).toISOString();
+      const thirtyDaysAgo  = new Date(Date.now() - 30 * 86400000).toISOString();
+      const currentMonth   = new Date().toISOString().slice(0, 7) + '-01'; // "YYYY-MM-01" matches DATE column
 
-    const [
-      { count: totalConvs },
-      { count: openConvs },
-      { count: resolvedConvs },
-      { count: escalatedTotal },
-      { data: tokenRow },
-      { data: weekEvents },
-      { data: monthEvents },
-    ] = await Promise.all([
-      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
-      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
-      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'resolved'),
-      admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['escalated']),
-      // Single-row aggregate lookup — O(1) vs full usage_events table scan
-      admin.from('tenant_token_usage_monthly').select('tokens_used').eq('tenant_id', tenantId).eq('month', currentMonth).maybeSingle(),
-      admin.from('usage_events').select('event_type, created_at').eq('tenant_id', tenantId).gte('created_at', sevenDaysAgo),
-      admin.from('usage_events').select('event_type, product_type').eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo),
-    ]);
+      const [
+        { count: totalConvs },
+        { count: openConvs },
+        { count: resolvedConvs },
+        { count: escalatedTotal },
+        { data: tokenRow },
+        { data: weekEvents },
+        { data: monthEvents },
+      ] = await Promise.all([
+        admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+        admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
+        admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'resolved'),
+        admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['escalated']),
+        // Single-row aggregate lookup — O(1) vs full usage_events table scan
+        admin.from('tenant_token_usage_monthly').select('tokens_used').eq('tenant_id', tenantId).eq('month', currentMonth).maybeSingle(),
+        admin.from('usage_events').select('event_type, created_at').eq('tenant_id', tenantId).gte('created_at', sevenDaysAgo).limit(10000),
+        admin.from('usage_events').select('event_type, product_type').eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo).limit(10000),
+      ]);
 
-    return { totalConvs, openConvs, resolvedConvs, escalatedTotal, tokenRow, weekEvents, monthEvents };
-  },
-  ['analytics'],
-  { revalidate: 300 },
-);
+      return { totalConvs, openConvs, resolvedConvs, escalatedTotal, tokenRow, weekEvents, monthEvents };
+    },
+    ['analytics', tenantId],
+    { revalidate: 300, tags: [`analytics:${tenantId}`] },
+  )();
+}
 
 export default async function AnalyticsPage() {
   const session = await getSession();

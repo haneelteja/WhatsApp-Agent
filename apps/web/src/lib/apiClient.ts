@@ -39,9 +39,9 @@ function buildApiError(status: number, body: Record<string, unknown>): ApiError 
 
 async function request<T>(
   endpoint: string,
-  options: RequestInit & { source?: string; component?: string } = {},
+  options: RequestInit & { source?: string; component?: string; _attempt?: number } = {},
 ): Promise<T> {
-  const { source = 'ApiClient', component, ...fetchOpts } = options;
+  const { source = 'ApiClient', component, _attempt = 0, ...fetchOpts } = options;
   const controller = new AbortController();
   const timeoutId  = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   const method     = fetchOpts.method ?? 'GET';
@@ -52,7 +52,6 @@ async function request<T>(
       signal:  controller.signal,
       headers: { 'Content-Type': 'application/json', ...fetchOpts.headers },
     });
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       let body: Record<string, unknown> = {};
@@ -74,6 +73,12 @@ async function request<T>(
         window.location.href = '/login';
       }
 
+      // Retry once on transient errors with an exponential back-off
+      if (apiErr.retryable && _attempt === 0) {
+        await new Promise(r => setTimeout(r, 1000));
+        return request<T>(endpoint, { ...options, _attempt: 1 });
+      }
+
       throw apiErr;
     }
 
@@ -90,8 +95,6 @@ async function request<T>(
     return response.json() as Promise<T>;
 
   } catch (err) {
-    clearTimeout(timeoutId);
-
     if (isApiError(err)) throw err;
 
     // AbortController timeout
@@ -111,6 +114,8 @@ async function request<T>(
       meta: { online: typeof navigator !== 'undefined' ? navigator.onLine : true },
     });
     throw buildApiError(0, { errorCode: 'NETWORK_ERROR' });
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

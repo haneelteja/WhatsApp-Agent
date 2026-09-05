@@ -61,6 +61,40 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
   }
 }
 
+/**
+ * Singleflight cache helper — coalesces concurrent misses so only one caller
+ * fetches from the DB while others wait for the same in-flight promise.
+ * Prevents cache stampedes when a high-traffic key expires simultaneously.
+ */
+const _inflight = new Map<string, Promise<unknown>>();
+
+export async function cacheGetOrFetch<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlSeconds: number,
+): Promise<T> {
+  const cached = await cacheGet<T>(key);
+  if (cached !== null) return cached;
+
+  // Coalesce concurrent misses into the same fetch
+  const existing = _inflight.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const p = fetcher()
+    .then(async (val) => {
+      await cacheSet(key, val, ttlSeconds);
+      _inflight.delete(key);
+      return val;
+    })
+    .catch((err: unknown) => {
+      _inflight.delete(key);
+      throw err;
+    });
+
+  _inflight.set(key, p);
+  return p;
+}
+
 export async function cacheSet(key: string, value: unknown, ttlSeconds: number): Promise<void> {
   try {
     await _redis?.set(key, JSON.stringify(value), 'EX', ttlSeconds);
@@ -106,7 +140,7 @@ export async function cacheDelPattern(pattern: string): Promise<void> {
   if (!_redis) return;
 
   return new Promise((resolve) => {
-    const stream = _redis!.scanStream({ match: pattern, count: 100 });
+    const stream = _redis!.scanStream({ match: pattern, count: 1000 });
     const keys: string[] = [];
 
     (stream as NodeJS.EventEmitter).on('data', (batch: string[]) => {

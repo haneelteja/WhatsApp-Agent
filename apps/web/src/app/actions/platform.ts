@@ -34,55 +34,59 @@ export async function createTenantAction(formData: FormData) {
     return;
   }
 
-  // 2. For each selected product: tenant_products + bot_configs
-  for (const productSlug of products) {
-    await supabase.from('tenant_products').insert({
-      tenant_id: tenant.id,
-      product_type: productSlug,
-      tier: 'base',
-      active: true,
-    });
+  // 2. Batch-insert tenant_products + bot_configs for all selected products.
+  // Previously sequential for-loops (N*2 round-trips); now 2 parallel batch inserts.
+  const tenantProductRows = products.map(productSlug => ({
+    tenant_id: tenant.id,
+    product_type: productSlug,
+    tier: 'base',
+    active: true,
+  }));
 
-    await supabase.from('bot_configs').insert({
-      tenant_id: tenant.id,
-      product_slug: productSlug,
-      system_prompt: null,  // falls back to products.default_prompt at query time
-      ai_model: null,       // falls back to products.default_model at query time
-      confidence_threshold: 0.6,
-      escalation_triggers: [
-        'speak to human', 'talk to agent', 'human please', 'escalate',
-        'complaint', 'refund', 'dispute', 'urgent',
-      ],
-      guardrails_json: {
-        blocked_topics: [],
-        blocked_keywords: [],
-        max_response_length: 1000,
-        tone: 'professional',
-        content_filters: {
-          no_personal_data: false,
-          no_external_links: false,
-          no_phone_numbers_in_response: false,
-        },
-        on_blocked_topic: 'escalate',
-        on_low_confidence: 'escalate',
+  const botConfigRows = products.map(productSlug => ({
+    tenant_id: tenant.id,
+    product_slug: productSlug,
+    system_prompt: null,  // falls back to products.default_prompt at query time
+    ai_model: null,       // falls back to products.default_model at query time
+    confidence_threshold: 0.6,
+    escalation_triggers: [
+      'speak to human', 'talk to agent', 'human please', 'escalate',
+      'complaint', 'refund', 'dispute', 'urgent',
+    ],
+    guardrails_json: {
+      blocked_topics: [],
+      blocked_keywords: [],
+      max_response_length: 1000,
+      tone: 'professional',
+      content_filters: {
+        no_personal_data: false,
+        no_external_links: false,
+        no_phone_numbers_in_response: false,
       },
-    });
-  }
+      on_blocked_topic: 'escalate',
+      on_low_confidence: 'escalate',
+    },
+  }));
 
-  // 3. Free trial if requested
+  await Promise.all([
+    supabase.from('tenant_products').insert(tenantProductRows),
+    supabase.from('bot_configs').insert(botConfigRows),
+  ]);
+
+  // 3. Free trial if requested — batch insert all products in one call
   if (trialDays > 0) {
     const endsAt = new Date();
     endsAt.setDate(endsAt.getDate() + trialDays);
 
-    for (const productSlug of products) {
-      await supabase.from('free_trials').insert({
-        tenant_id: tenant.id,
-        product_slug: productSlug,
-        ends_at: endsAt.toISOString(),
-        status: 'active',
-        allowed_model: 'claude-sonnet-4-6',
-      });
-    }
+    const trialRows = products.map(productSlug => ({
+      tenant_id: tenant.id,
+      product_slug: productSlug,
+      ends_at: endsAt.toISOString(),
+      status: 'active',
+      allowed_model: 'claude-sonnet-4-6',
+    }));
+
+    await supabase.from('free_trials').insert(trialRows);
   }
 
   // 4. Auto-invite contact email as client_manager + send welcome email

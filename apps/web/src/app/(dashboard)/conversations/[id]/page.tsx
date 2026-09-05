@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { notFound, redirect } from 'next/navigation';
@@ -57,14 +58,25 @@ export default async function ConversationDetailPage({
     .limit(50);
   const messages = (messagesDesc ?? []).reverse();
 
-  // Fetch team members for assign dropdown — single listUsers call instead of N getUserById
+  // Fetch team members for assign dropdown.
+  // listUsers is cached per tenant (10 min) — team membership changes rarely
+  // and hitting the Supabase Auth Admin API on every conversation load adds latency.
   const { data: tenantUsersData } = await admin
     .from('tenant_users')
     .select('user_id, role')
     .eq('tenant_id', tenantId ?? '');
 
   const memberIds = new Set((tenantUsersData ?? []).map(tu => tu.user_id));
-  const { data: { users: authUsers } } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+
+  const getAuthUsers = unstable_cache(
+    async (tid: string) => {
+      const { data: { users } } = await getSupabaseAdminClient().auth.admin.listUsers({ page: 1, perPage: 200 });
+      return users;
+    },
+    ['auth-users', tenantId ?? ''],
+    { revalidate: 600, tags: [`team:${tenantId}`] },
+  );
+  const authUsers   = await getAuthUsers(tenantId ?? '');
   const authUserMap = new Map(authUsers.filter(u => memberIds.has(u.id)).map(u => [u.id, u]));
 
   const teamMembers = (tenantUsersData ?? []).map(tu => {
