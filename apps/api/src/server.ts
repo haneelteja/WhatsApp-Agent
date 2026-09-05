@@ -78,9 +78,20 @@ await server.register(rateLimit, {
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 server.setErrorHandler((error: FastifyError, _request, reply) => {
-  const statusCode = error.statusCode ?? 500;
+  const statusCode  = error.statusCode ?? 500;
+  const isServer    = statusCode >= 500;
+  const timestamp   = new Date().toISOString();
+
   captureException(error, { url: _request.url, method: _request.method, statusCode });
-  void reply.status(statusCode).send({ error: statusCode >= 500 ? 'Internal server error' : error.message });
+
+  // Structured response — frontend apiClient reads errorCode / message / details
+  void reply.status(statusCode).send({
+    status:    'error',
+    errorCode: isServer ? 'API_INTERNAL_ERROR' : (error.code ?? 'API_ERROR'),
+    message:   isServer ? 'Internal server error' : error.message,
+    details:   isServer ? undefined : (error.validation ? 'Validation failed' : error.message),
+    timestamp,
+  });
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
