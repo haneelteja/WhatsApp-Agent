@@ -12,6 +12,7 @@ export const TOOL_IDS = {
   CONTACT_MEMORY:     'contact_memory',
   SCHEDULED_FOLLOWUP: 'scheduled_followup',
   VOICE_ESCALATION:   'voice_escalation',
+  RETURN_REQUEST:     'return_request',
 } as const;
 
 export type ToolId = typeof TOOL_IDS[keyof typeof TOOL_IDS];
@@ -80,6 +81,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description: 'AI can trigger an outbound voice call when a high-intent lead is detected.',
     botTypes:    ['sales_bot'],
     default:     false,
+  },
+  {
+    id:          TOOL_IDS.RETURN_REQUEST,
+    label:       'Return / Replacement Flow',
+    description: 'AI detects return and replacement requests and logs them for staff review.',
+    botTypes:    ['lifecycle_bot'],
+    default:     true,
   },
 ];
 

@@ -24,6 +24,10 @@ import { classifyMessageKind, KIND_CLASSIFIER_VERSION } from '../../lib/message-
 import { maybeUpdateChatSummary } from '../../lib/chat-summary.js';
 import { createHash } from 'crypto';
 
+const RETURN_REQUEST_INSTRUCTION = `
+
+RETURN / REPLACEMENT DETECTION: If the customer clearly requests a return, refund, replacement, or reports a damaged / defective product, first respond with empathy and provide clear next steps (e.g. "Please share your order ID and photos of the item"). Then append the exact text [RETURN_REQUEST] on a new line at the very end of your response. IMPORTANT: Always write a full, helpful reply first. Never respond with ONLY the tag. Do not explain the tag. Only use it when the intent is unambiguous — not for general complaints or questions about a product.`;
+
 // Default system prompts used only when no bot_config row exists yet
 const SALES_LEAD_INSTRUCTION = `
 
@@ -776,7 +780,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     // Always append SALES_LEAD_INSTRUCTION so it applies even when the DB
     // has a custom system_prompt that doesn't include it.
     const wantLeadScoring = toolEnabled(allowedTools, TOOL_IDS.LEAD_SCORING) && productType !== 'lifecycle_bot';
-    let systemPrompt = baseSystemPrompt + (wantLeadScoring ? SALES_LEAD_INSTRUCTION : '');
+    const wantReturnFlow  = toolEnabled(allowedTools, TOOL_IDS.RETURN_REQUEST) && productType === 'lifecycle_bot';
+    let systemPrompt = baseSystemPrompt + (wantLeadScoring ? SALES_LEAD_INSTRUCTION : '') + (wantReturnFlow ? RETURN_REQUEST_INSTRUCTION : '');
 
     // Inject persona preamble when bot_config has persona fields set
     const bc = botConfig as (typeof botConfig & {
@@ -1004,8 +1009,9 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
 
     // ── Parse AI response markers ─────────────────────────────────────────
     const rawContent    = aiResult.content;
-    const isSalesLead   = rawContent.includes('[SALES_LEAD]');
-    const sendCatalogue = rawContent.includes('[SEND_CATALOGUE]');
+    const isSalesLead     = rawContent.includes('[SALES_LEAD]');
+    const sendCatalogue   = rawContent.includes('[SEND_CATALOGUE]');
+    const isReturnRequest = rawContent.includes('[RETURN_REQUEST]');
 
     // Feature: State Machine — extract [STAGE:x] and [ENTITY:key=value] markers
     const stageMatch    = rawContent.match(/\[STAGE:(\w+)\]/);
@@ -1025,6 +1031,7 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
       .replace(/\[SALES_LEAD\]/g, '')
       .replace(/\[SIGNAL:[\w_]+\]/g, '')
       .replace(/\[SEND_CATALOGUE\]/g, '')
+      .replace(/\[RETURN_REQUEST\]/g, '')
       .replace(/\[STAGE:\w+\]/g, '')
       .replace(/\[ENTITY:[^\]]+\]/g, '')
       .replace(/\[BUTTONS:[^\]]+\]/g, '')
@@ -1349,6 +1356,48 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
           fastify.log,
         );
       }
+    }
+
+    // ── Return / replacement request handler ─────────────────────────────
+    // Fires when the lifecycle bot appends [RETURN_REQUEST] to its reply.
+    // Inserts a return_requests row and sends a WhatsApp confirmation.
+    if (isReturnRequest && productType === 'lifecycle_bot') {
+      const returnType = incoming.text?.toLowerCase().includes('replac') ? 'replacement' : 'return';
+      fireForget(
+        (async () => {
+          const { data: inserted, error: insertErr } = await db
+            .from('return_requests')
+            .insert({
+              tenant_id:       tenantId,
+              conversation_id: conversation.id,
+              contact_id:      contact.id,
+              type:            returnType,
+              reason:          incoming.text ?? null,
+              status:          'pending',
+            })
+            .select('id')
+            .single();
+
+          if (insertErr) {
+            fastify.log.error({ insertErr, tenantId }, '[Webhook] Failed to insert return_request');
+            return;
+          }
+          fastify.log.info({ returnRequestId: (inserted as { id: string }).id, returnType }, '[Webhook] Return request logged');
+
+          // WhatsApp confirmation message to customer
+          const confirmMsg = returnType === 'replacement'
+            ? `✅ We've received your replacement request and our team will review it shortly.\n\nPlease share your *order ID* and *photos of the item* so we can process it faster. You'll hear from us within 1–2 business days.`
+            : `✅ We've received your return request and our team will review it shortly.\n\nPlease share your *order ID* and *photos of the item* if applicable. You'll hear from us within 1–2 business days.`;
+
+          await gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text',
+            to:   incoming.from,
+            text: confirmMsg,
+          });
+        })(),
+        'handle-return-request',
+        fastify.log,
+      );
     }
 
     // ── Check call triggers (keyword / sentiment) ─────────────────────────

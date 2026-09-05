@@ -20,6 +20,7 @@ import {
   Plug,
   CalendarClock,
   ClipboardList,
+  RotateCcw,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -41,6 +42,7 @@ const BASE_NAV = [
 const LEADS_ITEM        = { href: '/leads',        label: 'Leads',        icon: Target      };
 const INTEGRATIONS_ITEM = { href: '/integrations', label: 'Integrations', icon: Plug        };
 const ORDERS_ITEM       = { href: '/orders',       label: 'Orders',       icon: ShoppingCart };
+const RETURNS_ITEM      = { href: '/returns',      label: 'Returns',      icon: RotateCcw   };
 
 export function DashboardNav({
   tenantName,
@@ -61,7 +63,7 @@ export function DashboardNav({
 
   const ADMIN_ONLY_HREFS = new Set(['/audit']);
   const AGENT_HREFS      = new Set(['/dashboard', '/conversations']);
-  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/integrations', '/knowledge-base', '/orders', '/analytics', '/scheduled-messages', '/settings']);
+  const SUPERVISOR_HREFS = new Set(['/dashboard', '/conversations', '/leads', '/integrations', '/knowledge-base', '/orders', '/returns', '/analytics', '/scheduled-messages', '/settings']);
 
   const navItems = (() => {
     const items = [...BASE_NAV];
@@ -69,7 +71,7 @@ export function DashboardNav({
     items.splice(convsIdx + 1, 0, LEADS_ITEM, INTEGRATIONS_ITEM);
     if (hasLifecycleBot) {
       const guardrailsIdx = items.findIndex(i => i.href === '/guardrails');
-      items.splice(guardrailsIdx + 1, 0, ORDERS_ITEM);
+      items.splice(guardrailsIdx + 1, 0, ORDERS_ITEM, RETURNS_ITEM);
     }
     // Audit log — admin and client_manager only
     if (['admin', 'client_manager'].includes(userRole)) {
