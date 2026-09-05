@@ -3,7 +3,8 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ShoppingCart, Plus, ExternalLink, CheckCircle, Clock, Truck, XCircle, Package } from 'lucide-react';
-import { OrderStatusBadge } from '@/components/dashboard/OrderStatusBadge';
+import { OrderStatusBadge }   from '@/components/dashboard/OrderStatusBadge';
+import { SendInvoiceButton } from '@/components/dashboard/SendInvoiceButton';
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
   pending:    <Clock size={13} className="text-amber-500" />,
@@ -167,6 +168,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                     )}
 
                     <OrderStatusBadge orderId={order.id} currentStatus={order.status as 'pending' | 'confirmed' | 'dispatched' | 'delivered' | 'cancelled'} />
+
+                    <SendInvoiceButton orderId={order.id} />
 
                     {payment?.link_url && payment.status !== 'paid' && (
                       <a

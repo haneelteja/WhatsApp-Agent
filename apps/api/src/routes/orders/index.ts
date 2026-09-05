@@ -11,6 +11,7 @@ import {
   parsePhonePeWebhook,
 } from '../../services/payment/phonepe.js';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
+import { generateAndSendInvoice } from '../../services/invoice/generator.js';
 import type { WhatsAppProvider } from '@alphabot/shared';
 import { requireAuth } from '../../middleware/auth.js';
 
@@ -224,6 +225,49 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     return reply.send({ sent: true });
+  });
+
+  // ─── POST /api/orders/:id/invoice ────────────────────────────────────────
+  fastify.post<{ Params: { id: string } }>('/:id/invoice', async (request, reply) => {
+    const { data: order } = await db
+      .from('orders')
+      .select(`
+        id, total, items_json, status,
+        tenant:tenants(name),
+        contact:contacts(phone, name),
+        payments(status, link_url)
+      `)
+      .eq('id', request.params.id)
+      .eq('tenant_id', request.tenantId)
+      .single();
+
+    if (!order) return reply.status(404).send({ error: 'Order not found' });
+
+    const contact       = (order as unknown as { contact: { phone: string; name: string | null } }).contact;
+    const tenant        = (order as unknown as { tenant: { name: string } }).tenant;
+    const payment       = (order as unknown as { payments: Array<{ status: string; link_url: string | null }> }).payments?.[0];
+    const items         = ((order as unknown as { items_json: Array<{ name: string; quantity: number; price: number; sku?: string }> }).items_json) ?? [];
+
+    if (!contact?.phone) return reply.status(400).send({ error: 'No contact phone number' });
+
+    try {
+      const result = await generateAndSendInvoice({
+        tenantId:      request.tenantId,
+        tenantName:    tenant?.name ?? 'Business',
+        orderId:       order.id,
+        orderTotal:    Number((order as unknown as { total: number }).total),
+        items,
+        contactName:   contact.name,
+        contactPhone:  contact.phone,
+        paymentStatus: payment?.status ?? 'pending',
+        paymentLink:   payment?.link_url,
+      });
+
+      return reply.send(result);
+    } catch (err) {
+      fastify.log.error({ err }, '[Invoice] Generation failed');
+      return reply.status(500).send({ error: (err as Error).message });
+    }
   });
 }
 

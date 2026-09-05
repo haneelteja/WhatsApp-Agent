@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import {
   Plus, Trash2, ChevronDown, ChevronRight, Clock, Zap, Gift,
-  MessageSquare, CheckCircle, Edit3, Save, X, ToggleLeft, ToggleRight,
+  MessageSquare, CheckCircle, Edit3, Save, X, ToggleLeft, ToggleRight, Package,
 } from 'lucide-react';
 import {
   createLifecycleSequence,
@@ -34,18 +34,26 @@ const TRIGGER_OPTIONS: { value: TriggerEvent; label: string; desc: string; icon:
     desc: 'Fires N days after a contact is detected as a sales lead',
     icon: <Gift size={13} className="text-violet-500" />,
   },
+  {
+    value: 'order_delivered',
+    label: 'Order delivered',
+    desc: 'Fires N days after an order status is marked as delivered — great for loyalty & reorder nudges',
+    icon: <Package size={13} className="text-orange-500" />,
+  },
 ];
 
 const TRIGGER_COLORS: Record<TriggerEvent, string> = {
   contact_created:       'bg-emerald-50 border-emerald-200 text-emerald-700',
   conversation_resolved: 'bg-sky-50 border-sky-200 text-sky-700',
   lead_created:          'bg-violet-50 border-violet-200 text-violet-700',
+  order_delivered:       'bg-orange-50 border-orange-200 text-orange-700',
 };
 
 const TRIGGER_LABEL: Record<TriggerEvent, string> = {
   contact_created:       'Contact onboarded',
   conversation_resolved: 'Conversation resolved',
   lead_created:          'Lead flagged',
+  order_delivered:       'Order delivered',
 };
 
 const BOT_OPTIONS = [
@@ -61,6 +69,8 @@ const DEFAULT_TEMPLATES: Record<TriggerEvent, string> = {
     "Hi {name}, hope we were able to help! If you'd like to share feedback or need anything else, we're here. As a thank-you, enjoy 15% off your next purchase with code THANKS15 — valid for 48 hours.",
   lead_created:
     "Hi {name}! Our team noticed your interest and we'd love to make it easy for you to move forward. Here's an exclusive offer: get a free consultation or a special discount when you place an order this week. Reply YES to claim it!",
+  order_delivered:
+    "Hi {name}! 🎉 We hope you're loving your order! If you'd like to reorder or explore other products, just reply here. As a thank-you, use code LOYAL10 for 10% off your next purchase — valid for 7 days.",
 };
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

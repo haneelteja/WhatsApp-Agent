@@ -4,7 +4,7 @@ import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath }         from 'next/cache';
 import { getSession }             from '@/lib/session';
 
-export type TriggerEvent = 'contact_created' | 'conversation_resolved' | 'lead_created';
+export type TriggerEvent = 'contact_created' | 'conversation_resolved' | 'lead_created' | 'order_delivered';
 
 export type LifecycleSequence = {
   id:               string;

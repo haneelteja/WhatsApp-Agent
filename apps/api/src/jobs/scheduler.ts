@@ -349,6 +349,92 @@ async function sendLeadFollowUp(
   }
 }
 
+async function processPaymentReminders(): Promise<void> {
+  const db = getServerClient();
+
+  // Find pending orders where no reminder in last 3 days (or first reminder after 24h)
+  const firstCutoff  = new Date(Date.now() - 24  * 60 * 60 * 1000).toISOString();
+  const repeatCutoff = new Date(Date.now() - 72  * 60 * 60 * 1000).toISOString();
+
+  const { data: orders } = await db
+    .from('orders')
+    .select(`
+      id, tenant_id, total, reminder_count, last_reminded_at,
+      contact:contacts(phone, name),
+      payments(status, link_url)
+    `)
+    .in('status', ['pending', 'confirmed'])
+    .lt('reminder_count', 3)
+    .lt('created_at', firstCutoff);
+
+  if (!orders?.length) return;
+
+  const eligible = orders.filter(o => {
+    const lastReminded = (o as unknown as { last_reminded_at: string | null }).last_reminded_at;
+    if (!lastReminded) return true;                     // never reminded — fire if past first-cutoff
+    return lastReminded < repeatCutoff;                 // reminded before, wait 3 days before next
+  });
+
+  if (!eligible.length) return;
+
+  // Group by tenant to fetch WhatsApp numbers once per tenant
+  const byTenant = new Map<string, typeof eligible>();
+  for (const o of eligible) {
+    const tid = (o as unknown as { tenant_id: string }).tenant_id;
+    if (!byTenant.has(tid)) byTenant.set(tid, []);
+    byTenant.get(tid)!.push(o);
+  }
+
+  for (const [tenantId, tenantOrders] of byTenant) {
+    const { data: wn } = await db
+      .from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', tenantId)
+      .eq('product_slug', 'lifecycle_bot')
+      .eq('active', true)
+      .maybeSingle();
+
+    if (!wn) continue;
+
+    const gateway  = new WhatsAppGateway((wn as { provider: string }).provider as WhatsAppProvider);
+    const wnConfig = (wn as { config_json: { phone_number_id: string; access_token: string } }).config_json;
+
+    await Promise.allSettled(
+      tenantOrders.map(async (o) => {
+        const contact       = (o as unknown as { contact: { phone: string; name: string | null } | null }).contact;
+        const payments      = (o as unknown as { payments: Array<{ status: string; link_url: string | null }> }).payments;
+        const payment       = payments?.[0];
+        const reminderCount = (o as unknown as { reminder_count: number }).reminder_count;
+        const total         = (o as unknown as { total: number }).total;
+        const orderId       = (o as unknown as { id: string }).id;
+
+        if (!contact?.phone) return;
+        if (payment?.status === 'paid') return;
+
+        const name    = contact.name?.split(' ')[0] ?? 'there';
+        const shortId = orderId.slice(0, 8).toUpperCase();
+
+        const messages = [
+          `⏰ *Payment Reminder*\n\nHi ${name}! Your order #${shortId} (₹${Number(total).toLocaleString('en-IN')}) is awaiting payment.\n\n${payment?.link_url ? `Pay here: ${payment.link_url}` : 'Please complete your payment to proceed.'}`,
+          `🔔 *Follow-up Reminder*\n\nHi ${name}, just a friendly nudge — your order #${shortId} is still unpaid.\n\n${payment?.link_url ? `Pay here: ${payment.link_url}` : 'Reach out if you need help.'}`,
+          `🚨 *Final Reminder*\n\nHi ${name}, this is our last reminder for order #${shortId}. Your order may be cancelled if payment isn't received.\n\n${payment?.link_url ? `Pay here: ${payment.link_url}` : 'Contact us for support.'}`,
+        ];
+
+        const text = messages[Math.min(reminderCount, 2)]!;
+        await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+          type: 'text', to: contact.phone, text,
+        });
+
+        await db.from('orders')
+          .update({ reminder_count: reminderCount + 1, last_reminded_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', orderId);
+
+        console.log(`[PaymentReminder] Sent reminder #${reminderCount + 1} for order ${orderId}`);
+      }),
+    );
+  }
+}
+
 async function processLifecycleSequences(): Promise<void> {
   const db = getServerClient();
 
@@ -397,6 +483,20 @@ async function processLifecycleSequences(): Promise<void> {
         const resolvedContactIds = (resolvedConvs ?? []).map((r: { contact_id: string }) => r.contact_id);
         if (!resolvedContactIds.length) continue;
         contactsQuery = contactsQuery.in('id', resolvedContactIds);
+      } else if (seq.trigger_event === 'order_delivered') {
+        // Loyalty / reorder: fire N days after order was delivered
+        const { data: deliveredOrders } = await db
+          .from('orders')
+          .select('contact_id')
+          .eq('tenant_id', seq.tenant_id)
+          .eq('status', 'delivered')
+          .lt('updated_at', cutoff);
+
+        const deliveredContactIds = [...new Set(
+          (deliveredOrders ?? []).map((r: { contact_id: string }) => r.contact_id),
+        )];
+        if (!deliveredContactIds.length) continue;
+        contactsQuery = contactsQuery.in('id', deliveredContactIds);
       }
 
       const { data: candidates } = await contactsQuery;
@@ -545,6 +645,13 @@ export function startScheduler(): void {
       console.error('[Scheduler] Campaign recovery failed:', (err as Error).message)
     );
   });
+
+  // Payment reminders — daily at 11:30 UTC (5:00 PM IST)  [TTL: 82800s = 23h]
+  cron.schedule('30 11 * * *', () => {
+    void withJobLock('payment_reminders', 82800, () => processPaymentReminders()).catch(err =>
+      console.error('[Scheduler] Payment reminders failed:', (err as Error).message)
+    );
+  }, { timezone: 'UTC' });
 
   // Lifecycle sequences — daily at 10:00 UTC  [TTL: 82800s = 23h]
   cron.schedule('0 10 * * *', () => {
