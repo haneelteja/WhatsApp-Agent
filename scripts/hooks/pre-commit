@@ -11,9 +11,13 @@ NC='\033[0m'
 ERRORS=0
 
 # ── 1. Block files over 100 KB ──────────────────────────────────────────────
+# Lock files are excluded — they are always large and must be committed.
 LIMIT_KB=100
 while IFS= read -r file; do
   [[ -f "$file" ]] || continue
+  [[ "$file" == *"package-lock.json" ]] && continue
+  [[ "$file" == *"yarn.lock" ]] && continue
+  [[ "$file" == *"pnpm-lock.yaml" ]] && continue
   size_kb=$(( $(wc -c < "$file") / 1024 ))
   if (( size_kb > LIMIT_KB )); then
     echo -e "${RED}[pre-commit] BLOCKED: $file is ${size_kb} KB (limit ${LIMIT_KB} KB)${NC}"
