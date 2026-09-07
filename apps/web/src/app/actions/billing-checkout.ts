@@ -1,14 +1,27 @@
 'use server';
 
 import crypto             from 'crypto';
+import { headers }        from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession }             from '@/lib/session';
 
-const KEY     = process.env['EASEBUZZ_MERCHANT_KEY'] ?? '';
-const SALT    = process.env['EASEBUZZ_SALT']          ?? '';
-const ENV     = process.env['EASEBUZZ_ENV']            ?? 'test';
-const APP_URL = process.env['NEXT_PUBLIC_APP_URL']    ?? 'https://app.alphabot.in';
+const KEY  = process.env['EASEBUZZ_MERCHANT_KEY'] ?? '';
+const SALT = process.env['EASEBUZZ_SALT']          ?? '';
+const ENV  = process.env['EASEBUZZ_ENV']            ?? 'test';
+
+async function getAppOrigin(): Promise<string> {
+  const h = await headers();
+  // 1. origin header sent by the browser on every fetch/form action
+  const origin = h.get('origin');
+  if (origin) return origin;
+  // 2. Vercel / Render reverse-proxy headers
+  const proto = h.get('x-forwarded-proto') ?? 'https';
+  const host  = h.get('x-forwarded-host') ?? h.get('host') ?? '';
+  if (host) return `${proto}://${host}`;
+  // 3. Hard fallback
+  return process.env['NEXT_PUBLIC_APP_URL'] ?? 'https://app.alphabot.in';
+}
 
 const PAY_BASE  = ENV === 'prod' ? 'https://pay.easebuzz.in/'       : 'https://testpay.easebuzz.in/';
 const DASH_BASE = ENV === 'prod' ? 'https://dashboard.easebuzz.in/' : 'https://testdashboard.easebuzz.in/';
@@ -69,8 +82,9 @@ export async function createEasebuzzBillingPaymentAction(targetPlan: string): Pr
   // udf1 = tenantId, udf2 = targetPlan — embedded in hash so they're tamper-evident
   const udf1        = session.tenantId;
   const udf2        = targetPlan;
-  const surl        = `${APP_URL}/billing`;
-  const furl        = `${APP_URL}/billing`;
+  const appOrigin   = await getAppOrigin();
+  const surl        = `${appOrigin}/billing`;
+  const furl        = `${appOrigin}/billing`;
   const hash        = buildInitiateHash(KEY, txnid, amount, productinfo, firstname, email, udf1, udf2, SALT);
 
   const body = new URLSearchParams({
