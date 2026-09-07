@@ -9,18 +9,32 @@ function sha512hex(str: string): string {
   return crypto.createHash('sha512').update(str).digest('hex');
 }
 
-function getOrigin(req: NextRequest): string {
-  // 1. Origin header sent by browser
-  const origin = req.headers.get('origin');
-  if (origin) return origin;
-  // 2. Vercel/reverse-proxy headers
-  const proto = req.headers.get('x-forwarded-proto');
-  const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
-  if (proto && host) return `${proto}://${host}`;
-  // 3. Parse from the request URL itself
-  try { return new URL(req.url).origin; } catch { /* fall through */ }
-  // 4. Hard fallback
+function getBaseUrl(req: NextRequest): string {
+  // Prefer x-forwarded headers (set by Vercel)
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
+  if (host) return `${proto}://${host}`;
+  // Fall back to parsing req.url (always full URL in Next.js App Router)
+  try { return new URL(req.url).origin; } catch { /* ignore */ }
   return process.env['NEXT_PUBLIC_APP_URL'] ?? 'https://whats-app-agent-web.vercel.app';
+}
+
+/** Return an HTML page that immediately redirects the browser.
+ *  More compatible than 303 when Easebuzz controls the navigation. */
+function htmlRedirect(url: string): Response {
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0;url=${url}">
+  <script>window.location.replace(${JSON.stringify(url)});</script>
+</head>
+<body>Redirecting…</body>
+</html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
 }
 
 const PLAN_AMOUNTS: Record<string, string> = {
@@ -29,32 +43,37 @@ const PLAN_AMOUNTS: Record<string, string> = {
 };
 
 // Easebuzz POSTs here after payment (surl/furl callback).
-// Verifies hash, updates the tenant plan, then redirects browser back to /billing.
+// Returns an HTML auto-redirect so the browser navigates to /billing regardless
+// of whether Easebuzz's page or the user's browser made the POST.
 export async function POST(req: NextRequest) {
-  const origin      = getOrigin(req);
-  const billingBase = `${origin}/billing`;
+  const base    = getBaseUrl(req);
+  const success = `${base}/billing?eb=paid`;
+  const failure = `${base}/billing?eb=failed`;
 
   try {
-    // Parse form body — Easebuzz sends application/x-www-form-urlencoded
     let body: Record<string, string> = {};
+
+    // Parse form body — try formData first, fall back to URL-encoded text
     try {
       const form = await req.formData();
       body = Object.fromEntries(
         [...form.entries()].map(([k, v]) => [k, String(v)])
       );
     } catch {
-      // Fallback: parse raw URL-encoded text
       const text = await req.text();
       for (const pair of text.split('&')) {
-        const [k, v] = pair.split('=').map(decodeURIComponent);
-        if (k) body[k] = v ?? '';
+        const idx = pair.indexOf('=');
+        if (idx === -1) continue;
+        const k = decodeURIComponent(pair.slice(0, idx).replace(/\+/g, ' '));
+        const v = decodeURIComponent(pair.slice(idx + 1).replace(/\+/g, ' '));
+        if (k) body[k] = v;
       }
     }
 
-    const status   = body['status']   ?? '';
-    const received = body['hash']     ?? '';
+    const status   = body['status']  ?? '';
+    const received = body['hash']    ?? '';
 
-    // Verify reverse hash: SALT|status|udf10..udf1|email|firstname|productinfo|amount|txnid|key
+    // Reverse hash: SALT|status|udf10..udf1|email|firstname|productinfo|amount|txnid|key
     const computed = sha512hex([
       SALT, status,
       body['udf10'] ?? '', body['udf9'] ?? '', body['udf8'] ?? '',
@@ -75,14 +94,14 @@ export async function POST(req: NextRequest) {
       crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(received));
 
     if (!hashValid || status !== 'success') {
-      return NextResponse.redirect(`${billingBase}?eb=failed`, { status: 303 });
+      return htmlRedirect(failure);
     }
 
     const tenantId   = body['udf1'] ?? '';
     const targetPlan = body['udf2'] ?? '';
 
     if (!tenantId || !PLAN_AMOUNTS[targetPlan]) {
-      return NextResponse.redirect(`${billingBase}?eb=failed`, { status: 303 });
+      return htmlRedirect(failure);
     }
 
     const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -101,18 +120,17 @@ export async function POST(req: NextRequest) {
         .eq('tenant_id', tenantId),
     ]);
 
-    return NextResponse.redirect(`${billingBase}?eb=paid`, { status: 303 });
+    return htmlRedirect(success);
 
   } catch (err) {
     console.error('[billing/easebuzz] callback error:', err);
-    return NextResponse.redirect(`${billingBase}?eb=failed`, { status: 303 });
+    return htmlRedirect(failure);
   }
 }
 
-// GET handler for direct browser visits (e.g. when Easebuzz uses a GET redirect)
+// GET handler — Easebuzz may also redirect the browser here via GET after payment
 export async function GET(req: NextRequest) {
-  const origin = getOrigin(req);
-  const url    = new URL(req.url);
-  const eb     = url.searchParams.get('eb') ?? 'failed';
-  return NextResponse.redirect(`${origin}/billing?eb=${eb}`, { status: 303 });
+  const base = getBaseUrl(req);
+  const eb   = new URL(req.url).searchParams.get('eb') ?? 'failed';
+  return NextResponse.redirect(`${base}/billing?eb=${eb}`, { status: 303 });
 }
