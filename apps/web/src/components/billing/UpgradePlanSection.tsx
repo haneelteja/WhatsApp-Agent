@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import Script from 'next/script';
+import { useState, useTransition, useEffect } from 'react';
 import { Check, Zap, Star, CheckCircle, Loader2, XCircle, AlertTriangle } from 'lucide-react';
 import {
   createEasebuzzBillingPaymentAction,
@@ -80,11 +79,25 @@ export default function UpgradePlanSection({
   subscriptionStatus,
 }: Props) {
   const router = useRouter();
-  const [loading,  setLoading]  = useState<string | null>(null);
-  const [error,    setError]    = useState<string | null>(null);
-  const [success,  setSuccess]  = useState<string | null>(null);
+  const [loading,      setLoading]      = useState<string | null>(null);
+  const [error,        setError]        = useState<string | null>(null);
+  const [success,      setSuccess]      = useState<string | null>(null);
+  const [scriptReady,  setScriptReady]  = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelPending, startCancelTransition]    = useTransition();
+
+  // Load the Easebuzz checkout script manually so it works regardless of
+  // Next.js hydration state (next/script afterInteractive can miss when
+  // hydration errors force a client-side re-render).
+  useEffect(() => {
+    if (window.EasebuzzCheckout) { setScriptReady(true); return; }
+    const script = document.createElement('script');
+    script.src = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.0.0.min.js';
+    script.async = true;
+    script.onload  = () => setScriptReady(true);
+    script.onerror = () => setError('Payment SDK failed to load — please refresh and try again.');
+    document.head.appendChild(script);
+  }, []);
 
   const currentIdx   = PLAN_ORDER.indexOf(currentPlan);
   const upgradePlans = PLANS.filter(p => PLAN_ORDER.indexOf(p.key) > currentIdx);
@@ -152,13 +165,7 @@ export default function UpgradePlanSection({
   }
 
   return (
-    <>
-      <Script
-        src="https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.0.0.min.js"
-        strategy="afterInteractive"
-      />
-
-      <div className="space-y-4">
+    <div className="space-y-4">
         <div>
           <p className="text-sm font-semibold text-gray-700">
             {upgradePlans.length > 0 ? 'Upgrade Your Plan' : 'Manage Subscription'}
@@ -206,11 +213,11 @@ export default function UpgradePlanSection({
 
                 <button
                   onClick={() => void handleUpgrade(plan.key)}
-                  disabled={!!loading || !!success}
+                  disabled={!!loading || !!success || !scriptReady}
                   className={`mt-4 w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors ${plan.buttonBg} disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
                 >
-                  {loading === plan.key && <Loader2 size={14} className="animate-spin" />}
-                  {loading === plan.key ? 'Opening checkout…' : `Upgrade to ${plan.name}`}
+                  {(loading === plan.key || !scriptReady) && <Loader2 size={14} className="animate-spin" />}
+                  {loading === plan.key ? 'Opening checkout…' : !scriptReady ? 'Loading…' : `Upgrade to ${plan.name}`}
                 </button>
               </div>
             ))}
@@ -258,7 +265,6 @@ export default function UpgradePlanSection({
             )}
           </div>
         )}
-      </div>
-    </>
+    </div>
   );
 }
