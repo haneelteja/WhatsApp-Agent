@@ -69,8 +69,8 @@ export async function createEasebuzzBillingPaymentAction(targetPlan: string): Pr
   // udf1 = tenantId, udf2 = targetPlan — embedded in hash so they're tamper-evident
   const udf1        = session.tenantId;
   const udf2        = targetPlan;
-  const surl        = `${APP_URL}/billing?eb=success`;
-  const furl        = `${APP_URL}/billing?eb=failed`;
+  const surl        = `${APP_URL}/billing`;
+  const furl        = `${APP_URL}/billing`;
   const hash        = buildInitiateHash(KEY, txnid, amount, productinfo, firstname, email, udf1, udf2, SALT);
 
   const body = new URLSearchParams({
