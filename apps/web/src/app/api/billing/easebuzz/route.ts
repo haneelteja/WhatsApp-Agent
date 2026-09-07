@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 
@@ -9,14 +9,23 @@ function sha512hex(str: string): string {
   return crypto.createHash('sha512').update(str).digest('hex');
 }
 
+function getBillingBase(req: NextRequest): string {
+  // Use the request URL origin so this works regardless of env var state
+  const origin = req.headers.get('origin')
+    ?? req.headers.get('x-forwarded-proto') && req.headers.get('x-forwarded-host')
+       ? `${req.headers.get('x-forwarded-proto')}://${req.headers.get('x-forwarded-host')}`
+       : new URL(req.url).origin;
+  return `${origin}/billing`;
+}
+
 const PLAN_AMOUNTS: Record<string, string> = {
   growth: '2499.00',
   scale:  '4999.00',
 };
 
-export async function POST(req: Request) {
-  const APP_URL = process.env['NEXT_PUBLIC_APP_URL'] ?? '';
-  const billingBase = APP_URL ? `${APP_URL}/billing` : '/billing';
+// Easebuzz POSTs here after payment (surl/furl). Verifies hash, updates plan, redirects back.
+export async function POST(req: NextRequest) {
+  const billingBase = getBillingBase(req);
 
   let body: Record<string, string>;
   try {
@@ -25,7 +34,7 @@ export async function POST(req: Request) {
       [...form.entries()].map(([k, v]) => [k, String(v)])
     );
   } catch {
-    return NextResponse.redirect(`${billingBase}?eb=failed`);
+    return NextResponse.redirect(`${billingBase}?eb=failed`, { status: 303 });
   }
 
   const received = body['hash'] ?? '';
@@ -82,4 +91,9 @@ export async function POST(req: Request) {
   ]);
 
   return NextResponse.redirect(`${billingBase}?eb=paid`, { status: 303 });
+}
+
+// GET handler so direct browser visits get a clean 405 instead of 500
+export async function GET() {
+  return new Response('Method not allowed', { status: 405 });
 }
