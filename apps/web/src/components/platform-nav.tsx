@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck, Box, Cpu, CreditCard, BarChart2, Phone, ClipboardList } from 'lucide-react';
+import { Building2, Users, Bell, Settings, LogOut, Shield, ShieldCheck, Box, Cpu, CreditCard, BarChart2, Phone, ClipboardList, TrendingUp } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const NAV_ITEMS = [
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/platform/ai-models',       label: 'AI Models',       icon: Cpu        },
   { href: '/platform/voice-providers', label: 'Voice Providers', icon: Phone      },
   { href: '/platform/analytics',       label: 'Analytics',       icon: BarChart2  },
+  { href: '/platform/margin',          label: 'Margin',          icon: TrendingUp },
   { href: '/platform/billing',         label: 'Billing',         icon: CreditCard },
   { href: '/platform/notifications',   label: 'Notifications',   icon: Bell       },
   { href: '/platform/settings',        label: 'Settings',        icon: Settings   },
