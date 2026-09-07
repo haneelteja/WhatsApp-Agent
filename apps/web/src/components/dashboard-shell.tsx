@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { Topbar } from '@/components/topbar';
 import { GuidedTour } from '@/components/dashboard/GuidedTour';
@@ -69,12 +69,14 @@ export function DashboardShell({
           focus:outline-none
         `}
       >
-        <DashboardNav
-          tenantName={tenantName}
-          userRole={userRole}
-          hasLifecycleBot={hasLifecycleBot}
-          onLinkClick={() => setSidebarOpen(false)}
-        />
+        <Suspense>
+          <DashboardNav
+            tenantName={tenantName}
+            userRole={userRole}
+            hasLifecycleBot={hasLifecycleBot}
+            onLinkClick={() => setSidebarOpen(false)}
+          />
+        </Suspense>
       </div>
 
       {/* Main content area */}
