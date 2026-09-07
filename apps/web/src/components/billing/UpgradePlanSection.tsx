@@ -145,7 +145,7 @@ export default function UpgradePlanSection({
         setShowCancelConfirm(false);
       } else {
         setShowCancelConfirm(false);
-        setSuccess('Subscription cancelled — you\'ll keep access until your billing period ends.');
+        setSuccess(`Subscription cancelled — you'll keep access until your billing period ends.`);
         setTimeout(() => router.refresh(), 2000);
       }
     });
