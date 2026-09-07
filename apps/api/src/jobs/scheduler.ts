@@ -11,7 +11,13 @@ import { withJobLock } from '../lib/redis.js';
 import { businessDaysCutoff } from '../lib/business-days.js';
 import { resetAllDailyCounts } from '../lib/sender-capacity.js';
 import { classifyAndPersistOutcome } from '../lib/outcome-classifier.js';
+import { captureException } from '../lib/sentry.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
+
+function alertJobFailure(jobName: string, err: unknown): void {
+  console.error(`[Scheduler] ${jobName} failed:`, (err as Error).message);
+  captureException(err, { job: jobName, source: 'scheduler' });
+}
 
 const KEEP_ALIVE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
@@ -593,70 +599,70 @@ export function startScheduler(): void {
   // Daily report — 08:00 UTC every day  [TTL: 82800s = 23h, prevents duplicate on restart]
   cron.schedule('0 8 * * *', () => {
     void withJobLock('daily_reports', 82800, () => runDailyReports()).catch(err =>
-      console.error('[Scheduler] Daily report failed:', (err as Error).message)
+      alertJobFailure('daily_reports', err)
     );
   }, { timezone: 'UTC' });
 
   // Follow-up messages — every hour  [TTL: 3540s = 59min]
   cron.schedule('0 * * * *', () => {
     void withJobLock('follow_ups', 3540, () => processFollowUps()).catch(err =>
-      console.error('[Scheduler] Follow-up failed:', (err as Error).message)
+      alertJobFailure('follow_ups', err)
     );
   });
 
   // Campaign voice dispatch — every 15 min  [TTL: 840s = 14min]
   cron.schedule('*/15 * * * *', () => {
     void withJobLock('voice_dispatch', 840, () => dispatchPendingVoiceCalls()).catch(err =>
-      console.error('[Scheduler] Campaign voice dispatch failed:', (err as Error).message)
+      alertJobFailure('voice_dispatch', err)
     );
   });
 
   // No-reply call triggers — every 30 min  [TTL: 1740s = 29min]
   cron.schedule('*/30 * * * *', () => {
     void withJobLock('no_reply_triggers', 1740, () => processNoReplyTriggers()).catch(err =>
-      console.error('[Scheduler] No-reply trigger failed:', (err as Error).message)
+      alertJobFailure('no_reply_triggers', err)
     );
   });
 
   // Sales lead follow-up — every 2 hours  [TTL: 7140s = 119min]
   cron.schedule('0 */2 * * *', () => {
     void withJobLock('lead_follow_ups', 7140, () => processLeadFollowUps()).catch(err =>
-      console.error('[Scheduler] Lead follow-up failed:', (err as Error).message)
+      alertJobFailure('lead_follow_ups', err)
     );
   });
 
   // Scheduled broadcasts — every minute  [TTL: 55s]
   cron.schedule('* * * * *', () => {
     void withJobLock('scheduled_broadcasts', 55, () => processScheduledBroadcasts()).catch(err =>
-      console.error('[Scheduler] Broadcast processing failed:', (err as Error).message)
+      alertJobFailure('scheduled_broadcasts', err)
     );
   });
 
   // Scheduled messages — every minute  [TTL: 55s]
   cron.schedule('* * * * *', () => {
     void withJobLock('scheduled_messages_dispatch', 55, () => processScheduledMessages()).catch(err =>
-      console.error('[Scheduler] Scheduled messages failed:', (err as Error).message)
+      alertJobFailure('scheduled_messages_dispatch', err)
     );
   });
 
   // Campaign recovery — every 10 min  [TTL: 540s = 9min]
   cron.schedule('*/10 * * * *', () => {
     void withJobLock('campaign_recovery', 540, () => recoverStaleCampaigns()).catch(err =>
-      console.error('[Scheduler] Campaign recovery failed:', (err as Error).message)
+      alertJobFailure('campaign_recovery', err)
     );
   });
 
   // Payment reminders — daily at 11:30 UTC (5:00 PM IST)  [TTL: 82800s = 23h]
   cron.schedule('30 11 * * *', () => {
     void withJobLock('payment_reminders', 82800, () => processPaymentReminders()).catch(err =>
-      console.error('[Scheduler] Payment reminders failed:', (err as Error).message)
+      alertJobFailure('payment_reminders', err)
     );
   }, { timezone: 'UTC' });
 
   // Lifecycle sequences — daily at 10:00 UTC  [TTL: 82800s = 23h]
   cron.schedule('0 10 * * *', () => {
     void withJobLock('lifecycle_sequences', 82800, () => processLifecycleSequences()).catch(err =>
-      console.error('[Scheduler] Lifecycle sequences failed:', (err as Error).message)
+      alertJobFailure('lifecycle_sequences', err)
     );
   }, { timezone: 'UTC' });
 
@@ -674,14 +680,14 @@ export function startScheduler(): void {
         await runInsightsForAllTenants();
       }
     }).catch(err =>
-      console.error('[Scheduler] AI Insights failed:', (err as Error).message)
+      alertJobFailure('ai_insights', err)
     );
   });
 
   // Sender capacity daily reset — midnight UTC  [TTL: 82800s = 23h]
   cron.schedule('0 0 * * *', () => {
     void withJobLock('sender_capacity_reset', 82800, () => resetAllDailyCounts()).catch(err =>
-      console.error('[Scheduler] Sender capacity reset failed:', (err as Error).message)
+      alertJobFailure('sender_capacity_reset', err)
     );
   }, { timezone: 'UTC' });
 
@@ -707,7 +713,7 @@ export function startScheduler(): void {
         console.log(`[Insights] Startup catch-up: ${count} recent insight(s) found — skipping.`);
       }
     }).catch(err =>
-      console.error('[Insights] Startup catch-up failed:', (err as Error).message)
+      alertJobFailure('ai_insights_startup', err)
     );
   }, 15_000);
   void _processStartMs; // suppress unused-var warning
