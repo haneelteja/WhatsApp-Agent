@@ -51,11 +51,12 @@ function buildInitiateHash(
   );
 }
 
-// ── Step 1: Create Easebuzz billing payment — returns access_key for checkout SDK
+// ── Step 1: Create Easebuzz billing payment — returns access_key + payUrl for redirect
 export async function createEasebuzzBillingPaymentAction(targetPlan: string): Promise<{
   accessKey?:   string;
   merchantKey?: string;
   env?:         string;
+  payUrl?:      string;
   error?:       string;
 }> {
   const amount = PLAN_AMOUNTS[targetPlan];
@@ -83,8 +84,9 @@ export async function createEasebuzzBillingPaymentAction(targetPlan: string): Pr
   const udf1        = session.tenantId;
   const udf2        = targetPlan;
   const appOrigin   = await getAppOrigin();
-  const surl        = `${appOrigin}/billing`;
-  const furl        = `${appOrigin}/billing`;
+  // surl/furl point at the route handler that verifies hash and redirects back
+  const surl        = `${appOrigin}/api/billing/easebuzz`;
+  const furl        = `${appOrigin}/api/billing/easebuzz`;
   const hash        = buildInitiateHash(KEY, txnid, amount, productinfo, firstname, email, udf1, udf2, SALT);
 
   const body = new URLSearchParams({
@@ -106,7 +108,8 @@ export async function createEasebuzzBillingPaymentAction(targetPlan: string): Pr
       return { error: data.error_desc ?? 'Failed to initiate payment. Please try again.' };
     }
 
-    return { accessKey: data.data, merchantKey: KEY, env: ENV };
+    const payUrl = `${PAY_BASE}pay/${data.data}`;
+    return { accessKey: data.data, merchantKey: KEY, env: ENV, payUrl };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Something went wrong. Please try again.' };
   }

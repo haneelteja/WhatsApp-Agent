@@ -86,7 +86,11 @@ const BOT_META: Record<string, { name: string; color: string; bg: string; border
   lifecycle_bot: { name: 'Lifecycle Bot', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
 };
 
-export default async function BillingPage() {
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams?: { eb?: string };
+}) {
   const supabase = await getSupabaseServerClient();
   const admin    = getSupabaseAdminClient();
 
@@ -388,6 +392,7 @@ export default async function BillingPage() {
         <UpgradePlanSection
           currentPlan={plan}
           subscriptionStatus={subscriptionStatus}
+          paymentStatus={searchParams?.eb ?? null}
         />
       )}
     </div>

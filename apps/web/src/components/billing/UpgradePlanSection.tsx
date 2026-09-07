@@ -72,30 +72,37 @@ interface Props {
   userEmail?:          string;
   userName?:           string;
   subscriptionStatus?: string | null;
+  paymentStatus?:      string | null; // 'paid' | 'failed' from ?eb= param after redirect
 }
 
 export default function UpgradePlanSection({
   currentPlan,
   subscriptionStatus,
+  paymentStatus,
 }: Props) {
   const router = useRouter();
   const [loading,      setLoading]      = useState<string | null>(null);
   const [error,        setError]        = useState<string | null>(null);
   const [success,      setSuccess]      = useState<string | null>(null);
-  const [scriptReady,  setScriptReady]  = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelPending, startCancelTransition]    = useTransition();
 
-  // Load the Easebuzz checkout script manually so it works regardless of
-  // Next.js hydration state (next/script afterInteractive can miss when
-  // hydration errors force a client-side re-render).
+  // Show result from redirect-based payment (after returning from Easebuzz hosted page)
   useEffect(() => {
-    if (window.EasebuzzCheckout) { setScriptReady(true); return; }
+    if (paymentStatus === 'paid') {
+      setSuccess('Payment successful! Your plan has been upgraded.');
+    } else if (paymentStatus === 'failed') {
+      setError('Payment failed or was cancelled. Please try again.');
+    }
+  }, [paymentStatus]);
+
+  // Try to load the Easebuzz SDK for the popup experience.
+  // If it fails (e.g. blocked by an ad blocker), the redirect flow is used instead.
+  useEffect(() => {
+    if (window.EasebuzzCheckout) return;
     const script = document.createElement('script');
     script.src = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.0.0.min.js';
     script.async = true;
-    script.onload  = () => setScriptReady(true);
-    script.onerror = () => setError('Payment SDK failed to load — please refresh and try again.');
     document.head.appendChild(script);
   }, []);
 
@@ -116,33 +123,35 @@ export default function UpgradePlanSection({
         return;
       }
 
-      if (!window.EasebuzzCheckout) {
-        setError('Payment not ready — please refresh the page and try again.');
+      if (window.EasebuzzCheckout && res.merchantKey && res.env) {
+        // SDK popup — best UX, no page navigation
+        const checkout = new window.EasebuzzCheckout(res.merchantKey, res.env);
+        checkout.initiatePayment({
+          access_key: res.accessKey,
+          onResponse: async (response) => {
+            if (response['status'] === 'userCancelled') {
+              setLoading(null);
+              return;
+            }
+            const result = await verifyEasebuzzBillingPaymentAction(response);
+            if (result.error) {
+              setError(result.error);
+              setLoading(null);
+            } else {
+              const planName = planKey.charAt(0).toUpperCase() + planKey.slice(1);
+              setSuccess(`You're now on the ${planName} plan! Refreshing…`);
+              setLoading(null);
+              setTimeout(() => router.refresh(), 1500);
+            }
+          },
+        });
+      } else if (res.payUrl) {
+        // Redirect fallback — used when SDK is blocked by ad blocker
+        window.location.href = res.payUrl;
+      } else {
+        setError('Payment not available. Please refresh and try again.');
         setLoading(null);
-        return;
       }
-
-      const checkout = new window.EasebuzzCheckout(res.merchantKey!, res.env!);
-      checkout.initiatePayment({
-        access_key: res.accessKey,
-        onResponse: async (response) => {
-          if (response['status'] === 'userCancelled') {
-            setLoading(null);
-            return;
-          }
-
-          const result = await verifyEasebuzzBillingPaymentAction(response);
-          if (result.error) {
-            setError(result.error);
-            setLoading(null);
-          } else {
-            const planName = planKey.charAt(0).toUpperCase() + planKey.slice(1);
-            setSuccess(`You're now on the ${planName} plan! Refreshing…`);
-            setLoading(null);
-            setTimeout(() => router.refresh(), 1500);
-          }
-        },
-      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
       setLoading(null);
@@ -213,11 +222,11 @@ export default function UpgradePlanSection({
 
                 <button
                   onClick={() => void handleUpgrade(plan.key)}
-                  disabled={!!loading || !!success || !scriptReady}
+                  disabled={!!loading || !!success}
                   className={`mt-4 w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors ${plan.buttonBg} disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
                 >
-                  {(loading === plan.key || !scriptReady) && <Loader2 size={14} className="animate-spin" />}
-                  {loading === plan.key ? 'Opening checkout…' : !scriptReady ? 'Loading…' : `Upgrade to ${plan.name}`}
+                  {loading === plan.key && <Loader2 size={14} className="animate-spin" />}
+                  {loading === plan.key ? 'Opening checkout…' : `Upgrade to ${plan.name}`}
                 </button>
               </div>
             ))}
