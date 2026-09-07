@@ -433,5 +433,93 @@ export async function razorpayWebhookRoute(fastify: FastifyInstance): Promise<vo
         .update({ status: 'expired', webhook_received_at: new Date().toISOString() })
         .eq('id', linkEntity.reference_id);
     }
+
+    // ── Subscription lifecycle events ─────────────────────────────────────────
+    // subscription.activated — first payment succeeded, subscription is live
+    if (event.event === 'subscription.activated') {
+      const sub = event.payload.subscription?.entity;
+      if (!sub) return;
+
+      const tenantId  = sub.notes?.tenant_id;
+      const planName  = sub.notes?.target_plan;
+      if (!tenantId || !planName) return;
+
+      const nextBillingDate = sub.current_end
+        ? new Date(sub.current_end * 1000).toISOString().slice(0, 10)
+        : null;
+
+      await Promise.all([
+        db.from('tenants').update({
+          plan:                     planName,
+          status:                   'active',
+          razorpay_subscription_id: sub.id,
+          subscription_status:      'active',
+        }).eq('id', tenantId),
+        nextBillingDate
+          ? db.from('subscriptions')
+              .update({ tier: planName, next_billing_date: nextBillingDate })
+              .eq('tenant_id', tenantId)
+          : Promise.resolve(),
+      ]);
+      fastify.log.info({ tenantId, planName, subId: sub.id }, '[Razorpay] subscription activated');
+    }
+
+    // subscription.charged — recurring charge succeeded, update next billing date
+    if (event.event === 'subscription.charged') {
+      const sub = event.payload.subscription?.entity;
+      if (!sub) return;
+
+      const nextBillingDate = sub.current_end
+        ? new Date(sub.current_end * 1000).toISOString().slice(0, 10)
+        : null;
+
+      if (nextBillingDate) {
+        await db.from('subscriptions')
+          .update({ next_billing_date: nextBillingDate })
+          .eq('tenant_id', sub.notes?.tenant_id ?? '');
+      }
+
+      await db.from('tenants')
+        .update({ subscription_status: 'active' })
+        .eq('razorpay_subscription_id', sub.id);
+
+      fastify.log.info({ subId: sub.id, nextBillingDate }, '[Razorpay] subscription charged');
+    }
+
+    // subscription.cancelled — customer or admin cancelled
+    if (event.event === 'subscription.cancelled') {
+      const sub = event.payload.subscription?.entity;
+      if (!sub) return;
+
+      await db.from('tenants')
+        .update({ subscription_status: 'cancelled' })
+        .eq('razorpay_subscription_id', sub.id);
+
+      fastify.log.info({ subId: sub.id }, '[Razorpay] subscription cancelled');
+    }
+
+    // subscription.halted — payment retries exhausted, access at risk
+    if (event.event === 'subscription.halted') {
+      const sub = event.payload.subscription?.entity;
+      if (!sub) return;
+
+      await db.from('tenants')
+        .update({ subscription_status: 'halted' })
+        .eq('razorpay_subscription_id', sub.id);
+
+      fastify.log.warn({ subId: sub.id }, '[Razorpay] subscription halted — payment retries exhausted');
+    }
+
+    // subscription.pending — payment failed, Razorpay will retry
+    if (event.event === 'subscription.pending') {
+      const sub = event.payload.subscription?.entity;
+      if (!sub) return;
+
+      await db.from('tenants')
+        .update({ subscription_status: 'pending' })
+        .eq('razorpay_subscription_id', sub.id);
+
+      fastify.log.info({ subId: sub.id }, '[Razorpay] subscription pending retry');
+    }
   });
 }

@@ -85,22 +85,38 @@ export function verifyRazorpayWebhook(rawBody: string, signature: string): boole
 }
 
 // ─── Webhook event payload ────────────────────────────────────────────────────
+export interface RazorpaySubscriptionEntity {
+  id:           string;
+  plan_id:      string;
+  status:       string;
+  charge_at?:   number;   // Unix timestamp of next charge
+  current_end?: number;   // Unix timestamp of current billing cycle end
+  notes?: {
+    tenant_id?:   string;
+    target_plan?: string;
+  };
+}
+
 export interface RazorpayWebhookEvent {
   event: string;
   payload: {
     payment_link?: {
       entity: {
         id:           string;
-        reference_id: string;   // our payment UUID
-        status:       string;   // 'paid' | 'cancelled' | 'expired'
+        reference_id: string;
+        status:       string;
         amount:       number;
         amount_paid:  number;
       };
+    };
+    subscription?: {
+      entity: RazorpaySubscriptionEntity;
     };
     payment?: {
       entity: {
         id:     string;
         status: string;
+        amount?: number;
       };
     };
   };

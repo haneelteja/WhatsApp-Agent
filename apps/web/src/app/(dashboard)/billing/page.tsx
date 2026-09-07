@@ -112,7 +112,7 @@ export default async function BillingPage() {
     { count: convThisMonth },
     { data: tokenRow },
   ] = await Promise.all([
-    admin.from('tenants').select('name, plan, status').eq('id', tenantId).single(),
+    admin.from('tenants').select('name, plan, status, razorpay_subscription_id, subscription_status').eq('id', tenantId).single(),
 
     admin.from('tenant_products').select('product_type, active').eq('tenant_id', tenantId).eq('active', true),
     admin.from('subscriptions').select('product_type, tier, billing_cycle, next_billing_date').eq('tenant_id', tenantId),
@@ -122,8 +122,18 @@ export default async function BillingPage() {
     admin.from('tenant_token_usage_monthly').select('tokens_used, cost_inr_month').eq('tenant_id', tenantId).eq('month', monthDate).maybeSingle(),
   ]);
 
-  const plan = (tenant?.plan as PlanKey) ?? 'starter';
-  const meta = PLAN_META[plan] ?? PLAN_META.starter;
+  const plan               = (tenant?.plan as PlanKey) ?? 'starter';
+  const meta               = PLAN_META[plan] ?? PLAN_META.starter;
+  const subscriptionStatus = (tenant as { subscription_status?: string | null } | null)?.subscription_status ?? null;
+
+  const SUBSCRIPTION_STATUS_BADGE: Record<string, string> = {
+    active:        'bg-emerald-100 text-emerald-700',
+    pending:       'bg-amber-100 text-amber-700',
+    halted:        'bg-red-100 text-red-700',
+    cancelled:     'bg-slate-100 text-slate-500',
+    created:       'bg-sky-100 text-sky-700',
+    authenticated: 'bg-sky-100 text-sky-700',
+  };
 
   const subMap   = new Map((subs ?? []).map(s => [s.product_type, s]));
   const trialMap = new Map((trials ?? []).map(t => [t.product_slug, t]));
@@ -195,6 +205,32 @@ export default async function BillingPage() {
         </div>
       )}
 
+      {/* Subscription halted banner — payment retries exhausted */}
+      {subscriptionStatus === 'halted' && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-800">Subscription payment failed</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Razorpay was unable to collect your monthly payment after multiple attempts. Please update your payment method in Razorpay or contact support to reactivate.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription pending banner — payment retry in progress */}
+      {subscriptionStatus === 'pending' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Payment retry in progress</p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              Your subscription renewal payment failed. Razorpay will retry automatically — no action needed unless this persists.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Active trial banner */}
       {activeTrial && (
         <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 flex items-start gap-3">
@@ -214,11 +250,16 @@ export default async function BillingPage() {
       <div className={`rounded-2xl border p-6 ${meta.bg} ${meta.border}`}>
         <div className="flex items-start justify-between mb-4">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className={`text-2xl font-bold ${meta.color}`}>{meta.name}</p>
               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${meta.badgeBg} ${meta.badgeText} capitalize`}>
                 {tenant?.status ?? 'active'}
               </span>
+              {subscriptionStatus && (
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${SUBSCRIPTION_STATUS_BADGE[subscriptionStatus] ?? 'bg-slate-100 text-slate-500'}`}>
+                  {subscriptionStatus === 'active' ? 'Recurring' : subscriptionStatus}
+                </span>
+              )}
             </div>
             <p className="text-sm text-slate-500 mt-0.5">Current plan</p>
           </div>
@@ -361,6 +402,8 @@ export default async function BillingPage() {
           currentPlan={plan}
           userEmail={user?.email ?? ''}
           userName={user?.user_metadata?.full_name ?? ''}
+          razorpaySubscriptionId={(tenant as { razorpay_subscription_id?: string | null } | null)?.razorpay_subscription_id}
+          subscriptionStatus={(tenant as { subscription_status?: string | null } | null)?.subscription_status}
         />
       )}
     </div>
