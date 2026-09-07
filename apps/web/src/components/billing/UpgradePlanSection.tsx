@@ -223,7 +223,7 @@ export default function UpgradePlanSection({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-slate-700">Cancel subscription</p>
-                  <p className="text-xs text-slate-400 mt-0.5">You'll keep access until your current billing period ends.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">You&apos;ll keep access until your current billing period ends.</p>
                 </div>
                 <button
                   onClick={() => setShowCancelConfirm(true)}
