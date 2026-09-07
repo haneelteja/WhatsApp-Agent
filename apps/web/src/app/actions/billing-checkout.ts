@@ -5,179 +5,189 @@ import { revalidatePath } from 'next/cache';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession }             from '@/lib/session';
 
-const RAZORPAY_KEY_ID     = process.env['RAZORPAY_KEY_ID']          ?? '';
-const RAZORPAY_KEY_SECRET = process.env['RAZORPAY_KEY_SECRET']       ?? '';
+const KEY     = process.env['EASEBUZZ_MERCHANT_KEY'] ?? '';
+const SALT    = process.env['EASEBUZZ_SALT']          ?? '';
+const ENV     = process.env['EASEBUZZ_ENV']            ?? 'test';
+const APP_URL = process.env['NEXT_PUBLIC_APP_URL']    ?? 'https://app.alphabot.in';
 
-// Razorpay Plan IDs — created once in the Razorpay dashboard.
-// Monthly recurring: Growth = ₹2,499 | Scale = ₹4,999
-const PLAN_IDS: Record<string, string> = {
-  growth: process.env['RAZORPAY_PLAN_ID_GROWTH'] ?? '',
-  scale:  process.env['RAZORPAY_PLAN_ID_SCALE']  ?? '',
+const PAY_BASE  = ENV === 'prod' ? 'https://pay.easebuzz.in/'       : 'https://testpay.easebuzz.in/';
+const DASH_BASE = ENV === 'prod' ? 'https://dashboard.easebuzz.in/' : 'https://testdashboard.easebuzz.in/';
+
+const PLAN_AMOUNTS: Record<string, string> = {
+  growth: '2499.00',
+  scale:  '4999.00',
 };
 
-export const PLAN_PRICING: Record<string, { amountPaise: number; label: string }> = {
-  growth: { amountPaise: 249900, label: '₹2,499 / month' },
-  scale:  { amountPaise: 499900, label: '₹4,999 / month' },
+const PLAN_LABELS: Record<string, string> = {
+  growth: 'Alphabot Growth Plan',
+  scale:  'Alphabot Scale Plan',
 };
 
-function basicAuth() {
-  return 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
+function sha512hex(str: string): string {
+  return crypto.createHash('sha512').update(str).digest('hex');
 }
 
-// ── Step 1: create a Razorpay Subscription ───────────────────────────────────
-// Returns the subscription_id which the client passes to the checkout modal
-// (replaces the old order-based createPlanUpgradeOrderAction).
-export async function createRazorpaySubscriptionAction(targetPlan: string): Promise<{
-  subscriptionId?: string;
-  keyId?:          string;
-  tenantId?:       string;
-  tenantName?:     string;
-  error?:          string;
+function buildInitiateHash(
+  key: string, txnid: string, amount: string, productinfo: string,
+  firstname: string, email: string, udf1: string, udf2: string, salt: string,
+): string {
+  // udf3–udf7 empty, udf8–udf10 always empty
+  return sha512hex(
+    [key, txnid, amount, productinfo, firstname, email,
+     udf1, udf2, '', '', '', '', '', '', '', ''].join('|') + '|' + salt
+  );
+}
+
+// ── Step 1: Create Easebuzz billing payment — returns access_key for checkout SDK
+export async function createEasebuzzBillingPaymentAction(targetPlan: string): Promise<{
+  accessKey?:   string;
+  merchantKey?: string;
+  env?:         string;
+  error?:       string;
 }> {
-  const planId = PLAN_IDS[targetPlan];
-  if (!planId)               return { error: 'Plan not configured — contact support' };
-  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) return { error: 'Razorpay not configured' };
+  const amount = PLAN_AMOUNTS[targetPlan];
+  if (!amount)            return { error: 'Invalid plan' };
+  if (!KEY || !SALT)      return { error: 'Payment gateway not configured — contact support' };
 
   const session = await getSession();
-  if (!session) return { error: 'Not authenticated' };
+  if (!session)           return { error: 'Not authenticated' };
 
   const admin = getSupabaseAdminClient();
-
   const { data: tenant } = await admin
     .from('tenants')
-    .select('name, plan, razorpay_subscription_id, subscription_status')
+    .select('name, plan')
     .eq('id', session.tenantId)
     .single();
 
-  if (!tenant) return { error: 'Tenant not found' };
-  if (tenant.plan === targetPlan) return { error: 'Already on this plan' };
+  if (!tenant)                       return { error: 'Tenant not found' };
+  if (tenant.plan === targetPlan)    return { error: 'Already on this plan' };
 
-  // If there's an active subscription, cancel it before creating the new one
-  const existingSubId = (tenant as { razorpay_subscription_id?: string | null }).razorpay_subscription_id;
-  const existingStatus = (tenant as { subscription_status?: string | null }).subscription_status;
-  if (existingSubId && existingStatus === 'active') {
-    await fetch(`https://api.razorpay.com/v1/subscriptions/${existingSubId}/cancel`, {
-      method: 'POST',
-      headers: { Authorization: basicAuth(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cancel_at_cycle_end: 0 }),
-    });
-  }
+  const txnid       = crypto.randomUUID().replace(/-/g, '');
+  const productinfo = PLAN_LABELS[targetPlan] ?? `Alphabot ${targetPlan} Plan`;
+  const firstname   = (tenant.name ?? 'User').slice(0, 60);
+  const email       = session.userEmail ?? '';
+  // udf1 = tenantId, udf2 = targetPlan — embedded in hash so they're tamper-evident
+  const udf1        = session.tenantId;
+  const udf2        = targetPlan;
+  const surl        = `${APP_URL}/billing?eb=success`;
+  const furl        = `${APP_URL}/billing?eb=failed`;
+  const hash        = buildInitiateHash(KEY, txnid, amount, productinfo, firstname, email, udf1, udf2, SALT);
 
-  const res = await fetch('https://api.razorpay.com/v1/subscriptions', {
-    method: 'POST',
-    headers: { Authorization: basicAuth(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      plan_id:         planId,
-      total_count:     120,   // 10 years — effectively indefinite
-      quantity:        1,
-      customer_notify: 1,
-      notes: {
-        tenant_id:   session.tenantId,
-        target_plan: targetPlan,
-      },
-    }),
+  const body = new URLSearchParams({
+    key: KEY, txnid, amount, productinfo, firstname, email,
+    phone: '9999999999',   // required by Easebuzz; billing doesn't need SMS
+    udf1, udf2,
+    surl, furl, hash,
   });
 
-  const data = await res.json() as { id?: string; error?: { description: string } };
-  if (!res.ok || data.error) return { error: data.error?.description ?? 'Failed to create subscription' };
+  try {
+    const res  = await fetch(`${PAY_BASE}payment/initiateLink`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    body.toString(),
+    });
+    const data = await res.json() as { status: number; data?: string; error_desc?: string };
 
-  return {
-    subscriptionId: data.id,
-    keyId:          RAZORPAY_KEY_ID,
-    tenantId:       session.tenantId,
-    tenantName:     tenant.name,
-  };
+    if (!res.ok || data.status !== 1 || !data.data) {
+      return { error: data.error_desc ?? 'Failed to initiate payment. Please try again.' };
+    }
+
+    return { accessKey: data.data, merchantKey: KEY, env: ENV };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Something went wrong. Please try again.' };
+  }
 }
 
-// ── Step 2: verify payment and activate plan ─────────────────────────────────
-// targetPlan is read from Razorpay's subscription notes — never from the client.
-export async function verifySubscriptionPaymentAction(
-  razorpaySubscriptionId: string,
-  razorpayPaymentId:      string,
-  razorpaySignature:      string,
+// ── Step 2: Verify EasebuzzCheckout onResponse data + activate plan ───────────
+// callbackData is the object passed to onResponse() from the Easebuzz SDK
+export async function verifyEasebuzzBillingPaymentAction(
+  callbackData: Record<string, string>,
 ): Promise<{ success?: boolean; plan?: string; error?: string }> {
-  if (!RAZORPAY_KEY_SECRET) return { error: 'Razorpay not configured' };
+  if (!SALT || !KEY) return { error: 'Payment gateway not configured' };
 
-  // Signature for subscriptions: sha256(paymentId + "|" + subscriptionId)
-  const expected = crypto
-    .createHmac('sha256', RAZORPAY_KEY_SECRET)
-    .update(`${razorpayPaymentId}|${razorpaySubscriptionId}`)
-    .digest('hex');
+  // Reverse-hash verification (SHA-512 with reversed field order)
+  const computed = sha512hex([
+    SALT,
+    callbackData['status']      ?? '',
+    callbackData['udf10']       ?? '',
+    callbackData['udf9']        ?? '',
+    callbackData['udf8']        ?? '',
+    callbackData['udf7']        ?? '',
+    callbackData['udf6']        ?? '',
+    callbackData['udf5']        ?? '',
+    callbackData['udf4']        ?? '',
+    callbackData['udf3']        ?? '',
+    callbackData['udf2']        ?? '',
+    callbackData['udf1']        ?? '',
+    callbackData['email']       ?? '',
+    callbackData['firstname']   ?? '',
+    callbackData['productinfo'] ?? '',
+    callbackData['amount']      ?? '',
+    callbackData['txnid']       ?? '',
+    callbackData['key']         ?? '',
+  ].join('|'));
 
-  if (expected !== razorpaySignature) return { error: 'Payment verification failed — invalid signature' };
+  const received  = callbackData['hash'] ?? '';
+  const hashValid = computed.length === received.length &&
+    crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(received));
 
-  // Fetch subscription to read notes.target_plan (prevents client-side escalation)
-  const subRes = await fetch(`https://api.razorpay.com/v1/subscriptions/${razorpaySubscriptionId}`, {
-    headers: { Authorization: basicAuth() },
-  });
-  if (!subRes.ok) return { error: 'Could not verify subscription with Razorpay' };
+  if (!hashValid)                               return { error: 'Payment verification failed — invalid signature' };
+  if (callbackData['status'] !== 'success')     return { error: 'Payment was not completed' };
 
-  const subData = await subRes.json() as {
-    notes?:       { tenant_id?: string; target_plan?: string };
-    status?:      string;
-    current_end?: number;
-  };
+  // udf1/udf2 are hash-verified so they can't be forged
+  const tenantId   = callbackData['udf1'] ?? '';
+  const targetPlan = callbackData['udf2'] ?? '';
+  const txnid      = callbackData['txnid'] ?? '';
 
-  const targetPlan    = subData.notes?.target_plan;
-  const subTenantId   = subData.notes?.tenant_id;
-  if (!targetPlan || !PLAN_PRICING[targetPlan]) return { error: 'Invalid plan in subscription' };
+  if (!targetPlan || !PLAN_AMOUNTS[targetPlan]) return { error: 'Invalid plan in payment data' };
 
   const session = await getSession();
-  if (!session) return { error: 'Not authenticated' };
-  if (subTenantId && subTenantId !== session.tenantId) return { error: 'Subscription does not belong to your account' };
+  if (!session)                                 return { error: 'Not authenticated' };
+  if (tenantId && tenantId !== session.tenantId) return { error: 'Payment does not belong to your account' };
+
+  // Authoritative server-side confirmation — fail open if API is unreachable
+  try {
+    const hash      = sha512hex(`${KEY}|${txnid}|${SALT}`);
+    const verifyBody = new URLSearchParams({ key: KEY, txnid, hash });
+    const verRes    = await fetch(`${DASH_BASE}transaction/v2/retrieve`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    verifyBody.toString(),
+    });
+    const verData = await verRes.json() as { status: number; data?: { status?: string } };
+    if (verRes.ok && verData.status === 1 && verData.data?.status !== 'success') {
+      return { error: 'Payment not confirmed by Easebuzz — please contact support if amount was deducted' };
+    }
+  } catch {
+    // Network error — hash is already verified above, proceed
+  }
+
+  // Plan expiry: 30 days from today
+  const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const admin = getSupabaseAdminClient();
-
-  const nextBillingDate = subData.current_end
-    ? new Date(subData.current_end * 1000).toISOString().slice(0, 10)
-    : null;
-
   await Promise.all([
     admin.from('tenants').update({
-      plan:                     targetPlan,
-      status:                   'active',
-      razorpay_subscription_id: razorpaySubscriptionId,
-      subscription_status:      'active',
+      plan:                targetPlan,
+      status:              'active',
+      subscription_status: 'active',
     }).eq('id', session.tenantId),
-    nextBillingDate
-      ? admin.from('subscriptions')
-          .update({ tier: targetPlan, next_billing_date: nextBillingDate })
-          .eq('tenant_id', session.tenantId)
-      : Promise.resolve(),
+    admin.from('subscriptions')
+      .update({ tier: targetPlan, next_billing_date: planExpiresAt })
+      .eq('tenant_id', session.tenantId),
   ]);
 
   revalidatePath('/billing');
   return { success: true, plan: targetPlan };
 }
 
-// ── Cancel subscription at end of current billing cycle ──────────────────────
-export async function cancelSubscriptionAction(): Promise<{ success?: boolean; error?: string }> {
-  if (!RAZORPAY_KEY_SECRET) return { error: 'Razorpay not configured' };
-
+// ── Cancel plan locally — no Easebuzz API call needed ────────────────────────
+// Plan access continues until next_billing_date; cron job handles expiry.
+export async function cancelPlanAction(): Promise<{ success?: boolean; error?: string }> {
   const session = await getSession();
   if (!session) return { error: 'Not authenticated' };
 
   const admin = getSupabaseAdminClient();
-  const { data: tenant } = await admin
-    .from('tenants')
-    .select('razorpay_subscription_id, subscription_status')
-    .eq('id', session.tenantId)
-    .single();
-
-  const subId = (tenant as { razorpay_subscription_id?: string | null } | null)?.razorpay_subscription_id;
-  if (!subId) return { error: 'No active subscription found' };
-
-  const res = await fetch(`https://api.razorpay.com/v1/subscriptions/${subId}/cancel`, {
-    method: 'POST',
-    headers: { Authorization: basicAuth(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cancel_at_cycle_end: 1 }),  // cancels at period end, not immediately
-  });
-
-  if (!res.ok) {
-    const err = await res.json() as { error?: { description: string } };
-    return { error: err.error?.description ?? 'Failed to cancel subscription' };
-  }
-
   await admin.from('tenants')
     .update({ subscription_status: 'cancelled' })
     .eq('id', session.tenantId);

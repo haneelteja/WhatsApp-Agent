@@ -205,27 +205,14 @@ export default async function BillingPage() {
         </div>
       )}
 
-      {/* Subscription halted banner — payment retries exhausted */}
-      {subscriptionStatus === 'halted' && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
-          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-red-800">Subscription payment failed</p>
-            <p className="text-xs text-red-600 mt-0.5">
-              Razorpay was unable to collect your monthly payment after multiple attempts. Please update your payment method in Razorpay or contact support to reactivate.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Subscription pending banner — payment retry in progress */}
-      {subscriptionStatus === 'pending' && (
+      {/* Subscription cancelled banner */}
+      {subscriptionStatus === 'cancelled' && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
           <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-amber-800">Payment retry in progress</p>
+            <p className="text-sm font-semibold text-amber-800">Subscription cancelled</p>
             <p className="text-xs text-amber-600 mt-0.5">
-              Your subscription renewal payment failed. Razorpay will retry automatically — no action needed unless this persists.
+              Your subscription has been cancelled. You can continue using your plan until the billing period ends — upgrade again anytime below.
             </p>
           </div>
         </div>
@@ -257,7 +244,7 @@ export default async function BillingPage() {
               </span>
               {subscriptionStatus && (
                 <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${SUBSCRIPTION_STATUS_BADGE[subscriptionStatus] ?? 'bg-slate-100 text-slate-500'}`}>
-                  {subscriptionStatus === 'active' ? 'Recurring' : subscriptionStatus}
+                  {subscriptionStatus === 'active' ? 'Paid' : subscriptionStatus}
                 </span>
               )}
             </div>
@@ -400,10 +387,7 @@ export default async function BillingPage() {
       {!isSuspended && (
         <UpgradePlanSection
           currentPlan={plan}
-          userEmail={user?.email ?? ''}
-          userName={user?.user_metadata?.full_name ?? ''}
-          razorpaySubscriptionId={(tenant as { razorpay_subscription_id?: string | null } | null)?.razorpay_subscription_id}
-          subscriptionStatus={(tenant as { subscription_status?: string | null } | null)?.subscription_status}
+          subscriptionStatus={subscriptionStatus}
         />
       )}
     </div>

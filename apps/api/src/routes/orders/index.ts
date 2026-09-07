@@ -10,6 +10,10 @@ import {
   verifyPhonePeWebhook,
   parsePhonePeWebhook,
 } from '../../services/payment/phonepe.js';
+import {
+  createEasebuzzPaymentLink,
+  verifyEasebuzzCallback,
+} from '../../services/payment/easebuzz.js';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { generateAndSendInvoice } from '../../services/invoice/generator.js';
 import type { WhatsAppProvider } from '@alphabot/shared';
@@ -27,10 +31,10 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     items:          Array<{ name: string; quantity: number; price: number; sku?: string }>;
     total:          number;
     sendLink?:      boolean;
-    provider?:      'razorpay' | 'phonepe';
+    provider?:      'easebuzz' | 'razorpay' | 'phonepe';
   } }>('/', async (request, reply) => {
     const tenantId = request.tenantId;
-    const { contactId, conversationId, items, total, sendLink = true, provider = 'razorpay' } = request.body;
+    const { contactId, conversationId, items, total, sendLink = true, provider = 'easebuzz' } = request.body;
 
     if (!contactId || !conversationId || !items?.length || !total) {
       return reply.status(400).send({ error: 'Missing required fields' });
@@ -76,7 +80,21 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     let paymentRef: string | null = null;
     let providerError: string | undefined;
 
-    if (provider === 'phonepe') {
+    if (provider === 'easebuzz') {
+      const result = await createEasebuzzPaymentLink({
+        paymentId:    payment.id,
+        contactPhone: contact.phone,
+        contactName:  contact.name ?? null,
+        amountRupees: total,
+        description:  `Order #${order.id.slice(0, 8)} — Elma Industries`,
+      });
+      if (result.success && result.linkUrl) {
+        linkUrl    = result.linkUrl;
+        paymentRef = result.paymentRef ?? null;
+      } else {
+        providerError = result.error;
+      }
+    } else if (provider === 'phonepe') {
       const result = await createPhonePePaymentLink({
         paymentId:    payment.id,
         contactId,
@@ -91,7 +109,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       } else {
         providerError = result.error;
       }
-    } else {
+    } else if (provider === 'razorpay') {
       const result = await createRazorpayPaymentLink({
         paymentId:    payment.id,
         contactPhone: contact.phone,
@@ -267,6 +285,77 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     } catch (err) {
       fastify.log.error({ err }, '[Invoice] Generation failed');
       return reply.status(500).send({ error: (err as Error).message });
+    }
+  });
+}
+
+// ─── Easebuzz callback (surl + furl) ─────────────────────────────────────────
+export async function easebuzzCallbackRoute(fastify: FastifyInstance): Promise<void> {
+  const db = getServerClient();
+
+  fastify.post('/easebuzz/callback', async (request, reply) => {
+    reply.status(200).send('');
+
+    const body = request.body as Record<string, string>;
+
+    if (!verifyEasebuzzCallback(body)) {
+      fastify.log.warn({ txnid: body['txnid'] }, '[Easebuzz] Callback hash verification failed');
+      return;
+    }
+
+    const txnid  = body['txnid']  ?? '';
+    const status = body['status'] ?? '';
+
+    fastify.log.info({ txnid, status }, '[Easebuzz] Callback received');
+
+    if (status === 'success') {
+      const { data: payment } = await db
+        .from('payments')
+        .update({ status: 'paid', webhook_received_at: new Date().toISOString() })
+        .eq('id', txnid)
+        .select('order_id')
+        .single();
+
+      if (!payment) return;
+
+      await db.from('orders')
+        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+        .eq('id', payment.order_id);
+
+      const { data: order } = await db
+        .from('orders')
+        .select('tenant_id, total, contact:contacts(phone)')
+        .eq('id', payment.order_id)
+        .single();
+
+      if (order) {
+        const tenantId = (order as unknown as { tenant_id: string }).tenant_id;
+        const contact  = (order as unknown as { contact: { phone: string } }).contact;
+
+        const { data: wn } = await db
+          .from('whatsapp_numbers')
+          .select('config_json, provider')
+          .eq('tenant_id', tenantId)
+          .eq('product_slug', 'lifecycle_bot')
+          .eq('active', true)
+          .maybeSingle();
+
+        if (wn && contact?.phone) {
+          const config  = wn.config_json as { phone_number_id: string; access_token: string };
+          const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
+          await gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text',
+            to:   contact.phone,
+            text: `✅ *Payment Received!*\n\nThank you! Your payment of ₹${(order as { total: number }).total.toFixed(2)} is confirmed.\n\nYour order is being processed. We'll keep you updated! 🎉`,
+          });
+        }
+      }
+    }
+
+    if (status === 'failure' || status === 'userCancelled') {
+      await db.from('payments')
+        .update({ status: 'failed', webhook_received_at: new Date().toISOString() })
+        .eq('id', txnid);
     }
   });
 }

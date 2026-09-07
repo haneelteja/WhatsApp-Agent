@@ -4,45 +4,35 @@ import { useState, useTransition } from 'react';
 import Script from 'next/script';
 import { Check, Zap, Star, CheckCircle, Loader2, XCircle, AlertTriangle } from 'lucide-react';
 import {
-  createRazorpaySubscriptionAction,
-  verifySubscriptionPaymentAction,
-  cancelSubscriptionAction,
+  createEasebuzzBillingPaymentAction,
+  verifyEasebuzzBillingPaymentAction,
+  cancelPlanAction,
 } from '@/app/actions/billing-checkout';
 import { useRouter } from 'next/navigation';
 
 declare global {
   interface Window {
-    Razorpay: new (options: RazorpayOptions) => { open(): void };
+    EasebuzzCheckout: new (merchantKey: string, env: string) => {
+      initiatePayment: (options: {
+        access_key: string;
+        onResponse: (response: Record<string, string>) => void;
+      }) => void;
+    };
   }
-}
-
-interface RazorpayOptions {
-  key:             string;
-  subscription_id: string;
-  name:            string;
-  description:     string;
-  handler:         (response: {
-    razorpay_payment_id:      string;
-    razorpay_subscription_id: string;
-    razorpay_signature:       string;
-  }) => void;
-  prefill?: { name?: string; email?: string };
-  theme?:   { color: string };
-  modal?:   { ondismiss?: () => void };
 }
 
 const PLANS = [
   {
-    key:       'growth',
-    name:      'Growth',
-    price:     '₹2,499',
-    period:    '/month',
-    color:     'text-violet-700',
-    bg:        'bg-violet-50',
-    border:    'border-violet-200',
-    buttonBg:  'bg-violet-600 hover:bg-violet-700',
-    icon:      <Star size={16} className="text-violet-500" />,
-    features:  [
+    key:      'growth',
+    name:     'Growth',
+    price:    '₹2,499',
+    period:   '/month',
+    color:    'text-violet-700',
+    bg:       'bg-violet-50',
+    border:   'border-violet-200',
+    buttonBg: 'bg-violet-600 hover:bg-violet-700',
+    icon:     <Star size={16} className="text-violet-500" />,
+    features: [
       '2 active bots',
       '2,000 conversations / month',
       'Advanced guardrails',
@@ -54,16 +44,16 @@ const PLANS = [
     ],
   },
   {
-    key:       'scale',
-    name:      'Scale',
-    price:     '₹4,999',
-    period:    '/month',
-    color:     'text-emerald-700',
-    bg:        'bg-emerald-50',
-    border:    'border-emerald-200',
-    buttonBg:  'bg-emerald-600 hover:bg-emerald-700',
-    icon:      <Zap size={16} className="text-emerald-500" />,
-    features:  [
+    key:      'scale',
+    name:     'Scale',
+    price:    '₹4,999',
+    period:   '/month',
+    color:    'text-emerald-700',
+    bg:       'bg-emerald-50',
+    border:   'border-emerald-200',
+    buttonBg: 'bg-emerald-600 hover:bg-emerald-700',
+    icon:     <Zap size={16} className="text-emerald-500" />,
+    features: [
       'All 3 bots',
       'Unlimited conversations',
       'Full guardrails suite',
@@ -79,18 +69,14 @@ const PLANS = [
 const PLAN_ORDER = ['starter', 'growth', 'scale'];
 
 interface Props {
-  currentPlan:             string;
-  userEmail:               string;
-  userName:                string;
-  razorpaySubscriptionId?: string | null;
-  subscriptionStatus?:     string | null;
+  currentPlan:         string;
+  userEmail?:          string;
+  userName?:           string;
+  subscriptionStatus?: string | null;
 }
 
 export default function UpgradePlanSection({
   currentPlan,
-  userEmail,
-  userName,
-  razorpaySubscriptionId,
   subscriptionStatus,
 }: Props) {
   const router = useRouter();
@@ -98,12 +84,11 @@ export default function UpgradePlanSection({
   const [error,    setError]    = useState<string | null>(null);
   const [success,  setSuccess]  = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [cancelPending, startCancelTransition] = useTransition();
+  const [cancelPending, startCancelTransition]    = useTransition();
 
   const currentIdx   = PLAN_ORDER.indexOf(currentPlan);
   const upgradePlans = PLANS.filter(p => PLAN_ORDER.indexOf(p.key) > currentIdx);
-
-  const hasActiveSub = !!razorpaySubscriptionId && subscriptionStatus === 'active';
+  const hasActiveSub = subscriptionStatus === 'active';
 
   async function handleUpgrade(planKey: string) {
     setError(null);
@@ -111,35 +96,29 @@ export default function UpgradePlanSection({
     setLoading(planKey);
 
     try {
-      const sub = await createRazorpaySubscriptionAction(planKey);
-      if (sub.error || !sub.subscriptionId) {
-        setError(sub.error ?? 'Failed to initiate upgrade. Please try again.');
+      const res = await createEasebuzzBillingPaymentAction(planKey);
+      if (res.error || !res.accessKey) {
+        setError(res.error ?? 'Failed to initiate upgrade. Please try again.');
         setLoading(null);
         return;
       }
 
-      if (!window.Razorpay) {
+      if (!window.EasebuzzCheckout) {
         setError('Payment not ready — please refresh the page and try again.');
         setLoading(null);
         return;
       }
 
-      const rzp = new window.Razorpay({
-        key:             sub.keyId!,
-        subscription_id: sub.subscriptionId,
-        name:            'Alphabot',
-        description:     `${planKey.charAt(0).toUpperCase() + planKey.slice(1)} Plan — recurring monthly`,
-        prefill:         { name: userName, email: userEmail },
-        theme:           { color: '#059669' },
-        modal: {
-          ondismiss: () => setLoading(null),
-        },
-        handler: async (response) => {
-          const result = await verifySubscriptionPaymentAction(
-            response.razorpay_subscription_id,
-            response.razorpay_payment_id,
-            response.razorpay_signature,
-          );
+      const checkout = new window.EasebuzzCheckout(res.merchantKey!, res.env!);
+      checkout.initiatePayment({
+        access_key: res.accessKey,
+        onResponse: async (response) => {
+          if (response['status'] === 'userCancelled') {
+            setLoading(null);
+            return;
+          }
+
+          const result = await verifyEasebuzzBillingPaymentAction(response);
           if (result.error) {
             setError(result.error);
             setLoading(null);
@@ -151,8 +130,6 @@ export default function UpgradePlanSection({
           }
         },
       });
-
-      rzp.open();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
       setLoading(null);
@@ -162,13 +139,13 @@ export default function UpgradePlanSection({
   function handleCancel() {
     setError(null);
     startCancelTransition(async () => {
-      const result = await cancelSubscriptionAction();
+      const result = await cancelPlanAction();
       if (result.error) {
         setError(result.error);
         setShowCancelConfirm(false);
       } else {
         setShowCancelConfirm(false);
-        setSuccess('Subscription cancelled — you'll keep access until the end of your billing period.');
+        setSuccess('Subscription cancelled — you\'ll keep access until your billing period ends.');
         setTimeout(() => router.refresh(), 2000);
       }
     });
@@ -176,16 +153,18 @@ export default function UpgradePlanSection({
 
   return (
     <>
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
+      <Script
+        src="https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.0.0.min.js"
+        strategy="afterInteractive"
+      />
 
       <div className="space-y-4">
-        {/* Section header */}
         <div>
           <p className="text-sm font-semibold text-gray-700">
             {upgradePlans.length > 0 ? 'Upgrade Your Plan' : 'Manage Subscription'}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Monthly recurring billing via Razorpay. Cancel anytime — access continues until your billing period ends.
+            Pay monthly via Easebuzz. Cancel anytime — access continues until your billing period ends.
           </p>
         </div>
 
@@ -203,7 +182,6 @@ export default function UpgradePlanSection({
           </div>
         )}
 
-        {/* Plan cards */}
         {upgradePlans.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {upgradePlans.map(plan => (
@@ -239,7 +217,6 @@ export default function UpgradePlanSection({
           </div>
         )}
 
-        {/* Cancel subscription — only shown when there's an active Razorpay subscription */}
         {hasActiveSub && (
           <div className="border border-slate-200 rounded-xl p-4 bg-white">
             {!showCancelConfirm ? (
