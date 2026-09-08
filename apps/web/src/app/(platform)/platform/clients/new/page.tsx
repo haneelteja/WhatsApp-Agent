@@ -164,17 +164,19 @@ export default function NewClientPage() {
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
-        <button
-          type="button"
-          onClick={() => (step > 0 ? setStep(s => s - 1) : undefined)}
-          className="text-slate-400 hover:text-slate-600 transition-colors"
-        >
-          {step === 0 ? (
-            <Link href="/platform/clients"><ArrowLeft size={18} /></Link>
-          ) : (
+        {step === 0 ? (
+          <Link href="/platform/clients" className="text-slate-400 hover:text-slate-600 transition-colors">
             <ArrowLeft size={18} />
-          )}
-        </button>
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setStep(s => s - 1)}
+            className="text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <ArrowLeft size={18} />
+          </button>
+        )}
         <div>
           <h2 className="text-xl font-bold text-slate-900">Add New Client</h2>
           <p className="text-sm text-slate-500 mt-0.5">Onboard a new client onto the Alphabot platform</p>

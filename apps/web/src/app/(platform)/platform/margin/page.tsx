@@ -52,14 +52,14 @@ export default async function PlatformMarginPage() {
   // Build per-tenant cost maps
   const llmCostMap = new Map<string, number>();
   for (const row of tokenUsage ?? []) {
-    llmCostMap.set(row.tenant_id, parseFloat((row.cost_inr_month as string | number | null) as string ?? '0'));
+    llmCostMap.set(row.tenant_id, Number(row.cost_inr_month ?? 0));
   }
 
   const voiceCostMap = new Map<string, number>();
   for (const call of voiceCalls ?? []) {
     voiceCostMap.set(
       call.tenant_id,
-      (voiceCostMap.get(call.tenant_id) ?? 0) + parseFloat(call.cost_rupees ?? '0'),
+      (voiceCostMap.get(call.tenant_id) ?? 0) + Number(call.cost_rupees ?? 0),
     );
   }
 

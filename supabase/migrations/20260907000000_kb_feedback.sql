@@ -26,21 +26,21 @@ ALTER TABLE kb_feedback ENABLE ROW LEVEL SECURITY;
 CREATE POLICY kb_feedback_tenant_select ON kb_feedback
   FOR SELECT USING (
     tenant_id IN (
-      SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()
+      SELECT tenant_id FROM tenant_users WHERE user_id = auth.uid()
     )
   );
 
 CREATE POLICY kb_feedback_tenant_insert ON kb_feedback
   FOR INSERT WITH CHECK (
     tenant_id IN (
-      SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()
+      SELECT tenant_id FROM tenant_users WHERE user_id = auth.uid()
     )
   );
 
 CREATE POLICY kb_feedback_tenant_update ON kb_feedback
   FOR UPDATE USING (
     tenant_id IN (
-      SELECT tenant_id FROM user_tenants WHERE user_id = auth.uid()
+      SELECT tenant_id FROM tenant_users WHERE user_id = auth.uid()
     )
   );
 
