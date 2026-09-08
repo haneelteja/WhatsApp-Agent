@@ -16,8 +16,8 @@ const CopilotWidget = dynamic(
 // any child server components share one DB round-trip instead of making N.
 const getTenantContext = cache(async () => {
   const supabase = await getSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) return null;
 
   const admin = getSupabaseAdminClient();
   const { data: tenantUser } = await admin
@@ -99,7 +99,7 @@ export default async function DashboardLayout({
 
   // Skip the 30-row message fetch entirely when copilot is disabled.
   const historyRows = ctx.copilotEnabled
-    ? await getCopilotHistory(ctx.user.id, ctx.tenantId)
+    ? await getCopilotHistory(ctx.user.id, ctx.tenantId).catch(() => [])
     : [];
 
   const initialMessages: CopilotMessage[] = (historyRows as Array<{
