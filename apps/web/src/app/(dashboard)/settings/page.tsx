@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
-import { BotProductsSection }    from '@/components/dashboard/BotProductsSection';
 import { WhatsAppNumbersManager} from '@/components/dashboard/WhatsAppNumbersManager';
 import { TeamInviteForm }        from '@/components/dashboard/TeamInviteForm';
 import { removeTeamMemberAction } from '@/app/actions/tenant-team';
@@ -189,23 +188,6 @@ export default async function SettingsPage({
 
           <DashboardCollapsibleSection icon={<ShieldOff size={16} />} title="Internal Team Numbers" hint="Messages from these numbers are silently ignored — no bot reply, no lead created. Add your team members' WhatsApp numbers here so internal tests don't appear as leads.">
             <InternalNumbersManager initialNumbers={internalNumbers} />
-          </DashboardCollapsibleSection>
-
-          <DashboardCollapsibleSection icon={<Bot size={16} />} title="Bot Products" hint="Manage your active bots, assign phone numbers, and configure each bot individually.">
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-600">
-                  {(products as { active: boolean }[]).filter(p => p.active).length} bot{(products as { active: boolean }[]).filter(p => p.active).length !== 1 ? 's' : ''} active
-                </p>
-                <p className="text-xs text-slate-400 mt-0.5">Configure bots, assign numbers, and set your primary bot in the Bots tab.</p>
-              </div>
-              <Link
-                href="/settings?tab=bots"
-                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
-              >
-                Manage Bots <ChevronRight size={12} />
-              </Link>
-            </div>
           </DashboardCollapsibleSection>
 
           {activeBots.length > 0 && (
