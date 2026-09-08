@@ -131,15 +131,15 @@ export default async function SettingsPage({
     products = (productsRes.data ?? []) as Record<string, unknown>[];
 
     const activeBots = products.filter(p => p['active']);
+    const tenantWebhookUrl = tenant?.['id'] ? `${apiBase}/api/webhook/${tenant['id']}` : '';
     const botWebhooks = activeBots.map(p => {
       const wn     = numbers!.find(n => n['product_slug'] === p['product_type']);
       const config = ((wn?.['config_json'] ?? {}) as Record<string, string>);
       return {
-        productType:  p['product_type'] as string,
-        webhookUrl:   tenant?.['id'] ? `${apiBase}/api/webhook/${tenant['id']}/${p['product_type']}` : '',
-        verifyToken:  config['verify_token'] ?? null,
-        phoneNumber:  (wn?.['phone_number'] as string | undefined) ?? null,
-        configured:   !!wn,
+        productType: p['product_type'] as string,
+        verifyToken: config['verify_token'] ?? null,
+        phoneNumber: (wn?.['phone_number'] as string | undefined) ?? null,
+        configured:  !!wn,
       };
     });
 
@@ -187,7 +187,7 @@ export default async function SettingsPage({
           {activeBots.length > 0 && (
             <DashboardCollapsibleSection icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup" hint="Paste the Webhook URL and Verify Token into your Meta App Dashboard under WhatsApp → Configuration to activate message delivery.">
               <div className="px-5 py-4">
-                <WhatsAppSetupSection bots={botWebhooks} />
+                <WhatsAppSetupSection tenantWebhookUrl={tenantWebhookUrl} bots={botWebhooks} />
               </div>
             </DashboardCollapsibleSection>
           )}

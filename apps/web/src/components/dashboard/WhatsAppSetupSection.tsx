@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Check, Link2, ExternalLink } from 'lucide-react';
+import { Copy, Check, ExternalLink } from 'lucide-react';
 
 const BOT_META: Record<string, { name: string; color: string; bg: string }> = {
   support_bot:   { name: 'Support Bot',   color: 'text-sky-600',    bg: 'bg-sky-50'    },
@@ -11,10 +11,14 @@ const BOT_META: Record<string, { name: string; color: string; bg: string }> = {
 
 interface BotWebhookInfo {
   productType: string;
-  webhookUrl: string;
   verifyToken: string | null;
   phoneNumber: string | null;
   configured: boolean;
+}
+
+interface Props {
+  tenantWebhookUrl: string;
+  bots: BotWebhookInfo[];
 }
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -52,7 +56,7 @@ function CodeRow({ label, value, placeholder }: { label: string; value: string |
   );
 }
 
-export function WhatsAppSetupSection({ bots }: { bots: BotWebhookInfo[] }) {
+export function WhatsAppSetupSection({ tenantWebhookUrl, bots }: Props) {
   return (
     <div className="space-y-4">
       {/* Meta setup steps */}
@@ -65,7 +69,7 @@ export function WhatsAppSetupSection({ bots }: { bots: BotWebhookInfo[] }) {
           {[
             'Go to developers.facebook.com → Your App → WhatsApp → Configuration',
             'Under "Webhook", click Edit and paste the Callback URL below',
-            'Paste the Verify Token and click Verify & Save',
+            'Paste the Verify Token for your number and click Verify & Save',
             'Under "Webhook fields", subscribe to the messages field',
             'Assign your Phone Number ID to the app and get a permanent access token',
           ].map((step, i) => (
@@ -77,7 +81,17 @@ export function WhatsAppSetupSection({ bots }: { bots: BotWebhookInfo[] }) {
         </ol>
       </div>
 
-      {/* Per-bot webhook cards */}
+      {/* Single shared callback URL */}
+      <div className="border border-emerald-200 rounded-xl p-4 space-y-3 bg-emerald-50/40">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-slate-700">Callback URL (all bots)</p>
+          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Shared</span>
+        </div>
+        <p className="text-[11px] text-slate-500">Use this single URL for all your bots. Messages are routed to the correct bot automatically based on the Phone Number ID.</p>
+        <CodeRow label="Callback URL (Webhook)" value={tenantWebhookUrl} />
+      </div>
+
+      {/* Per-bot verify tokens */}
       {bots.map(bot => {
         const meta = BOT_META[bot.productType];
         return (
@@ -93,7 +107,6 @@ export function WhatsAppSetupSection({ bots }: { bots: BotWebhookInfo[] }) {
               )}
             </div>
 
-            <CodeRow label="Callback URL (Webhook)" value={bot.webhookUrl} />
             <CodeRow
               label="Verify Token"
               value={bot.verifyToken}
