@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Send, Clock, Users, Tag, ChevronDown, ChevronUp, AlertCircle, ImageIcon, FileText, X } from 'lucide-react';
+import { useRef } from 'react';
+import { Send, Clock, AlertCircle, ImageIcon, FileText, X, Upload, Loader2 } from 'lucide-react';
 import { createBroadcast } from '@/app/actions/broadcasts';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type GroupOption = { id: string; name: string; color: string; emoji: string };
 
@@ -30,7 +32,12 @@ export function BroadcastCreateForm({
   const [scheduledAt,  setScheduledAt]  = useState('');
   const [mediaUrl,     setMediaUrl]     = useState('');
   const [mediaType,    setMediaType]    = useState<'image' | 'document'>('image');
+  const [mediaName,    setMediaName]    = useState('');
   const [showMedia,    setShowMedia]    = useState(false);
+  const [uploading,    setUploading]    = useState(false);
+  const [uploadError,  setUploadError]  = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const supabase     = getSupabaseBrowserClient();
   const [error,        setError]        = useState<string | null>(null);
   const [success,      setSuccess]      = useState(false);
   const [pending,      startTransition] = useTransition();
@@ -42,6 +49,54 @@ export function BroadcastCreateForm({
     setSelectedGrps(prev =>
       prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id],
     );
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/');
+    const isPdf   = file.type === 'application/pdf';
+    if (!isImage && !isPdf) {
+      setUploadError('Only images (JPG, PNG, GIF, WebP) and PDF documents are supported.');
+      return;
+    }
+
+    setUploadError('');
+    setUploading(true);
+    setMediaUrl('');
+    setMediaName('');
+    setMediaType(isImage ? 'image' : 'document');
+
+    try {
+      const ext  = file.name.split('.').pop() ?? 'bin';
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { data, error: uploadErr } = await supabase.storage
+        .from('broadcast-media')
+        .upload(path, file, { contentType: file.type, upsert: false });
+
+      if (uploadErr ?? !data) throw uploadErr ?? new Error('Upload failed');
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('broadcast-media')
+        .getPublicUrl(data.path);
+
+      setMediaUrl(publicUrl);
+      setMediaName(file.name);
+    } catch {
+      setUploadError('Upload failed — please try again.');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  function clearMedia() {
+    setMediaUrl('');
+    setMediaName('');
+    setUploadError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   function handleSubmit() {
@@ -115,7 +170,7 @@ export function BroadcastCreateForm({
       <div>
         <button
           type="button"
-          onClick={() => { setShowMedia(v => !v); setMediaUrl(''); }}
+          onClick={() => { setShowMedia(v => !v); clearMedia(); }}
           className="flex items-center gap-2 text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
         >
           {showMedia ? <X size={13} /> : <ImageIcon size={13} />}
@@ -124,38 +179,55 @@ export function BroadcastCreateForm({
 
         {showMedia && (
           <div className="mt-3 space-y-3 border border-emerald-100 bg-emerald-50/40 rounded-xl p-4">
-            <div className="flex gap-2">
-              {(['image', 'document'] as const).map(t => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setMediaType(t)}
-                  className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all ${
-                    mediaType === t
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
-                  }`}
-                >
-                  {t === 'image' ? <ImageIcon size={12} /> : <FileText size={12} />}
-                  {t === 'image' ? 'Image' : 'Document'}
-                </button>
-              ))}
-            </div>
+            {/* Hidden file input */}
             <input
-              value={mediaUrl}
-              onChange={e => { setMediaUrl(e.target.value); setError(null); }}
-              placeholder={mediaType === 'image'
-                ? 'https://example.com/offer-banner.jpg'
-                : 'https://example.com/brochure.pdf'}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-300 placeholder:text-gray-300"
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              className="hidden"
+              onChange={handleFileSelect}
             />
-            <p className="text-[10px] text-gray-400">
-              Paste a publicly accessible URL. The message text will appear as the caption below the {mediaType}.
-            </p>
-            {mediaUrl && mediaType === 'image' && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={mediaUrl} alt="Preview" className="max-h-40 rounded-lg border border-emerald-200 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
+
+            {/* Uploaded file preview */}
+            {mediaUrl ? (
+              <div className="flex items-start gap-3">
+                {mediaType === 'image' ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={mediaUrl} alt="Preview" className="h-24 w-auto rounded-lg border border-emerald-200 object-contain bg-white" />
+                ) : (
+                  <div className="flex items-center gap-2 bg-white border border-emerald-200 rounded-lg px-3 py-2">
+                    <FileText size={18} className="text-emerald-600 shrink-0" />
+                    <span className="text-xs text-gray-700 font-medium truncate max-w-[180px]">{mediaName}</span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={clearMedia}
+                  className="text-[10px] font-semibold text-red-400 hover:text-red-600 transition-colors mt-0.5"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              /* Upload button */
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-2.5 w-full justify-center border-2 border-dashed border-emerald-200 rounded-xl py-5 text-sm text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 transition-all disabled:opacity-60"
+              >
+                {uploading
+                  ? <><Loader2 size={15} className="animate-spin" /> Uploading…</>
+                  : <><Upload size={15} /> Click to upload image or PDF</>}
+              </button>
             )}
+
+            {uploadError && (
+              <p className="text-[11px] text-red-500">{uploadError}</p>
+            )}
+            <p className="text-[10px] text-gray-400">
+              JPG, PNG, GIF, WebP or PDF · Max 10 MB · The message text becomes the caption.
+            </p>
           </div>
         )}
       </div>
