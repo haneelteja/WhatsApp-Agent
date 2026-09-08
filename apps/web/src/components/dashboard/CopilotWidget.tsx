@@ -83,7 +83,7 @@ function MessageBubble({ msg, onAction }: { msg: CopilotMessage; onAction: (m: C
 
   const parts = parseContent(msg.content);
   const textParts = parts.filter(p => p.kind === 'text').map(p => p.content).join('').trim();
-  const navParts = parts.filter(p => p.kind === 'nav');
+  const navParts  = parts.filter(p => p.kind === 'nav');
 
   return (
     <div className="flex items-start gap-2">
@@ -112,28 +112,53 @@ function MessageBubble({ msg, onAction }: { msg: CopilotMessage; onAction: (m: C
         {msg.type === 'action_pending' && msg.actionStatus === 'pending' && (
           <ActionCard msg={msg} onAction={onAction} />
         )}
-        {msg.actionStatus === 'approved' && (
-          <p className="text-[11px] text-emerald-600">✓ Executing…</p>
-        )}
-        {msg.actionStatus === 'cancelled' && (
-          <p className="text-[11px] text-slate-400">✗ Cancelled</p>
-        )}
+        {msg.actionStatus === 'approved'  && <p className="text-[11px] text-emerald-600">✓ Executing…</p>}
+        {msg.actionStatus === 'cancelled' && <p className="text-[11px] text-slate-400">✗ Cancelled</p>}
       </div>
     </div>
   );
 }
 
+const STORAGE_KEY  = 'copilot-pos-y';
+const PANEL_HEIGHT = 520; // px — must match the panel's h-[520px]
+const BTN_HEIGHT   = 42;  // approximate button height
+const EDGE_PAD     = 16;  // px from right edge
+const MIN_TOP      = 20;
+
 export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
-  const [open, setOpen] = useState(false);
+  const [open,     setOpen]     = useState(false);
   const [messages, setMessages] = useState<CopilotMessage[]>(initialMessages);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const loadingRef = useRef(false); // sync read to avoid stale closure in sendMessage
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [input,    setInput]    = useState('');
+  const [loading,  setLoading]  = useState(false);
+
+  // Drag position — initialised from localStorage after mount (SSR-safe)
+  const [posY,     setPosY]     = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const loadingRef     = useRef(false);
+  const posYRef        = useRef<number>(0);    // sync ref for closure access
+  const dragStartY     = useRef(0);
+  const dragStartPosY  = useRef(0);
+  const totalMovement  = useRef(0);
+  const bottomRef      = useRef<HTMLDivElement>(null);
+  const inputRef       = useRef<HTMLTextAreaElement>(null);
   const prevInitialRef = useRef(initialMessages);
 
-  // Sync when the layout re-renders with fresh DB data (soft navigation between pages)
+  // Read saved position once on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const defaultY = Math.max(MIN_TOP, window.innerHeight * 0.78);
+    const y = saved ? Math.min(Number(saved), window.innerHeight - BTN_HEIGHT - MIN_TOP) : defaultY;
+    setPosY(y);
+    posYRef.current = y;
+  }, []);
+
+  // Keep posYRef in sync
+  useEffect(() => {
+    if (posY !== null) posYRef.current = posY;
+  }, [posY]);
+
+  // Sync when parent re-renders with fresh DB data
   useEffect(() => {
     if (prevInitialRef.current !== initialMessages) {
       prevInitialRef.current = initialMessages;
@@ -141,40 +166,67 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
     }
   }, [initialMessages]);
 
-  // Single scroll effect — fires when panel opens or new messages arrive.
-  // Using 'auto' (instant) avoids two competing smooth-scroll animations.
   useEffect(() => {
     if (!open) return;
     const timer = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 0);
     return () => clearTimeout(timer);
   }, [messages, open]);
 
-  // Focus input after panel animation completes (~200ms)
   useEffect(() => {
     if (!open) return;
     const timer = setTimeout(() => inputRef.current?.focus(), 200);
     return () => clearTimeout(timer);
   }, [open]);
 
-  // sendMessage has no loading in its deps — reads loadingRef instead.
-  // This prevents a new function reference on every loading-state change,
-  // which previously caused unnecessary child re-renders via onKeyDown.
+  // ── Drag handling ─────────────────────────────────────────────────────────
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    // Only respond to primary button
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    totalMovement.current  = 0;
+    dragStartY.current     = e.clientY;
+    dragStartPosY.current  = posYRef.current;
+
+    const onMove = (ev: PointerEvent) => {
+      const dy = ev.clientY - dragStartY.current;
+      totalMovement.current = Math.abs(dy);
+
+      const maxY = window.innerHeight - BTN_HEIGHT - MIN_TOP;
+      const newY = Math.max(MIN_TOP, Math.min(maxY, dragStartPosY.current + dy));
+      setPosY(newY);
+      posYRef.current = newY;
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup',   onUp);
+      localStorage.setItem(STORAGE_KEY, String(Math.round(posYRef.current)));
+      setDragging(false);
+      // If barely moved → treat as click (toggle panel)
+      if (totalMovement.current < 6) setOpen(v => !v);
+    };
+
+    setDragging(true);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup',   onUp);
+  }, []);
+
+  // ── Panel position: open above button unless too close to top ────────────
+  const panelBelow = posY !== null && posY < PANEL_HEIGHT + 24;
+
+  // ── Send message ─────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loadingRef.current) return;
-
-    const userMsg: CopilotMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: text,
-      type: 'message',
-    };
+    const userMsg: CopilotMessage = { id: crypto.randomUUID(), role: 'user', content: text, type: 'message' };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
     loadingRef.current = true;
 
     try {
-      const res = await fetch('/api/copilot/chat', {
+      const res  = await fetch('/api/copilot/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
@@ -191,81 +243,52 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
       };
 
       if (!res.ok) {
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `Error: ${data.error ?? res.statusText}`,
-          type: 'message',
-        }]);
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${data.error ?? res.statusText}`, type: 'message' }]);
       } else if (data.type === 'action_pending') {
-        setMessages(prev => [...prev, {
-          id: data.messageId ?? crypto.randomUUID(),
-          role: 'assistant',
-          content: data.assistantText ?? '',
-          type: 'action_pending',
-          toolName: data.toolName,
-          toolInput: data.toolInput,
-          toolUseId: data.toolUseId,
-          actionStatus: 'pending',
-        }]);
+        setMessages(prev => [...prev, { id: data.messageId ?? crypto.randomUUID(), role: 'assistant', content: data.assistantText ?? '', type: 'action_pending', toolName: data.toolName, toolInput: data.toolInput, toolUseId: data.toolUseId, actionStatus: 'pending' }]);
       } else {
-        setMessages(prev => [...prev, {
-          id: data.messageId ?? crypto.randomUUID(),
-          role: 'assistant',
-          content: data.content ?? '',
-          type: 'message',
-        }]);
+        setMessages(prev => [...prev, { id: data.messageId ?? crypto.randomUUID(), role: 'assistant', content: data.content ?? '', type: 'message' }]);
       }
     } catch {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: 'Something went wrong. Please try again.',
-        type: 'message',
-      }]);
-    } finally {
-      setLoading(false);
-      loadingRef.current = false;
-    }
-  }, []); // stable across renders
-
-  const handleAction = useCallback(async (msg: CopilotMessage, approved: boolean) => {
-    setMessages(prev =>
-      prev.map(m => m.id === msg.id ? { ...m, actionStatus: approved ? 'approved' : 'cancelled' } : m)
-    );
-    setLoading(true);
-    loadingRef.current = true;
-
-    try {
-      const res = await fetch('/api/copilot/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId: msg.id, approved }),
-      });
-      const data = await res.json() as { type: string; content: string; messageId: string };
-      setMessages(prev => [...prev, {
-        id: data.messageId,
-        role: 'assistant',
-        content: data.content,
-        type: 'message',
-      }]);
-    } catch {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: 'Something went wrong executing that action.',
-        type: 'message',
-      }]);
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Something went wrong. Please try again.', type: 'message' }]);
     } finally {
       setLoading(false);
       loadingRef.current = false;
     }
   }, []);
 
+  const handleAction = useCallback(async (msg: CopilotMessage, approved: boolean) => {
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, actionStatus: approved ? 'approved' : 'cancelled' } : m));
+    setLoading(true);
+    loadingRef.current = true;
+    try {
+      const res  = await fetch('/api/copilot/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId: msg.id, approved }) });
+      const data = await res.json() as { type: string; content: string; messageId: string };
+      setMessages(prev => [...prev, { id: data.messageId, role: 'assistant', content: data.content, type: 'message' }]);
+    } catch {
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Something went wrong executing that action.', type: 'message' }]);
+    } finally {
+      setLoading(false);
+      loadingRef.current = false;
+    }
+  }, []);
+
+  // Don't render until we know the position (avoids flash at wrong spot)
+  if (posY === null) return null;
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end select-none">
+    <div
+      style={{ position: 'fixed', top: posY, right: EDGE_PAD, zIndex: 50 }}
+      className="flex flex-col items-end select-none"
+    >
+      {/* Chat panel — above or below depending on viewport position */}
       {open && (
-        <div className="mb-3 w-[380px] h-[520px] bg-white rounded-2xl shadow-2xl border border-slate-200/80 flex flex-col overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+        <div
+          style={panelBelow
+            ? { position: 'absolute', top: BTN_HEIGHT + 8, right: 0 }
+            : { position: 'absolute', bottom: BTN_HEIGHT + 8, right: 0 }}
+          className="w-[380px] h-[520px] bg-white rounded-2xl shadow-2xl border border-slate-200/80 flex flex-col overflow-hidden animate-in slide-in-from-bottom-2 duration-200"
+        >
           {/* Header */}
           <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-4 py-3 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2.5">
@@ -333,13 +356,20 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
         </div>
       )}
 
-      {/* Bubble button */}
+      {/* Draggable bubble button */}
       <button
-        onClick={() => setOpen(v => !v)}
-        className="bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:scale-95 text-white rounded-full shadow-lg px-4 py-2.5 flex items-center gap-2 transition-all duration-150 select-none"
+        onPointerDown={onPointerDown}
+        aria-label="AI Copilot"
+        className={`bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-full shadow-lg px-4 py-2.5 flex items-center gap-2 transition-shadow duration-150 select-none touch-none ${
+          dragging ? 'shadow-2xl scale-105 cursor-grabbing' : 'cursor-grab active:scale-95'
+        }`}
       >
         <span className="text-base leading-none">✨</span>
         <span className="text-sm font-semibold">AI Copilot</span>
+        {/* Drag hint — shown only when not open */}
+        {!open && !dragging && (
+          <span className="text-[9px] text-white/50 leading-none ml-0.5">⠿</span>
+        )}
       </button>
     </div>
   );
