@@ -165,6 +165,21 @@ export async function addTenantWhatsAppNumberAction(input: AddWhatsAppNumberInpu
   }
 
   const admin = getSupabaseAdminClient();
+
+  // Reject if another row already owns this phone_number_id (globally unique per Meta)
+  if (input.provider === 'meta_cloud' && input.phoneNumberId?.trim()) {
+    const { data: conflict } = await admin
+      .from('whatsapp_numbers')
+      .select('id, tenant_id')
+      .eq('provider', 'meta_cloud')
+      .filter('config_json->>phone_number_id', 'eq', input.phoneNumberId.trim())
+      .maybeSingle();
+
+    if (conflict && conflict.tenant_id !== session.tenantId) {
+      return { error: 'This Phone Number ID is already registered by another account.' };
+    }
+  }
+
   const { data, error } = await admin
     .from('whatsapp_numbers')
     .upsert(

@@ -80,7 +80,7 @@ export function AddWhatsAppNumberModal({ activeBots, onClose, webhookBase }: Pro
 
     setDone({
       verifyToken: result.verifyToken ?? '',
-      webhookUrl: `${webhookBase}/${bot}`,
+      webhookUrl: webhookBase,
     });
   }
 

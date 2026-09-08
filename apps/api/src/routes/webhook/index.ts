@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { getServerClient } from '@alphabot/database';
 import type { BotConfig, Contact, Conversation, LayeredGuardrailsConfig, OutgoingInteractiveMessage, PlatformGuardrails, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
@@ -295,17 +295,36 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(200).send(challenge);
   });
 
-  // ─── POST: Receive incoming WhatsApp messages ────────────────────────────
-  fastify.post<{ Body: unknown }>('/:tenantId/:productType', async (request, reply) => {
-    // Always respond 200 immediately — Meta/Twilio retries on non-2xx.
-    // Must be empty or TwiML (Twilio error 12300 fires on JSON responses).
-    reply.status(200).type('text/plain').send('');
+  // ─── GET: Meta webhook verification (new single-URL: /:tenantId) ─────────
+  fastify.get<{ Querystring: Record<string, string> }>('/:tenantId', async (request, reply) => {
+    const { tenantId } = request.params as { tenantId: string };
+    const db = getServerClient();
 
-    const { tenantId, productType } = request.params as {
-      tenantId: string;
-      productType: ProductType;
-    };
+    // Find which number's verify_token matches the hub challenge
+    const { data: numbers } = await db
+      .from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', tenantId)
+      .eq('provider', 'meta_cloud')
+      .eq('active', true);
 
+    for (const wn of numbers ?? []) {
+      const config = wn.config_json as { verify_token: string };
+      const gw = new WhatsAppGateway('meta_cloud');
+      const challenge = gw.verifyWebhook(request.query, config.verify_token);
+      if (challenge !== false) {
+        return reply.status(200).send(challenge);
+      }
+    }
+    return reply.status(403).send('Verification failed');
+  });
+
+  // ─── POST handler (shared): contact lookup, AI reply, escalation, etc. ───
+  async function handleWebhookPost(
+    tenantId: string,
+    productType: ProductType,
+    request: FastifyRequest,
+  ): Promise<void> {
     try {
 
     const db = getServerClient();
@@ -1461,5 +1480,52 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
     } catch (err) {
       fastify.log.error({ err, tenantId, productType }, '[Webhook] async processing failed');
     }
+  }
+
+  // ─── POST: Legacy URL /:tenantId/:productType — backward-compatible ───────
+  fastify.post<{ Body: unknown }>('/:tenantId/:productType', async (request, reply) => {
+    reply.status(200).type('text/plain').send('');
+    const { tenantId, productType } = request.params as {
+      tenantId: string;
+      productType: ProductType;
+    };
+    await handleWebhookPost(tenantId, productType, request);
+  });
+
+  // ─── POST: New URL /:tenantId — bot routed by phone_number_id in payload ──
+  fastify.post<{ Body: unknown }>('/:tenantId', async (request, reply) => {
+    reply.status(200).type('text/plain').send('');
+    const { tenantId } = request.params as { tenantId: string };
+    const body = request.body as Record<string, unknown>;
+
+    // Extract phone_number_id from Meta payload metadata
+    let phoneNumberId: string | null = null;
+    try {
+      const entry = (body?.entry as Array<Record<string, unknown>>)?.[0];
+      const change = (entry?.changes as Array<Record<string, unknown>>)?.[0];
+      const value = change?.value as Record<string, unknown>;
+      phoneNumberId = (value?.metadata as Record<string, unknown>)?.phone_number_id as string ?? null;
+    } catch { /* ignore */ }
+
+    if (!phoneNumberId) {
+      fastify.log.warn({ tenantId }, '[Webhook] could not extract phone_number_id from Meta payload');
+      return;
+    }
+
+    const db = getServerClient();
+    const { data: wnRow } = await db
+      .from('whatsapp_numbers')
+      .select('product_slug')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .filter('config_json->>phone_number_id', 'eq', phoneNumberId)
+      .maybeSingle();
+
+    if (!wnRow) {
+      fastify.log.warn({ tenantId, phoneNumberId }, '[Webhook] no active bot mapped to this phone_number_id');
+      return;
+    }
+
+    await handleWebhookPost(tenantId, wnRow.product_slug as ProductType, request);
   });
 }
