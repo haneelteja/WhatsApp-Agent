@@ -120,14 +120,12 @@ export default async function SettingsPage({
 
   if (activeTab === 'workspace') {
     const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
-    const [tenantRes, numbersRes, productsRes, internalNumbersRes, dispCategories] = await Promise.all([
+    const [tenantRes, numbersRes, productsRes, dispCategories] = await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
       admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
-      admin.from('tenant_internal_numbers').select('id, phone, label, created_at').eq('tenant_id', tenantId).order('created_at', { ascending: true }),
       getDispositionCategoriesAction(),
     ]);
-    const internalNumbers = (internalNumbersRes.data ?? []) as import('@/app/actions/internal-numbers').InternalNumber[];
     tenant   = tenantRes.data as Record<string, unknown> | null;
     numbers  = (numbersRes.data ?? []) as Record<string, unknown>[];
     products = (productsRes.data ?? []) as Record<string, unknown>[];
@@ -184,10 +182,6 @@ export default async function SettingsPage({
               activeBots={activeBots.map(p => p['product_type'] as 'support_bot' | 'sales_bot' | 'lifecycle_bot')}
               webhookBase={`${apiBase}/api/webhook/${tenant?.['id'] ?? ''}`}
             />
-          </DashboardCollapsibleSection>
-
-          <DashboardCollapsibleSection icon={<ShieldOff size={16} />} title="Internal Team Numbers" hint="Messages from these numbers are silently ignored — no bot reply, no lead created. Add your team members' WhatsApp numbers here so internal tests don't appear as leads.">
-            <InternalNumbersManager initialNumbers={internalNumbers} />
           </DashboardCollapsibleSection>
 
           {activeBots.length > 0 && (
@@ -262,12 +256,20 @@ export default async function SettingsPage({
       })
     );
 
-    const { data: pendingInvites } = await admin
-      .from('client_invites')
-      .select('id, email, role, created_at, expires_at')
-      .eq('tenant_id', tenantId)
-      .is('accepted_at', null)
-      .order('created_at', { ascending: false });
+    const [{ data: pendingInvites }, internalNumbersRes] = await Promise.all([
+      admin
+        .from('client_invites')
+        .select('id, email, role, created_at, expires_at')
+        .eq('tenant_id', tenantId)
+        .is('accepted_at', null)
+        .order('created_at', { ascending: false }),
+      admin
+        .from('tenant_internal_numbers')
+        .select('id, phone, label, created_at')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: true }),
+    ]);
+    const internalNumbers = (internalNumbersRes.data ?? []) as import('@/app/actions/internal-numbers').InternalNumber[];
 
     return (
       <SettingsShell activeTab={activeTab}>
@@ -378,6 +380,17 @@ export default async function SettingsPage({
               </div>
             </div>
           )}
+
+          <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <ShieldOff size={14} />
+                Internal Team Numbers
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">Messages from these numbers are silently ignored — no bot reply, no lead created.</p>
+            </div>
+            <InternalNumbersManager initialNumbers={internalNumbers} />
+          </div>
         </div>
       </SettingsShell>
     );
