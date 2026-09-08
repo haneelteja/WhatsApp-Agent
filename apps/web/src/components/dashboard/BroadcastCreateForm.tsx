@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Send, Clock, Users, Tag, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { Send, Clock, Users, Tag, ChevronDown, ChevronUp, AlertCircle, ImageIcon, FileText, X } from 'lucide-react';
 import { createBroadcast } from '@/app/actions/broadcasts';
 
 type GroupOption = { id: string; name: string; color: string; emoji: string };
@@ -28,6 +28,9 @@ export function BroadcastCreateForm({
   const [selectedGrps, setSelectedGrps] = useState<string[]>([]);
   const [scheduleMode, setScheduleMode] = useState<'now' | 'later'>('now');
   const [scheduledAt,  setScheduledAt]  = useState('');
+  const [mediaUrl,     setMediaUrl]     = useState('');
+  const [mediaType,    setMediaType]    = useState<'image' | 'document'>('image');
+  const [showMedia,    setShowMedia]    = useState(false);
   const [error,        setError]        = useState<string | null>(null);
   const [success,      setSuccess]      = useState(false);
   const [pending,      startTransition] = useTransition();
@@ -56,9 +59,12 @@ export function BroadcastCreateForm({
       ? new Date(scheduledAt).toISOString()
       : null;
 
+    const attachedUrl  = showMedia && mediaUrl.trim()  ? mediaUrl.trim()  : null;
+    const attachedType = showMedia && mediaUrl.trim()  ? mediaType        : null;
+
     setError(null);
     startTransition(async () => {
-      const result = await createBroadcast(name, message, audience, selectedGrps, scheduledIso);
+      const result = await createBroadcast(name, message, audience, selectedGrps, scheduledIso, attachedUrl, attachedType);
       if (result.error) { setError(result.error); return; }
       setSuccess(true);
       setName(''); setMessage(''); setAudience('all'); setSelectedGrps([]);
@@ -103,6 +109,55 @@ export function BroadcastCreateForm({
         <p className="text-[10px] text-gray-400 mt-1">
           Use <code className="bg-gray-100 px-1 rounded">{'{name}'}</code> to insert the contact&apos;s first name.
         </p>
+      </div>
+
+      {/* Media attachment */}
+      <div>
+        <button
+          type="button"
+          onClick={() => { setShowMedia(v => !v); setMediaUrl(''); }}
+          className="flex items-center gap-2 text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+        >
+          {showMedia ? <X size={13} /> : <ImageIcon size={13} />}
+          {showMedia ? 'Remove attachment' : 'Attach image or document (optional)'}
+        </button>
+
+        {showMedia && (
+          <div className="mt-3 space-y-3 border border-emerald-100 bg-emerald-50/40 rounded-xl p-4">
+            <div className="flex gap-2">
+              {(['image', 'document'] as const).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setMediaType(t)}
+                  className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all ${
+                    mediaType === t
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'
+                  }`}
+                >
+                  {t === 'image' ? <ImageIcon size={12} /> : <FileText size={12} />}
+                  {t === 'image' ? 'Image' : 'Document'}
+                </button>
+              ))}
+            </div>
+            <input
+              value={mediaUrl}
+              onChange={e => { setMediaUrl(e.target.value); setError(null); }}
+              placeholder={mediaType === 'image'
+                ? 'https://example.com/offer-banner.jpg'
+                : 'https://example.com/brochure.pdf'}
+              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-300 placeholder:text-gray-300"
+            />
+            <p className="text-[10px] text-gray-400">
+              Paste a publicly accessible URL. The message text will appear as the caption below the {mediaType}.
+            </p>
+            {mediaUrl && mediaType === 'image' && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={mediaUrl} alt="Preview" className="max-h-40 rounded-lg border border-emerald-200 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Audience */}

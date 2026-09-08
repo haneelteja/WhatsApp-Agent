@@ -104,14 +104,24 @@ export async function executeBroadcast(broadcastId: string): Promise<void> {
   let sentCount   = 0;
   let failedCount = 0;
 
+  const mediaUrl  = (bcast.media_url  as string | null) || null;
+  const mediaType = (bcast.media_type as 'image' | 'document' | null) || null;
+
   for (const contact of contacts) {
     try {
       const message = (bcast.message as string).replace(/\{name\}/gi, contact.name?.split(' ')[0] ?? 'there');
-      await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
-        type: 'text',
-        to:   contact.phone,
-        text: message,
-      });
+      await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token,
+        mediaUrl && mediaType
+          ? {
+              type:      'media',
+              to:        contact.phone,
+              mediaType,
+              mediaUrl,
+              caption:   message || undefined,
+              filename:  mediaType === 'document' ? 'document.pdf' : undefined,
+            }
+          : { type: 'text', to: contact.phone, text: message },
+      );
       sentCount++;
     } catch {
       failedCount++;

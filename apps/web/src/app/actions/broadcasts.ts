@@ -12,6 +12,8 @@ export async function createBroadcast(
   audienceType: 'all' | 'recent_7d' | 'recent_10d' | 'groups',
   groupIds:     string[],
   scheduledAt:  string | null,
+  mediaUrl?:    string | null,
+  mediaType?:   'image' | 'document' | null,
 ): Promise<{ id?: string; error?: string }> {
   const session = await getSession();
   if (!session) return { error: 'Unauthorized' };
@@ -29,6 +31,8 @@ export async function createBroadcast(
       group_ids:     groupIds,
       scheduled_at:  scheduledAt,
       status,
+      media_url:     mediaUrl  || null,
+      media_type:    mediaType || null,
     })
     .select('id')
     .single();
