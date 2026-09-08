@@ -24,11 +24,15 @@ export async function POST(request: NextRequest) {
   }
 
   const tenantId = (msg as { tenant_id: string }).tenant_id;
-  const pendingAction = (msg as { pending_action: Record<string, unknown> }).pending_action as {
+  const pendingAction = (msg as { pending_action: Record<string, unknown> | null }).pending_action as {
     toolUseId: string;
     toolName: string;
     toolInput: Record<string, unknown>;
-  };
+  } | null;
+
+  if (!pendingAction) {
+    return NextResponse.json({ error: 'Message has no pending action' }, { status: 400 });
+  }
 
   if (!approved) {
     await admin.from('copilot_messages').update({ action_status: 'cancelled' }).eq('id', messageId);

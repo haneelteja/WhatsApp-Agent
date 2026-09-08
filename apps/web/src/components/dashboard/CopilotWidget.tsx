@@ -20,7 +20,8 @@ interface CopilotWidgetProps {
 
 const GO_LINK_RE = /\[GO:([^\s\]"]+)\s+"([^"]+)"\]/g;
 
-function parseContent(text: string): Array<{ kind: 'text' | 'nav'; content: string; path?: string; label?: string }> {
+function parseContent(text: string | undefined | null): Array<{ kind: 'text' | 'nav'; content: string; path?: string; label?: string }> {
+  if (!text) return [{ kind: 'text', content: '' }];
   const parts: Array<{ kind: 'text' | 'nav'; content: string; path?: string; label?: string }> = [];
   let last = 0;
   let m: RegExpExecArray | null;
@@ -40,7 +41,7 @@ function ActionCard({ msg, onAction }: { msg: CopilotMessage; onAction: (m: Copi
   if (msg.toolName === 'add_kb_article') {
     summary = `Add KB article: "${input['question'] as string}" → "${input['collection_name'] as string}"`;
   } else if (msg.toolName === 'update_escalation_triggers') {
-    const triggers = input['triggers'] as string[];
+    const triggers = (input['triggers'] as string[] | undefined) ?? [];
     summary = `Set escalation triggers for ${input['product_slug'] as string}: ${triggers.slice(0, 3).join(', ')}${triggers.length > 3 ? '…' : ''}`;
   } else if (msg.toolName === 'toggle_button_template') {
     summary = `${input['is_active'] ? 'Enable' : 'Disable'} button template: "${input['template_name'] as string}"`;
@@ -263,8 +264,12 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
     loadingRef.current = true;
     try {
       const res  = await fetch('/api/copilot/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId: msg.id, approved }) });
-      const data = await res.json() as { type: string; content: string; messageId: string };
-      setMessages(prev => [...prev, { id: data.messageId, role: 'assistant', content: data.content, type: 'message' }]);
+      const data = await res.json() as { type: string; content?: string; messageId?: string; error?: string };
+      if (!res.ok) {
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Failed to execute action: ${data.error ?? res.statusText}`, type: 'message' }]);
+      } else {
+        setMessages(prev => [...prev, { id: data.messageId ?? crypto.randomUUID(), role: 'assistant', content: data.content ?? '', type: 'message' }]);
+      }
     } catch {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Something went wrong executing that action.', type: 'message' }]);
     } finally {
