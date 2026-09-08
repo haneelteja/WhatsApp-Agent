@@ -124,6 +124,9 @@ export function BroadcastCreateForm({
       setSuccess(true);
       setName(''); setMessage(''); setAudience('all'); setSelectedGrps([]);
       setScheduleMode('now'); setScheduledAt('');
+      setShowMedia(false); setMediaUrl(''); setMediaType('image'); setMediaName('');
+      setUploadError('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       onCreated?.();
       setTimeout(() => setSuccess(false), 3000);
     });
