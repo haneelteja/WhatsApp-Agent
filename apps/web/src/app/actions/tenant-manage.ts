@@ -45,6 +45,82 @@ export async function setTenantStatusAction(
   return {};
 }
 
+export async function clearTenantChatsAction(tenantId: string): Promise<{ error?: string; deleted?: number }> {
+  const admin = getSupabaseAdminClient();
+
+  const { data: tenant } = await admin.from('tenants').select('name').eq('id', tenantId).single();
+
+  // Fetch conversation IDs first so we can delete their messages explicitly
+  // (no confirmed ON DELETE CASCADE from conversations→messages in migrations)
+  const { data: convs } = await admin
+    .from('conversations')
+    .select('id')
+    .eq('tenant_id', tenantId);
+
+  const convIds = (convs ?? []).map(c => c.id as string);
+
+  if (convIds.length > 0) {
+    const { error: msgErr } = await admin
+      .from('messages')
+      .delete()
+      .in('conversation_id', convIds);
+    if (msgErr) return { error: msgErr.message };
+  }
+
+  const { count, error: convErr } = await admin
+    .from('conversations')
+    .delete({ count: 'exact' })
+    .eq('tenant_id', tenantId);
+  if (convErr) return { error: convErr.message };
+
+  const { actorId, actorEmail } = await getActor();
+  void writeAuditLog({
+    tenantId,
+    actorId,
+    actorEmail,
+    action: 'tenant.chats_cleared',
+    entityType: 'tenant',
+    entityId: tenantId,
+    description: `Cleared all conversations for "${tenant?.name ?? tenantId}" (${count ?? 0} conversations deleted)`,
+    metadata: { conversations_deleted: count ?? 0 },
+  });
+
+  revalidatePath(`/platform/clients/${tenantId}`);
+  return { deleted: count ?? 0 };
+}
+
+export async function resetTenantSubscriptionsAction(tenantId: string): Promise<{ error?: string }> {
+  const admin = getSupabaseAdminClient();
+
+  const { data: tenant } = await admin.from('tenants').select('name, subscription_status, plan').eq('id', tenantId).single();
+
+  const [{ error: subErr }, { error: tenantErr }] = await Promise.all([
+    admin.from('subscriptions').delete().eq('tenant_id', tenantId),
+    admin.from('tenants')
+      .update({ subscription_status: null, razorpay_subscription_id: null })
+      .eq('id', tenantId),
+  ]);
+
+  if (subErr)    return { error: subErr.message };
+  if (tenantErr) return { error: tenantErr.message };
+
+  const { actorId, actorEmail } = await getActor();
+  void writeAuditLog({
+    tenantId,
+    actorId,
+    actorEmail,
+    action: 'tenant.subscriptions_reset',
+    entityType: 'tenant',
+    entityId: tenantId,
+    description: `Reset subscriptions for "${tenant?.name ?? tenantId}" (was: ${tenant?.subscription_status ?? 'none'}, plan: ${tenant?.plan})`,
+    metadata: { previous_subscription_status: tenant?.subscription_status, plan: tenant?.plan },
+  });
+
+  revalidatePath(`/platform/clients/${tenantId}`);
+  revalidatePath('/platform/clients');
+  return {};
+}
+
 export async function deleteTenantAction(tenantId: string): Promise<{ error?: string }> {
   const admin = getSupabaseAdminClient();
 
