@@ -109,7 +109,7 @@ export function BroadcastList({ broadcasts }: { broadcasts: BroadcastRow[] }) {
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-slate-400">
                 <span>{AUDIENCE_LABELS[b.audience_type] ?? b.audience_type}</span>
                 {b.scheduled_at && <span>· Scheduled: {formatScheduled(b.scheduled_at)}</span>}
-                <span>· {formatRelative(b.created_at)}</span>
+                <span suppressHydrationWarning>· {formatRelative(b.created_at)}</span>
               </div>
 
               {/* Progress bar (sending or sent) */}

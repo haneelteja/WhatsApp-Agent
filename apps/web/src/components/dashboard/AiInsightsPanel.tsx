@@ -164,7 +164,7 @@ export function AiInsightsPanel({ insight }: { insight: InsightRow | null }) {
             <Sparkles size={20} className="text-violet-400" />
           </div>
           <p className="text-sm font-medium text-slate-600">Your first analysis is on its way</p>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-400" suppressHydrationWarning>
             {(() => {
               const nowUtc = new Date();
               const istHour = Math.floor((nowUtc.getUTCHours() * 60 + nowUtc.getUTCMinutes() + 330) / 60) % 24;

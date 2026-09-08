@@ -91,7 +91,7 @@ function LeadCard({
             )}
           </div>
           <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-400">
-            <span>Went cold {formatDate(lead.outcome_set_at ?? lead.updated_at)}</span>
+            <span suppressHydrationWarning>Went cold {formatDate(lead.outcome_set_at ?? lead.updated_at)}</span>
             {(lead.lead_follow_up_count ?? 0) > 0 && (
               <span>{lead.lead_follow_up_count} follow-up{lead.lead_follow_up_count !== 1 ? 's' : ''} sent</span>
             )}

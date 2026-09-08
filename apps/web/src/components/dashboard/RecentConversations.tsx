@@ -68,7 +68,7 @@ function ConvRow({ conv }: { conv: RecentConv }) {
             <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
             {conv.status.replace('_', ' ')}
           </span>
-          <span className="text-[11px] text-gray-400 w-12 text-right tabular-nums">{timeAgo(conv.updated_at)}</span>
+          <span className="text-[11px] text-gray-400 w-12 text-right tabular-nums" suppressHydrationWarning>{timeAgo(conv.updated_at)}</span>
           {open ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
         </div>
       </button>

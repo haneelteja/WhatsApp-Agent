@@ -149,7 +149,7 @@ export function ContactsTabClient({
 
                 {/* Right column */}
                 <div className="shrink-0 flex flex-col items-end gap-1.5 text-right">
-                  <span className="text-xs text-slate-400">{formatRelative(contact.updated_at)}</span>
+                  <span className="text-xs text-slate-400" suppressHydrationWarning>{formatRelative(contact.updated_at)}</span>
                   <div className="flex items-center gap-1 text-xs text-slate-500">
                     <MessageSquare size={11} className="text-slate-400" />
                     <span>{contact.conv_count} conv{contact.conv_count !== 1 ? 's' : ''}</span>
