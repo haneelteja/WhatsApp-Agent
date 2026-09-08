@@ -475,7 +475,7 @@ function BotInstanceCard({
   const meta      = BOT_META[bot.product_type as ProductType] ?? BOT_META['support_bot'];
   const Icon      = meta.icon;
   const isDefault = bot.product_slug === bot.product_type;
-  const webhookUrl = `${apiBase}/api/webhook/${tenantId}/${bot.product_slug}`;
+  const webhookUrl = `${apiBase}/api/webhook/${tenantId}`;
 
   const assigned  = numbers.find(n => n.product_slug === bot.product_slug) ?? null;
   const available = numbers.filter(n => n.product_slug === null);
