@@ -88,7 +88,7 @@ export function ConversationActions({ conversationId, status, teamMembers, assig
     startClearTransition(async () => {
       await clearConversationAction(conversationId);
       setClearConfirm(false);
-      router.refresh();
+      window.location.reload();
     });
   }
 
