@@ -16,7 +16,10 @@ function getBaseUrl(req: NextRequest): string {
   if (host) return `${proto}://${host}`;
   // Fall back to parsing req.url (always full URL in Next.js App Router)
   try { return new URL(req.url).origin; } catch { /* ignore */ }
-  return process.env['NEXT_PUBLIC_APP_URL'] ?? 'https://whats-app-agent-web.vercel.app';
+  // NEXT_PUBLIC_APP_URL may be set without a protocol — normalise it
+  const appUrl = process.env['NEXT_PUBLIC_APP_URL'] ?? '';
+  if (appUrl) return appUrl.startsWith('http') ? appUrl : `https://${appUrl}`;
+  return 'https://whats-app-agent-web.vercel.app';
 }
 
 /** Return an HTML page that immediately redirects the browser.
