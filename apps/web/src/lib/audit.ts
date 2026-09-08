@@ -20,14 +20,18 @@ export async function writeAuditLog({
   metadata?:    Record<string, unknown> | null;
 }) {
   const admin = getSupabaseAdminClient();
-  await admin.from('audit_logs').insert({
-    tenant_id:   tenantId   ?? null,
-    actor_id:    actorId    ?? 'system',
-    actor_email: actorEmail ?? null,
+  const { error } = await admin.from('audit_logs').insert({
+    tenant_id:   tenantId    ?? null,
+    actor_id:    actorId     ?? null,   // NULL for automated/system actions
+    actor_email: actorEmail  ?? null,
     action,
-    entity_type: entityType ?? null,
-    entity_id:   entityId   ?? null,
+    entity_type: entityType  ?? null,
+    entity_id:   entityId    ?? null,
     description,
-    metadata:    metadata   ?? null,
+    metadata:    metadata    ?? null,
   });
+
+  if (error) {
+    console.error('[audit] writeAuditLog failed:', error.message, { action, tenantId });
+  }
 }
