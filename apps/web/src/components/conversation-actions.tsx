@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Send, UserCheck, RefreshCw, UserPlus, ChevronDown } from 'lucide-react';
+import { Send, UserCheck, RefreshCw, UserPlus, ChevronDown, Trash2 } from 'lucide-react';
+import { clearConversationAction } from '@/app/actions/conversation';
 
 interface TeamMember {
   id: string;
@@ -23,6 +24,8 @@ export function ConversationActions({ conversationId, status, teamMembers, assig
   const [sendError, setSendError] = useState<string | null>(null);
   const [actioning, setActioning] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [clearPending, startClearTransition] = useTransition();
   const router = useRouter();
   const supabase = getSupabaseBrowserClient();
 
@@ -78,6 +81,15 @@ export function ConversationActions({ conversationId, status, teamMembers, assig
     setShowAssign(false);
     await apiPatch(`/api/conversations/${conversationId}`, { assigned_agent_id: agentId });
     router.refresh();
+  }
+
+  function handleClearChat() {
+    if (!clearConfirm) { setClearConfirm(true); return; }
+    startClearTransition(async () => {
+      await clearConversationAction(conversationId);
+      setClearConfirm(false);
+      router.refresh();
+    });
   }
 
   async function handleSend(e: React.FormEvent) {
@@ -183,6 +195,33 @@ export function ConversationActions({ conversationId, status, teamMembers, assig
         {status === 'resolved' && (
           <p className="text-xs text-slate-400">Conversation resolved</p>
         )}
+
+        {/* DEV-ONLY — remove before production (see production checklist §5) */}
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          {clearConfirm && (
+            <button
+              type="button"
+              onClick={() => setClearConfirm(false)}
+              className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleClearChat}
+            disabled={clearPending}
+            className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${
+              clearConfirm
+                ? 'bg-orange-500 text-white border-orange-500 hover:bg-orange-600'
+                : 'text-orange-500 border-orange-200 bg-orange-50 hover:bg-orange-100'
+            }`}
+          >
+            <Trash2 size={11} />
+            {clearPending ? 'Clearing…' : clearConfirm ? 'Confirm clear' : 'Clear chat'}
+          </button>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-400 uppercase tracking-wider">DEV</span>
+        </div>
       </div>
 
       {/* Message input — only when agent has claimed */}
