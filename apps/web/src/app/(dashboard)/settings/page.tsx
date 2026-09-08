@@ -19,7 +19,6 @@ import { ClientVoiceConfigCard, type BotVoiceConfigRow, type ExotelConfigRow } f
 import { VoiceWorkingHoursCard, type WorkingHoursInitial } from '@/components/dashboard/VoiceWorkingHoursCard';
 import { VoiceCallSummaryCard, type CallSummaryInitial } from '@/components/dashboard/VoiceCallSummaryCard';
 import { InternalNumbersManager } from '@/components/dashboard/InternalNumbersManager';
-import { listInternalNumbers } from '@/app/actions/internal-numbers';
 import { DashboardCollapsibleSection } from '@/components/dashboard/DashboardCollapsibleSection';
 import { PersonaEditor } from '@/components/dashboard/PersonaEditor';
 import { getBotPersonasAction } from '@/app/actions/bot-persona';
@@ -122,13 +121,14 @@ export default async function SettingsPage({
 
   if (activeTab === 'workspace') {
     const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
-    const [tenantRes, numbersRes, productsRes, { numbers: internalNumbers }, dispCategories] = await Promise.all([
+    const [tenantRes, numbersRes, productsRes, internalNumbersRes, dispCategories] = await Promise.all([
       admin.from('tenants').select('*').eq('id', tenantId).single(),
       admin.from('whatsapp_numbers').select('*').eq('tenant_id', tenantId),
       admin.from('tenant_products').select('*').eq('tenant_id', tenantId),
-      listInternalNumbers(),
+      admin.from('tenant_internal_numbers').select('id, phone, label, created_at').eq('tenant_id', tenantId).order('created_at', { ascending: true }),
       getDispositionCategoriesAction(),
     ]);
+    const internalNumbers = (internalNumbersRes.data ?? []) as import('@/app/actions/internal-numbers').InternalNumber[];
     tenant   = tenantRes.data as Record<string, unknown> | null;
     numbers  = (numbersRes.data ?? []) as Record<string, unknown>[];
     products = (productsRes.data ?? []) as Record<string, unknown>[];
