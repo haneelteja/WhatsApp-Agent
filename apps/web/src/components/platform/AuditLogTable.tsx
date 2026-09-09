@@ -172,7 +172,7 @@ export function AuditLogTable({ logs, showTenant = false }: Props) {
               </tr>
             ) : filtered.map(log => (
               <tr key={log.id} className="bg-white hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 text-slate-500 whitespace-nowrap font-mono tabular-nums">
+                <td className="px-4 py-3 text-slate-500 whitespace-nowrap font-mono tabular-nums" suppressHydrationWarning>
                   {formatDate(log.created_at)}
                 </td>
                 <td className="px-4 py-3">

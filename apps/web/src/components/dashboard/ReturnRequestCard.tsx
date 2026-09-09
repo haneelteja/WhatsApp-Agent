@@ -49,7 +49,7 @@ export function ReturnRequestCard({ request }: { request: ReturnRequest }) {
               {TYPE_LABEL[request.type]}
             </span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className="text-[11px] text-slate-400 mt-0.5" suppressHydrationWarning>
             {new Date(request.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>

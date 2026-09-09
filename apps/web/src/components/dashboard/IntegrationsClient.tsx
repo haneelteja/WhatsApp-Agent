@@ -398,7 +398,7 @@ Body (JSON):
                       </div>
                       <div className="text-right shrink-0">
                         {log.source && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{log.source}</span>}
-                        <p className="text-[10px] text-slate-400 mt-0.5">
+                        <p className="text-[10px] text-slate-400 mt-0.5" suppressHydrationWarning>
                           {new Date(log.triggered_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
                         </p>
                       </div>
@@ -679,7 +679,7 @@ function verifyAlphabotSignature(
                         {log.error_message && <p className="text-[10px] text-red-500 truncate">{log.error_message}</p>}
                         {log.http_status && <p className="text-[10px] text-slate-400">HTTP {log.http_status}</p>}
                       </div>
-                      <p className="text-[10px] text-slate-400 shrink-0">
+                      <p className="text-[10px] text-slate-400 shrink-0" suppressHydrationWarning>
                         {new Date(log.triggered_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
                       </p>
                     </div>

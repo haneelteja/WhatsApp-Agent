@@ -297,6 +297,7 @@ export function LlmConfigCard({
           {config.validated_at && (
             <Row label="Validated"
               value={new Date(config.validated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              suppressHydration
             />
           )}
           {config.credit_info && (
@@ -497,11 +498,11 @@ function StatusBadge({ status }: { status: 'pending' | 'valid' | 'invalid' }) {
   );
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({ label, value, mono, suppressHydration }: { label: string; value: string; mono?: boolean; suppressHydration?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-xs text-gray-400 shrink-0">{label}</span>
-      <span className={`text-right truncate max-w-[65%] ${mono ? 'font-mono text-xs text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded' : 'text-xs text-gray-700'}`}>
+      <span className={`text-right truncate max-w-[65%] ${mono ? 'font-mono text-xs text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded' : 'text-xs text-gray-700'}`} suppressHydrationWarning={suppressHydration}>
         {value}
       </span>
     </div>

@@ -112,7 +112,7 @@ export function NewOrderForm({ tenantId, contacts, conversations }: Props) {
               <option value="">Select a conversation…</option>
               {contactConversations.map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.product_type.replace(/_/g, ' ')} · {new Date(c.created_at).toLocaleDateString('en-IN')}
+                  {c.product_type.replace(/_/g, ' ')} · {new Date(c.created_at).toISOString().slice(0, 10)}
                 </option>
               ))}
             </select>

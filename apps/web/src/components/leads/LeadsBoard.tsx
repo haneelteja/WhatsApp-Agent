@@ -527,7 +527,7 @@ function LeadCard({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <ScoreBadge score={lead.lead_score ?? 0} />
-          <span className="text-[11px] text-slate-400">{formatRel(lead.updated_at)}</span>
+          <span className="text-[11px] text-slate-400" suppressHydrationWarning>{formatRel(lead.updated_at)}</span>
         </div>
       </div>
 
@@ -789,7 +789,7 @@ function LeadListRow({
       </div>
 
       <div className="shrink-0 flex flex-col items-end gap-2" onClick={e => e.stopPropagation()}>
-        <span className="text-xs text-slate-400">{formatRel(lead.updated_at)}</span>
+        <span className="text-xs text-slate-400" suppressHydrationWarning>{formatRel(lead.updated_at)}</span>
         {colKey !== 'converted' && (
           <select
             aria-label="Move to stage"

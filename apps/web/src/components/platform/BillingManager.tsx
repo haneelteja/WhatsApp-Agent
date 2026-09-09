@@ -138,7 +138,7 @@ function SubscriptionCard({
           </div>
           <div>
             <p className="text-[10px] text-slate-400 uppercase tracking-wide">Next Bill</p>
-            <p className="font-medium text-slate-700 mt-0.5">
+            <p className="font-medium text-slate-700 mt-0.5" suppressHydrationWarning>
               {sub?.next_billing_date ? new Date(sub.next_billing_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
             </p>
           </div>
@@ -177,7 +177,7 @@ function SubscriptionCard({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold text-sky-700">Active Trial</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
+              <p className="text-[10px] text-slate-400 mt-0.5" suppressHydrationWarning>
                 Ends {new Date(activeTrial.ends_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                 {' · '}{activeTrial.allowed_model.split('-').slice(0, 2).join(' ')}
               </p>
