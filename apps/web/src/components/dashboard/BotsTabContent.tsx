@@ -145,7 +145,7 @@ function UsageBar({ usage, limit }: { usage: number | null; limit: number | null
           <div className={`h-full rounded-full transition-all ${colour}`} style={{ width: `${pct}%` }} />
         </div>
       )}
-      <span className="text-[10px] text-slate-500 font-mono whitespace-nowrap">
+      <span className="text-[10px] text-slate-500 font-mono whitespace-nowrap" suppressHydrationWarning>
         {usage.toLocaleString()}{limit ? ` / ${limit.toLocaleString()} tokens` : ' tokens used'}
       </span>
     </div>
