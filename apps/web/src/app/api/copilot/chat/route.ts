@@ -87,7 +87,7 @@ const TOOLS: AnthropicTool[] = [
   },
   {
     name: 'add_kb_articles_bulk',
-    description: 'Add multiple FAQ/article entries to a KB collection at once. Use when the user uploads a file or provides a list of Q&A pairs.',
+    description: 'Add multiple FAQ/article entries to a KB collection in one shot. ALWAYS use this instead of add_kb_article when adding 2 or more articles — never call add_kb_article in a loop.',
     input_schema: {
       type: 'object',
       properties: {
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
     const copilotInstructions = typeof rawCfg['instructions'] === 'string' ? rawCfg['instructions'].trim() : '';
     const allowedActions = Array.isArray(rawCfg['allowed_actions'])
       ? rawCfg['allowed_actions'] as string[]
-      : ['add_kb_article', 'update_escalation_triggers', 'toggle_button_template', 'update_system_prompt'];
+      : ['add_kb_article', 'add_kb_articles_bulk', 'update_escalation_triggers', 'toggle_button_template', 'update_system_prompt'];
 
     // Load history + context in parallel
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();

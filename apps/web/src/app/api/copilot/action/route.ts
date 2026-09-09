@@ -58,10 +58,20 @@ export async function POST(request: NextRequest) {
 
   async function resolveCollectionId(collection_id: string, collection_name: string): Promise<string> {
     if (UUID_RE.test(collection_id)) return collection_id;
-    // collection_id is a placeholder string — create a real collection
+    // collection_id is a placeholder slug — look up by name first to avoid duplicates
+    const name = collection_name?.trim() || 'Knowledge Base';
+    const { data: existing } = await admin
+      .from('kb_collections')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .ilike('name', name)
+      .limit(1)
+      .single();
+    if (existing) return (existing as { id: string }).id;
+    // No match — create a new collection
     const { data: newCol, error: colErr } = await admin
       .from('kb_collections')
-      .insert({ tenant_id: tenantId, name: collection_name ?? 'Knowledge Base', active: true })
+      .insert({ tenant_id: tenantId, name, active: true })
       .select('id')
       .single();
     if (colErr) throw new Error(colErr.message);
