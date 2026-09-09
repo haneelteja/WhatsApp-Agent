@@ -167,7 +167,7 @@ export function NewOrderForm({ tenantId, contacts, conversations }: Props) {
       {/* Total */}
       <div className="flex items-center justify-between py-3 border-t border-slate-100">
         <p className="text-sm font-semibold text-slate-600">Total</p>
-        <p className="text-xl font-bold text-slate-800 tabular-nums">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+        <p className="text-xl font-bold text-slate-800 tabular-nums" suppressHydrationWarning>₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
       </div>
 
       {/* Send payment link */}
