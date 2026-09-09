@@ -10,6 +10,7 @@ export function DashboardShell({
   children,
   tenantName,
   email,
+  tenantId,
   userRole,
   hasLifecycleBot,
   activeBots = [],
@@ -18,6 +19,7 @@ export function DashboardShell({
   children: React.ReactNode;
   tenantName: string;
   email: string;
+  tenantId: string;
   userRole: string;
   hasLifecycleBot: boolean;
   activeBots?: ActiveBot[];
@@ -82,6 +84,7 @@ export function DashboardShell({
         <Topbar
           email={email}
           tenantName={tenantName}
+          tenantId={tenantId}
           onMenuClick={() => setSidebarOpen(true)}
           activeBots={activeBots}
         />

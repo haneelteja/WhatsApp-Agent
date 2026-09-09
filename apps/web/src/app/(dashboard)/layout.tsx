@@ -118,6 +118,7 @@ export default async function DashboardLayout({
       <DashboardShell
         tenantName={ctx.tenantName}
         email={ctx.user.email ?? ''}
+        tenantId={ctx.tenantId}
         userRole={ctx.userRole}
         hasLifecycleBot={ctx.hasLifecycleBot}
         activeBots={ctx.activeBots}
