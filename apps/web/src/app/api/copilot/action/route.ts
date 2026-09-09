@@ -103,6 +103,23 @@ export async function POST(request: NextRequest) {
         executionResult = `Updated system prompt for ${product_slug}`;
         break;
       }
+      case 'add_kb_articles_bulk': {
+        const { collection_id, articles } = pendingAction.toolInput as {
+          collection_id: string;
+          articles: Array<{ question: string; answer: string }>;
+        };
+        const rows = articles.map(a => ({
+          collection_id,
+          tenant_id: tenantId,
+          question: a.question,
+          answer: a.answer,
+          status: 'live',
+        }));
+        const { error } = await admin.from('knowledge_base').insert(rows);
+        if (error) throw new Error(error.message);
+        executionResult = `Added ${rows.length} KB article${rows.length !== 1 ? 's' : ''}`;
+        break;
+      }
       default:
         executionResult = `Unknown action: ${pendingAction.toolName}`;
     }

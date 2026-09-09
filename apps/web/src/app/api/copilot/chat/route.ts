@@ -7,12 +7,18 @@ export const maxDuration = 60;
 
 // ─── Anthropic types (plain, no SDK import) ───────────────────────────────────
 
+type AnthropicToolProperty = {
+  type: string;
+  description?: string;
+  items?: { type: string; properties?: Record<string, { type: string; description?: string }>; required?: string[] };
+};
+
 type AnthropicTool = {
   name: string;
   description: string;
   input_schema: {
     type: 'object';
-    properties: Record<string, { type: string; description?: string; items?: { type: string } }>;
+    properties: Record<string, AnthropicToolProperty>;
     required: string[];
   };
 };
@@ -77,6 +83,30 @@ const TOOLS: AnthropicTool[] = [
         system_prompt: { type: 'string', description: 'The full new system prompt text' },
       },
       required: ['product_slug', 'system_prompt'],
+    },
+  },
+  {
+    name: 'add_kb_articles_bulk',
+    description: 'Add multiple FAQ/article entries to a KB collection at once. Use when the user uploads a file or provides a list of Q&A pairs.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        collection_id: { type: 'string', description: 'UUID of the KB collection' },
+        collection_name: { type: 'string', description: 'Collection name for display' },
+        articles: {
+          type: 'array',
+          description: 'List of Q&A pairs to add',
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string', description: 'The question or topic' },
+              answer: { type: 'string', description: 'The detailed answer' },
+            },
+            required: ['question', 'answer'],
+          },
+        },
+      },
+      required: ['collection_id', 'collection_name', 'articles'],
     },
   },
 ];

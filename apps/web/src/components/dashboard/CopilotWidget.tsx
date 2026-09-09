@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { Paperclip, X as XIcon } from 'lucide-react';
 
 export interface CopilotMessage {
   id: string;
@@ -40,6 +41,9 @@ function ActionCard({ msg, onAction }: { msg: CopilotMessage; onAction: (m: Copi
   let summary = `Execute: ${msg.toolName}`;
   if (msg.toolName === 'add_kb_article') {
     summary = `Add KB article: "${input['question'] as string}" → "${input['collection_name'] as string}"`;
+  } else if (msg.toolName === 'add_kb_articles_bulk') {
+    const arts = (input['articles'] as Array<{ question: string }> | undefined) ?? [];
+    summary = `Add ${arts.length} KB article${arts.length !== 1 ? 's' : ''} to "${input['collection_name'] as string}"`;
   } else if (msg.toolName === 'update_escalation_triggers') {
     const triggers = (input['triggers'] as string[] | undefined) ?? [];
     summary = `Set escalation triggers for ${input['product_slug'] as string}: ${triggers.slice(0, 3).join(', ')}${triggers.length > 3 ? '…' : ''}`;
@@ -127,16 +131,19 @@ const EDGE_PAD     = 16;  // px from right edge
 const MIN_TOP      = 20;
 
 export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
-  const [open,     setOpen]     = useState(false);
-  const [messages, setMessages] = useState<CopilotMessage[]>(initialMessages);
-  const [input,    setInput]    = useState('');
-  const [loading,  setLoading]  = useState(false);
+  const [open,           setOpen]           = useState(false);
+  const [messages,       setMessages]       = useState<CopilotMessage[]>(initialMessages);
+  const [input,          setInput]          = useState('');
+  const [loading,        setLoading]        = useState(false);
+  const [attachedFile,   setAttachedFile]   = useState<{ name: string; content: string } | null>(null);
+  const [fileLoading,    setFileLoading]    = useState(false);
 
   // Drag position — initialised from localStorage after mount (SSR-safe)
   const [posY,     setPosY]     = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const loadingRef     = useRef(false);
+  const fileInputRef   = useRef<HTMLInputElement>(null);
   const posYRef        = useRef<number>(0);    // sync ref for closure access
   const dragStartY     = useRef(0);
   const dragStartPosY  = useRef(0);
@@ -217,12 +224,66 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
   // ── Panel position: open above button unless too close to top ────────────
   const panelBelow = posY !== null && posY < PANEL_HEIGHT + 24;
 
+  // ── File attachment ───────────────────────────────────────────────────────
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const textTypes = ['text/plain', 'text/csv', 'text/markdown', 'application/json', 'application/x-ndjson'];
+    const isText = textTypes.some(t => file.type === t) || /\.(txt|csv|md|json|tsv)$/i.test(file.name);
+    const isPdf  = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+
+    if (!isText && !isPdf) {
+      alert('Unsupported file type. Please attach a PDF, CSV, TXT, MD, or JSON file.');
+      return;
+    }
+
+    setFileLoading(true);
+    try {
+      if (isText) {
+        const text = await file.text();
+        setAttachedFile({ name: file.name, content: text });
+      } else {
+        // PDF: send to extraction endpoint
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/copilot/file', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const err = await res.json() as { error?: string };
+          alert(`Could not read PDF: ${err.error ?? 'Unknown error'}`);
+          return;
+        }
+        const data = await res.json() as { text: string; filename: string };
+        setAttachedFile({ name: data.filename, content: data.text });
+      }
+    } catch {
+      alert('Failed to read file. Please try again.');
+    } finally {
+      setFileLoading(false);
+    }
+  }, []);
+
   // ── Send message ─────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loadingRef.current) return;
-    const userMsg: CopilotMessage = { id: crypto.randomUUID(), role: 'user', content: text, type: 'message' };
+
+    // Build message with optional file content
+    let fullMessage = text.trim();
+    const file = attachedFile;
+    if (file) {
+      fullMessage = `${text.trim()}\n\n[Attached file: ${file.name}]\n${file.content}`;
+    }
+
+    const userMsg: CopilotMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: file ? `${text.trim()} [📎 ${file.name}]` : text,
+      type: 'message',
+    };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setAttachedFile(null);
     setLoading(true);
     loadingRef.current = true;
 
@@ -230,7 +291,7 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
       const res  = await fetch('/api/copilot/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: fullMessage }),
       });
       const data = await res.json() as {
         type?: 'message' | 'action_pending';
@@ -336,27 +397,68 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
           </div>
 
           {/* Input */}
-          <div className="border-t border-slate-100 p-3 flex gap-2 flex-shrink-0">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
-              }}
-              placeholder="Ask anything… (Enter to send)"
-              rows={1}
-              disabled={loading}
-              className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 leading-relaxed"
-            />
-            <button
-              onClick={() => sendMessage(input)}
-              disabled={loading || !input.trim()}
-              aria-label="Send"
-              className="bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl w-10 flex items-center justify-center transition-colors text-base font-bold"
-            >
-              ↑
-            </button>
+          <div className="border-t border-slate-100 p-3 flex flex-col gap-2 flex-shrink-0">
+            {/* Attached file chip */}
+            {attachedFile && (
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                <Paperclip size={11} className="text-emerald-600 shrink-0" />
+                <span className="text-xs text-emerald-700 font-medium truncate flex-1">{attachedFile.name}</span>
+                <button
+                  onClick={() => setAttachedFile(null)}
+                  className="text-emerald-400 hover:text-emerald-700 shrink-0"
+                  aria-label="Remove attachment"
+                >
+                  <XIcon size={12} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.csv,.md,.json,.tsv,.pdf"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+
+              {/* Paperclip button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || fileLoading}
+                aria-label="Attach file"
+                title="Attach a file (CSV, PDF, TXT…)"
+                className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 transition-colors disabled:opacity-40 shrink-0"
+              >
+                {fileLoading
+                  ? <span className="w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                  : <Paperclip size={14} />
+                }
+              </button>
+
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
+                }}
+                placeholder="Ask anything… (Enter to send)"
+                rows={1}
+                disabled={loading}
+                className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 leading-relaxed"
+              />
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={loading || (!input.trim() && !attachedFile)}
+                aria-label="Send"
+                className="bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl w-10 flex items-center justify-center transition-colors text-base font-bold shrink-0"
+              >
+                ↑
+              </button>
+            </div>
           </div>
         </div>
       )}
