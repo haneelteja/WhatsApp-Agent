@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams, usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ChevronDown, Bot, Star } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
@@ -25,11 +25,12 @@ const BOT_COLOR: Record<string, { bg: string; icon: string }> = {
 const LOCAL_PRIMARY_KEY = 'alphabot_primary_bot';
 
 export function BotSelector({ bots }: { bots: ActiveBot[] }) {
-  const searchParams    = useSearchParams();
   const pathname        = usePathname();
   const router          = useRouter();
   const [open, setOpen]           = useState(false);
   const [primarySlug, setPrimary] = useState<string | null>(null);
+  // Read bot param client-side only to avoid SSR/hydration mismatch
+  const [urlSlug, setUrlSlug]     = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   // All hooks must be declared before any early return
@@ -49,7 +50,9 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [open]);
 
-  const urlSlug     = searchParams.get('bot');
+  useEffect(() => {
+    setUrlSlug(new URLSearchParams(window.location.search).get('bot'));
+  }, []);
   const currentSlug = urlSlug ?? primarySlug;
   const activeBot   = bots.find(b => b.slug === currentSlug);
   const isScoped    = BOT_SCOPED_PATHS.has(pathname) || pathname.startsWith('/conversations/');
@@ -57,7 +60,7 @@ export function BotSelector({ bots }: { bots: ActiveBot[] }) {
   if (!isScoped || bots.length === 0) return null;
 
   function selectBot(slug: string | null) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(window.location.search);
     if (slug) params.set('bot', slug);
     else params.delete('bot');
     const qs = params.toString();

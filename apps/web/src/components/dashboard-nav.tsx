@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   MessageSquare,
   LayoutDashboard,
@@ -55,10 +56,13 @@ export function DashboardNav({
   hasLifecycleBot: boolean;
   onLinkClick?: () => void;
 }) {
-  const pathname     = usePathname();
-  const searchParams = useSearchParams();
-  const router       = useRouter();
-  const botParam     = searchParams.get('bot');
+  const pathname = usePathname();
+  const router   = useRouter();
+  // Read bot param client-side only to avoid SSR/hydration mismatch
+  const [botParam, setBotParam] = useState<string | null>(null);
+  useEffect(() => {
+    setBotParam(new URLSearchParams(window.location.search).get('bot'));
+  }, []);
   const supabase = getSupabaseBrowserClient();
 
   const ADMIN_ONLY_HREFS = new Set(['/audit']);
