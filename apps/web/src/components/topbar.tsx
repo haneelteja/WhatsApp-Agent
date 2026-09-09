@@ -1,6 +1,5 @@
 'use client';
 
-import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import { Bell, ChevronRight, Menu } from 'lucide-react';
 import { BotSelector } from '@/components/dashboard/BotSelector';
@@ -93,9 +92,7 @@ export function Topbar({
       {/* Right actions */}
       <div className="flex items-center gap-2">
         {activeBots.length > 0 && (
-          <Suspense>
-            <BotSelector bots={activeBots} />
-          </Suspense>
+          <BotSelector bots={activeBots} />
         )}
         <button
           type="button"

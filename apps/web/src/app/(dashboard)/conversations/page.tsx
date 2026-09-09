@@ -4,7 +4,6 @@ import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Suspense } from 'react';
 import {
   MessageSquare, AlertCircle, Phone, PhoneCall, PhoneOff, PhoneMissed,
   Clock, TrendingUp, IndianRupee, Users, Star, Search, Megaphone,
@@ -473,9 +472,7 @@ export default async function ConversationsPage({
           </div>
 
           {/* Bot filter */}
-          <Suspense>
-            <BotFilterBar activeSlugs={activeSlugs} current={botFilter} />
-          </Suspense>
+          <BotFilterBar activeSlugs={activeSlugs} current={botFilter} />
 
           {conversations.length === 0 ? (
             <div className="bg-white rounded-2xl border border-green-100 shadow-sm flex flex-col items-center justify-center py-24 text-center">
