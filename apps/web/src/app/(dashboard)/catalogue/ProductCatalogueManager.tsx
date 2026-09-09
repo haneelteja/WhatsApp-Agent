@@ -348,7 +348,7 @@ export function ProductCatalogueManager({ initialProducts }: { initialProducts: 
                     </div>
 
                     {/* Price */}
-                    <div className="text-sm font-semibold text-emerald-700 tabular-nums shrink-0 mr-2">
+                    <div className="text-sm font-semibold text-emerald-700 tabular-nums shrink-0 mr-2" suppressHydrationWarning>
                       {fmt(p.price_inr)}
                     </div>
 

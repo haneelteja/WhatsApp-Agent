@@ -116,7 +116,7 @@ export function BroadcastList({ broadcasts }: { broadcasts: BroadcastRow[] }) {
               {b.total_count > 0 && (
                 <div className="mt-2 space-y-1">
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>{b.sent_count.toLocaleString()} sent · {b.failed_count.toLocaleString()} failed · {b.total_count.toLocaleString()} total</span>
+                    <span suppressHydrationWarning>{b.sent_count.toLocaleString()} sent · {b.failed_count.toLocaleString()} failed · {b.total_count.toLocaleString()} total</span>
                     {progress !== null && <span>{progress}%</span>}
                   </div>
                   <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
