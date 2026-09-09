@@ -464,4 +464,160 @@ Output format (strict, no other text):
       return reply.status(502).send({ error: 'Generation failed — please try again' });
     }
   });
+
+  // ── KB Optimise ────────────────────────────────────────────────────────────
+
+  // POST /api/kb/collections/:id/optimise — read all entries, return LLM-optimised preview (does NOT save)
+  fastify.post<{ Params: { id: string } }>(
+    '/collections/:id/optimise',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const db = getServerClient();
+      const tenantId = (request as { tenantId?: string }).tenantId;
+      if (!tenantId) return reply.status(401).send({ error: 'Unauthorized' });
+      const { id } = request.params;
+
+      // Verify ownership
+      const { data: col } = await db
+        .from('kb_collections')
+        .select('id, name')
+        .eq('id', id)
+        .eq('tenant_id', tenantId)
+        .single();
+      if (!col) return reply.status(404).send({ error: 'Collection not found' });
+
+      // Fetch all entries
+      const { data: entries, error: entErr } = await db
+        .from('kb_entries')
+        .select('question, answer, category')
+        .eq('collection_id', id)
+        .order('created_at', { ascending: true });
+      if (entErr) return reply.status(500).send({ error: entErr.message });
+      if (!entries?.length) return reply.status(400).send({ error: 'Collection has no entries to optimise' });
+
+      const entriesText = entries
+        .map((e, i) => `[${i + 1}]\nQ: ${e.question}\nA: ${e.answer}\nCategory: ${e.category || 'General'}`)
+        .join('\n\n');
+
+      const systemPrompt = `You are a Knowledge Base optimiser for a WhatsApp AI customer support bot.
+You receive existing KB entries and rewrite them so a bot can better understand and answer customer questions.
+
+Optimise by:
+1. Rewriting questions to be phrased exactly as customers ask on WhatsApp (natural, conversational)
+2. Making answers concise (1–3 sentences), accurate to the original content, warm in tone
+3. Merging near-duplicate or redundant entries into one clear entry
+4. Splitting entries with multiple unrelated topics into separate focused entries
+5. Assigning the best category from: Products, Pricing, Ordering, Delivery, Returns, Support, Company, General
+6. Removing entries with no real information value (e.g. placeholders, empty answers)
+
+CRITICAL: Do NOT invent new information. Only use facts from the original entries.
+Return ONLY valid JSON, no explanation, no markdown fences:
+{"entries":[{"question":"...","answer":"...","category":"..."}]}`;
+
+      try {
+        const { content } = await chatCompletion({
+          model:      REPLY_MODEL,
+          system:     systemPrompt,
+          messages:   [{ role: 'user', content: `Optimise these ${entries.length} KB entries for the collection "${col.name}":\n\n${entriesText}` }],
+          max_tokens: 8000,
+        });
+
+        let raw = content.trim();
+        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (fenced) raw = fenced[1]!.trim();
+
+        let parsed: { entries: Array<{ question: string; answer: string; category: string }> };
+        try {
+          parsed = JSON.parse(raw) as typeof parsed;
+        } catch {
+          const objMatch = raw.match(/\{[\s\S]*\}/);
+          if (!objMatch) return reply.status(502).send({ error: 'Optimisation failed — please try again' });
+          parsed = JSON.parse(objMatch[0]) as typeof parsed;
+        }
+
+        if (!Array.isArray(parsed?.entries)) {
+          return reply.status(502).send({ error: 'Optimisation failed — unexpected response format' });
+        }
+
+        const optimised = parsed.entries
+          .filter(e => e.question?.trim() && e.answer?.trim())
+          .slice(0, 200);
+
+        return reply.send({ entries: optimised, originalCount: entries.length });
+      } catch (err) {
+        fastify.log.error({ err }, '[KB Optimise] Claude call failed');
+        return reply.status(502).send({ error: 'Optimisation failed — please try again' });
+      }
+    }
+  );
+
+  // POST /api/kb/collections/:id/optimise/apply — replace all entries with optimised set
+  fastify.post<{
+    Params: { id: string };
+    Body: { entries: Array<{ question: string; answer: string; category: string }> };
+  }>(
+    '/collections/:id/optimise/apply',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const db = getServerClient();
+      const tenantId = (request as { tenantId?: string }).tenantId;
+      if (!tenantId) return reply.status(401).send({ error: 'Unauthorized' });
+      const { id } = request.params;
+      const { entries } = request.body;
+
+      if (!Array.isArray(entries) || !entries.length) {
+        return reply.status(400).send({ error: 'entries array is required' });
+      }
+
+      // Verify ownership
+      const { data: col } = await db
+        .from('kb_collections')
+        .select('id')
+        .eq('id', id)
+        .eq('tenant_id', tenantId)
+        .single();
+      if (!col) return reply.status(404).send({ error: 'Collection not found' });
+
+      // Delete existing entries
+      const { error: delErr } = await db
+        .from('kb_entries')
+        .delete()
+        .eq('collection_id', id);
+      if (delErr) return reply.status(500).send({ error: delErr.message });
+
+      // Bulk insert optimised entries with embeddings
+      const toInsert = entries.map(e => ({
+        tenant_id:     tenantId,
+        collection_id: id,
+        question:      e.question.trim(),
+        answer:        e.answer.trim(),
+        category:      e.category?.trim() || 'General',
+        status:        'live',
+      }));
+
+      // Generate embeddings in batch
+      const texts = toInsert.map(e => `${e.question}\n${e.answer}`);
+      let embeddings: number[][] = [];
+      try {
+        embeddings = await generateEmbeddingsBatch(texts);
+      } catch {
+        // Non-fatal — insert without embeddings and log
+        fastify.log.warn('[KB Optimise Apply] Embedding batch failed — inserting without embeddings');
+      }
+
+      const withEmbeddings = toInsert.map((e, i) => ({
+        ...e,
+        embedding: embeddings[i] ? JSON.stringify(embeddings[i]) : null,
+      }));
+
+      const { error: insErr } = await db
+        .from('kb_entries')
+        .insert(withEmbeddings);
+      if (insErr) return reply.status(500).send({ error: insErr.message });
+
+      await invalidateKBCache(tenantId);
+
+      return reply.send({ success: true, count: toInsert.length });
+    }
+  );
 }

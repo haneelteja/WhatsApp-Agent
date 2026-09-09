@@ -6,7 +6,7 @@ import {
   Plus, BookOpen, Trash2, ChevronRight, X,
   Sparkles, ChevronLeft, CheckSquare, Square,
   Loader2, AlertCircle, Check, Pencil,
-  ImageIcon, FileText, Upload, Eye, EyeOff, Send, Package,
+  ImageIcon, FileText, Upload, Eye, EyeOff, Send, Package, Wand2,
 } from 'lucide-react';
 import { kbFetch, kbUpload } from '@/lib/kb-client';
 import { ProductCatalogueManager } from '@/app/(dashboard)/catalogue/ProductCatalogueManager';
@@ -163,6 +163,17 @@ export default function KnowledgeBasePage() {
   const [uploadQueue,      setUploadQueue]       = useState<QueuedFile[]>([]);
   const [uploading,        setUploading]         = useState(false);
   const [dragOver,         setDragOver]          = useState(false);
+
+  // ── Optimise KB state ──────────────────────────────────────────────────────
+  interface OptimisedEntry { question: string; answer: string; category: string; selected: boolean; }
+  const [optimisingColId,    setOptimisingColId]    = useState<string | null>(null);
+  const [optimisingStep,     setOptimisingStep]     = useState<'idle' | 'loading' | 'preview' | 'applying' | 'done'>('idle');
+  const [optimisedEntries,   setOptimisedEntries]   = useState<OptimisedEntry[]>([]);
+  const [optimiseOrigCount,  setOptimiseOrigCount]  = useState(0);
+  const [optimiseColName,    setOptimiseColName]    = useState('');
+  const [optimiseError,      setOptimiseError]      = useState('');
+  const [optEditIdx,         setOptEditIdx]         = useState<number | null>(null);
+  const [optEditDraft,       setOptEditDraft]       = useState<{ question: string; answer: string } | null>(null);
 
   // ── Catalogue tab state ────────────────────────────────────────────────────
   const [catalogueProducts,  setCatalogueProducts]  = useState<ProductCatalogueItem[] | null>(null);
@@ -424,6 +435,75 @@ export default function KnowledgeBasePage() {
     setImporting(false);
   }
 
+  // ── Optimise KB handlers ───────────────────────────────────────────────────
+
+  async function handleOptimise(col: CollectionRow, e: React.MouseEvent) {
+    e.preventDefault();
+    setOptimisingColId(col.id);
+    setOptimiseColName(col.name);
+    setOptimisedEntries([]);
+    setOptimiseError('');
+    setOptEditIdx(null);
+    setOptEditDraft(null);
+    setOptimisingStep('loading');
+
+    const res = await kbFetch(`/api/kb/collections/${col.id}/optimise`, { method: 'POST' });
+    const json = await res.json() as { entries?: Array<{ question: string; answer: string; category: string }>; originalCount?: number; error?: string };
+    if (!res.ok) {
+      setOptimiseError(json.error ?? 'Optimisation failed — please try again');
+      setOptimisingStep('preview');
+      return;
+    }
+    setOptimisedEntries((json.entries ?? []).map(e => ({ ...e, selected: true })));
+    setOptimiseOrigCount(json.originalCount ?? col.entry_count);
+    setOptimisingStep('preview');
+  }
+
+  function toggleOptEntry(i: number) {
+    setOptimisedEntries(es => es.map((e, idx) => idx === i ? { ...e, selected: !e.selected } : e));
+  }
+  function toggleAllOpt() {
+    const allSel = optimisedEntries.every(e => e.selected);
+    setOptimisedEntries(es => es.map(e => ({ ...e, selected: !allSel })));
+  }
+
+  function startOptEdit(i: number) {
+    setOptEditIdx(i);
+    setOptEditDraft({ question: optimisedEntries[i]!.question, answer: optimisedEntries[i]!.answer });
+  }
+  function saveOptEdit() {
+    if (optEditIdx === null || !optEditDraft) return;
+    setOptimisedEntries(es => es.map((e, i) => i === optEditIdx ? { ...e, ...optEditDraft } : e));
+    setOptEditIdx(null); setOptEditDraft(null);
+  }
+
+  async function handleApplyOptimise() {
+    const selected = optimisedEntries.filter(e => e.selected);
+    if (!selected.length || !optimisingColId) return;
+    setOptimisingStep('applying');
+    const res = await kbFetch(`/api/kb/collections/${optimisingColId}/optimise/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ entries: selected.map(({ question, answer, category }) => ({ question, answer, category })) }),
+    });
+    if (!res.ok) {
+      const json = await res.json() as { error?: string };
+      setOptimiseError(json.error ?? 'Apply failed — please try again');
+      setOptimisingStep('preview');
+      return;
+    }
+    setOptimisingStep('done');
+    void loadCollections();
+  }
+
+  function closeOptimise() {
+    setOptimisingColId(null);
+    setOptimisingStep('idle');
+    setOptimisedEntries([]);
+    setOptimiseError('');
+    setOptEditIdx(null);
+    setOptEditDraft(null);
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const selectedCount = entries.filter(e => e.selected).length;
@@ -554,6 +634,13 @@ export default function KnowledgeBasePage() {
                     </div>
                   </Link>
                   <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {col.entry_count > 0 && (
+                      <button type="button" onClick={(e) => void handleOptimise(col, e)} aria-label="Optimise KB"
+                        title="Optimise KB with AI"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:bg-violet-50 hover:text-violet-500 transition-colors">
+                        <Wand2 size={13} />
+                      </button>
+                    )}
                     <button type="button" onClick={(e) => void handleDelete(col.id, e)} aria-label="Delete collection"
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors">
                       <Trash2 size={13} />
@@ -1163,6 +1250,151 @@ export default function KnowledgeBasePage() {
           ) : (
             <ProductCatalogueManager initialProducts={catalogueProducts ?? []} />
           )}
+        </div>
+      )}
+
+      {/* ── Optimise KB Modal ── */}
+      {optimisingColId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-green-100">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center">
+                  <Wand2 size={15} className="text-violet-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Optimise KB</p>
+                  <p className="text-xs text-gray-400 truncate max-w-xs">{optimiseColName}</p>
+                </div>
+              </div>
+              {optimisingStep !== 'loading' && optimisingStep !== 'applying' && (
+                <button type="button" onClick={closeOptimise} aria-label="Close"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+
+            {/* Loading */}
+            {optimisingStep === 'loading' && (
+              <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+                <div className="w-14 h-14 rounded-2xl bg-violet-50 border border-violet-100 flex items-center justify-center mb-4">
+                  <Loader2 size={26} className="text-violet-500 animate-spin" />
+                </div>
+                <p className="text-sm font-bold text-gray-900 mb-1">Analysing your Knowledge Base…</p>
+                <p className="text-xs text-gray-400 max-w-xs">The AI is reading all your entries and rewriting them for better bot comprehension. This takes about 15–30 seconds.</p>
+              </div>
+            )}
+
+            {/* Applying */}
+            {optimisingStep === 'applying' && (
+              <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+                <div className="w-14 h-14 rounded-2xl bg-violet-50 border border-violet-100 flex items-center justify-center mb-4">
+                  <Loader2 size={26} className="text-violet-500 animate-spin" />
+                </div>
+                <p className="text-sm font-bold text-gray-900 mb-1">Applying optimised entries…</p>
+                <p className="text-xs text-gray-400">Replacing existing entries with the optimised set.</p>
+              </div>
+            )}
+
+            {/* Done */}
+            {optimisingStep === 'done' && (
+              <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-4">
+                  <Check size={26} className="text-emerald-500" />
+                </div>
+                <p className="text-sm font-bold text-gray-900 mb-1">Knowledge Base optimised!</p>
+                <p className="text-xs text-gray-400 mb-6">
+                  {optimisedEntries.filter(e => e.selected).length} optimised entries replaced {optimiseOrigCount} original entries.
+                </p>
+                <button type="button" onClick={closeOptimise}
+                  className="text-sm px-5 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors font-semibold shadow-sm shadow-emerald-200">
+                  Done
+                </button>
+              </div>
+            )}
+
+            {/* Preview */}
+            {optimisingStep === 'preview' && (
+              <>
+                {/* Sub-header */}
+                <div className="px-6 py-3 border-b border-gray-50 bg-violet-50/40 flex items-center justify-between shrink-0">
+                  <p className="text-xs text-gray-600">
+                    <span className="font-semibold text-violet-700">{optimisedEntries.length}</span> optimised entries
+                    {optimiseOrigCount > 0 && <span className="text-gray-400"> · was {optimiseOrigCount}</span>}
+                    {' · '}<span className="text-violet-700 font-semibold">{optimisedEntries.filter(e => e.selected).length}</span> selected
+                  </p>
+                  <button type="button" onClick={toggleAllOpt}
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-white transition-colors font-medium">
+                    {optimisedEntries.every(e => e.selected) ? <Square size={11} /> : <CheckSquare size={11} />}
+                    {optimisedEntries.every(e => e.selected) ? 'Deselect all' : 'Select all'}
+                  </button>
+                </div>
+
+                {/* Error banner */}
+                {optimiseError && (
+                  <div className="mx-6 mt-3 flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3 shrink-0">
+                    <AlertCircle size={14} className="shrink-0" /> {optimiseError}
+                  </div>
+                )}
+
+                {/* Entry list */}
+                <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+                  {optimisedEntries.map((entry, i) => (
+                    <div key={i} className={`flex items-start gap-3 px-6 py-3.5 transition-colors ${entry.selected ? 'bg-white hover:bg-gray-50/40' : 'bg-gray-50/50 opacity-50'}`}>
+                      <button type="button" onClick={() => toggleOptEntry(i)} className="shrink-0 mt-0.5 text-violet-500 hover:text-violet-700">
+                        {entry.selected ? <CheckSquare size={15} /> : <Square size={15} className="text-gray-300" />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        {optEditIdx === i ? (
+                          <div className="space-y-2">
+                            <input autoFocus value={optEditDraft?.question ?? ''} onChange={e => setOptEditDraft(d => d ? { ...d, question: e.target.value } : d)}
+                              className="w-full rounded-lg border border-violet-300 px-2.5 py-1.5 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                            <textarea rows={2} value={optEditDraft?.answer ?? ''} onChange={e => setOptEditDraft(d => d ? { ...d, answer: e.target.value } : d)}
+                              className="w-full rounded-lg border border-violet-300 px-2.5 py-1.5 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none" />
+                            <div className="flex gap-2">
+                              <button type="button" onClick={saveOptEdit}
+                                className="text-xs px-3 py-1 rounded-lg bg-violet-600 text-white font-semibold hover:bg-violet-700 transition-colors">Save</button>
+                              <button type="button" onClick={() => { setOptEditIdx(null); setOptEditDraft(null); }}
+                                className="text-xs px-3 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2 cursor-pointer" onClick={() => startOptEdit(i)}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-800 leading-snug">{entry.question}</p>
+                              <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{entry.answer}</p>
+                            </div>
+                            <Pencil size={11} className="text-gray-300 shrink-0 mt-1" />
+                          </div>
+                        )}
+                      </div>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 mt-0.5 ${CATEGORY_COLORS[entry.category] ?? 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                        {entry.category}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Footer actions */}
+                <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between shrink-0 bg-white rounded-b-2xl">
+                  <button type="button" onClick={closeOptimise}
+                    className="text-sm px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium">
+                    Cancel
+                  </button>
+                  <button type="button"
+                    onClick={() => void handleApplyOptimise()}
+                    disabled={optimisedEntries.filter(e => e.selected).length === 0}
+                    className="flex items-center gap-2 text-sm px-5 py-2.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-colors font-semibold disabled:opacity-40 shadow-sm shadow-violet-200">
+                    <Wand2 size={14} />
+                    Apply {optimisedEntries.filter(e => e.selected).length} entries
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
