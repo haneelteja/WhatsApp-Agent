@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -101,7 +101,7 @@ function StepIndicator({ current }: { current: WizardStep }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function KnowledgeBasePage() {
+function KnowledgeBasePageContent() {
 
   // ── Bot filter ─────────────────────────────────────────────────────────────
   const searchParams  = useSearchParams();
@@ -1205,5 +1205,13 @@ export default function KnowledgeBasePage() {
       )}
 
     </div>
+  );
+}
+
+export default function KnowledgeBasePage() {
+  return (
+    <Suspense>
+      <KnowledgeBasePageContent />
+    </Suspense>
   );
 }
