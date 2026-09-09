@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 const BOTS = [
   { slug: 'support_bot',   label: 'Support',   active: 'bg-sky-100 text-sky-700 border-sky-300',        inactive: 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50' },
@@ -15,13 +15,12 @@ export function BotFilterBar({
   activeSlugs: string[];
   current:     string | null;
 }) {
-  const router     = useRouter();
-  const params     = useSearchParams();
+  const router = useRouter();
 
   if (activeSlugs.length <= 1) return null;
 
   function select(slug: string | null) {
-    const next = new URLSearchParams(params.toString());
+    const next = new URLSearchParams(window.location.search);
     if (slug) next.set('bot', slug); else next.delete('bot');
     router.push(`?${next.toString()}`);
   }
