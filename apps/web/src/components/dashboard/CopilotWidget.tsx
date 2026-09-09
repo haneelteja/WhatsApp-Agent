@@ -75,28 +75,6 @@ function ActionCard({ msg, onAction }: { msg: CopilotMessage; onAction: (m: Copi
   );
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-      title="Copy message"
-      className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 mt-0.5 p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 shrink-0 self-start"
-    >
-      {copied
-        ? <span className="text-[10px] text-emerald-600 font-semibold px-0.5">✓</span>
-        : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      }
-    </button>
-  );
-}
-
 function MessageBubble({ msg, onAction }: { msg: CopilotMessage; onAction: (m: CopilotMessage, approved: boolean) => void }) {
   if (msg.role === 'user') {
     return (
@@ -113,17 +91,14 @@ function MessageBubble({ msg, onAction }: { msg: CopilotMessage; onAction: (m: C
   const navParts  = parts.filter(p => p.kind === 'nav');
 
   return (
-    <div className="flex items-start gap-2 group">
+    <div className="flex items-start gap-2">
       <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-[13px] flex-shrink-0 mt-0.5 select-none">
         ✨
       </div>
       <div className="flex-1 min-w-0 space-y-1.5">
         {textParts && (
-          <div className="flex items-start gap-1">
-            <div className="bg-slate-50 border border-slate-100 text-slate-800 rounded-2xl rounded-tl-sm px-3.5 py-2 max-w-[90%] text-sm leading-relaxed whitespace-pre-wrap break-words">
-              {textParts}
-            </div>
-            <CopyButton text={textParts} />
+          <div className="bg-slate-50 border border-slate-100 text-slate-800 rounded-2xl rounded-tl-sm px-3.5 py-2 max-w-[90%] text-sm leading-relaxed whitespace-pre-wrap break-words">
+            {textParts}
           </div>
         )}
         {navParts.length > 0 && (
@@ -370,7 +345,7 @@ export function CopilotWidget({ initialMessages }: CopilotWidgetProps) {
   return (
     <div
       style={{ position: 'fixed', top: posY, right: EDGE_PAD, zIndex: 50 }}
-      className="flex flex-col items-end select-none"
+      className="flex flex-col items-end"
     >
       {/* Chat panel — above or below depending on viewport position */}
       {open && (
