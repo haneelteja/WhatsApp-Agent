@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Plus, BookOpen, Trash2, ChevronRight, X,
@@ -101,11 +100,13 @@ function StepIndicator({ current }: { current: WizardStep }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-function KnowledgeBasePageContent() {
+export default function KnowledgeBasePage() {
 
-  // ── Bot filter ─────────────────────────────────────────────────────────────
-  const searchParams  = useSearchParams();
-  const botParam      = searchParams.get('bot');
+  // ── Bot filter — read client-side only to avoid SSR/hydration mismatch ───────
+  const [botParam, setBotParam] = useState<string | null>(null);
+  useEffect(() => {
+    setBotParam(new URLSearchParams(window.location.search).get('bot'));
+  }, []);
 
   // ── Collections tab state ──────────────────────────────────────────────────
   const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media' | 'catalogue'>('collections');
@@ -1205,13 +1206,5 @@ function KnowledgeBasePageContent() {
       )}
 
     </div>
-  );
-}
-
-export default function KnowledgeBasePage() {
-  return (
-    <Suspense>
-      <KnowledgeBasePageContent />
-    </Suspense>
   );
 }
