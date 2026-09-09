@@ -76,7 +76,7 @@ function FunnelPanel({ botType, rows }: FunnelPanelProps) {
                 />
               </div>
               <div className="w-20 shrink-0 flex items-center gap-1.5">
-                <span className="text-sm font-bold text-gray-700 tabular-nums">{s.count.toLocaleString()}</span>
+                <span className="text-sm font-bold text-gray-700 tabular-nums" suppressHydrationWarning>{s.count.toLocaleString()}</span>
                 {dropPct !== null && dropPct > 0 && topCount > 0 && (
                   <span className="text-[10px] text-red-400 font-medium">−{dropPct}%</span>
                 )}
