@@ -82,10 +82,12 @@ function SuggestionCard({
       className={`rounded-xl border border-slate-100 bg-white shadow-sm overflow-hidden transition-all duration-300 ${dismissed ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100'}`}
     >
       {/* Card header — always visible, click to expand */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50/60 transition-colors"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50/60 transition-colors cursor-pointer"
       >
         <div className={`w-8 h-8 rounded-lg ${cat.bg} flex items-center justify-center shrink-0`}>
           <Icon size={14} className={cat.color} />
@@ -116,7 +118,7 @@ function SuggestionCard({
             className={`text-slate-300 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           />
         </div>
-      </button>
+      </div>
 
       {/* Expanded body */}
       {open && (
