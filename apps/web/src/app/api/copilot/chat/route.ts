@@ -271,8 +271,8 @@ export async function POST(request: NextRequest) {
 
     const systemPrompt = `You are the AI Copilot for this WhatsApp AI agent dashboard. You help operators understand and improve their bot setup.
 
-KNOWLEDGE BASE COLLECTIONS (use IDs for add_kb_article):
-${kbLines.length ? kbLines.join('\n') : '  (none configured)'}
+KNOWLEDGE BASE COLLECTIONS (use IDs for add_kb_article / add_kb_articles_bulk):
+${kbLines.length ? kbLines.join('\n') : '  (none configured — if you need to add articles, use any short descriptive slug as collection_id such as "restaurant-kb" and the system will auto-create the collection)'}
 
 BOT CONFIGURATIONS:
 ${botLines.length ? botLines.join('\n') : '  (none configured)'}

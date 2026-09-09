@@ -54,14 +54,29 @@ export async function POST(request: NextRequest) {
   // Execute the approved action
   let executionResult = '';
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  async function resolveCollectionId(collection_id: string, collection_name: string): Promise<string> {
+    if (UUID_RE.test(collection_id)) return collection_id;
+    // collection_id is a placeholder string — create a real collection
+    const { data: newCol, error: colErr } = await admin
+      .from('kb_collections')
+      .insert({ tenant_id: tenantId, name: collection_name ?? 'Knowledge Base', active: true })
+      .select('id')
+      .single();
+    if (colErr) throw new Error(colErr.message);
+    return (newCol as { id: string }).id;
+  }
+
   try {
     switch (pendingAction.toolName) {
       case 'add_kb_article': {
-        const { collection_id, question, answer } = pendingAction.toolInput as {
+        const { collection_id, collection_name, question, answer } = pendingAction.toolInput as {
           collection_id: string; question: string; answer: string; collection_name: string;
         };
+        const realId = await resolveCollectionId(collection_id, collection_name);
         const { error } = await admin.from('knowledge_base').insert({
-          collection_id,
+          collection_id: realId,
           tenant_id: tenantId,
           question,
           answer,
@@ -104,12 +119,14 @@ export async function POST(request: NextRequest) {
         break;
       }
       case 'add_kb_articles_bulk': {
-        const { collection_id, articles } = pendingAction.toolInput as {
+        const { collection_id, collection_name, articles } = pendingAction.toolInput as {
           collection_id: string;
+          collection_name: string;
           articles: Array<{ question: string; answer: string }>;
         };
+        const realId = await resolveCollectionId(collection_id, collection_name);
         const rows = articles.map(a => ({
-          collection_id,
+          collection_id: realId,
           tenant_id: tenantId,
           question: a.question,
           answer: a.answer,
@@ -117,7 +134,7 @@ export async function POST(request: NextRequest) {
         }));
         const { error } = await admin.from('knowledge_base').insert(rows);
         if (error) throw new Error(error.message);
-        executionResult = `Added ${rows.length} KB article${rows.length !== 1 ? 's' : ''}`;
+        executionResult = `Added ${rows.length} KB article${rows.length !== 1 ? 's' : ''} to "${collection_name}"`;
         break;
       }
       default:
