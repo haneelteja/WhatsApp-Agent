@@ -132,10 +132,10 @@ export default async function DashboardPage() {
     admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tid),
     admin
       .from('conversations')
-      .select('id, status, product_type, updated_at, contacts(name, phone)')
+      .select('id, status, product_type, updated_at, contacts(id, name, phone)')
       .eq('tenant_id', tid)
       .order('updated_at', { ascending: false })
-      .limit(5),
+      .limit(60),
     admin.from('tenant_products')
       .select('product_type')
       .eq('tenant_id', tid)
@@ -153,14 +153,31 @@ export default async function DashboardPage() {
     getLatestInsightsAction(tid),
   ]);
 
-  // ── Fetch last 5 messages per recent conversation ─────────────────────────
+  // ── Group conversations by contact (unique contacts, all their bots) ────────
 
-  const recentConvIds = (recent ?? []).map(c => c.id);
-  const { data: recentMsgs } = recentConvIds.length
+  type RawConv = { id: string; status: string; product_type: string; updated_at: string; contacts: unknown };
+  type ContactRow = { id: string; name: string | null; phone: string };
+
+  const contactMap = new Map<string, { contact: ContactRow; convs: RawConv[] }>();
+  for (const conv of ((recent ?? []) as RawConv[])) {
+    const contact = conv.contacts as ContactRow | null;
+    if (!contact?.id) continue;
+    const existing = contactMap.get(contact.id);
+    if (existing) {
+      existing.convs.push(conv);
+    } else {
+      contactMap.set(contact.id, { contact, convs: [conv] });
+    }
+  }
+  const uniqueGroups = [...contactMap.values()].slice(0, 5);
+
+  // Fetch messages for the most-recent conversation of each unique contact
+  const primaryConvIds = uniqueGroups.map(g => g.convs[0].id);
+  const { data: recentMsgs } = primaryConvIds.length
     ? await admin
         .from('messages')
         .select('id, conversation_id, role, content, timestamp')
-        .in('conversation_id', recentConvIds)
+        .in('conversation_id', primaryConvIds)
         .order('timestamp', { ascending: false })
     : { data: [] };
 
@@ -171,13 +188,21 @@ export default async function DashboardPage() {
     msgMap.set(m.conversation_id, list);
   }
 
-  const recentConvs: RecentConv[] = (recent ?? []).map(conv => {
-    const contact     = (conv.contacts as unknown) as { name: string | null; phone: string } | null;
-    const displayName = contact?.name ?? contact?.phone ?? 'Unknown';
-    const messages    = (msgMap.get(conv.id) ?? []).slice().reverse().map(m => ({
+  const recentConvs: RecentConv[] = uniqueGroups.map(({ contact, convs: cList }) => {
+    const primary  = cList[0];
+    const bots     = cList.map(c => ({ product_type: c.product_type, id: c.id, status: c.status }));
+    const messages = (msgMap.get(primary.id) ?? []).slice().reverse().map(m => ({
       id: m.id, role: m.role as 'user' | 'assistant', content: m.content, timestamp: m.timestamp,
     }));
-    return { id: conv.id, status: conv.status, product_type: conv.product_type, updated_at: conv.updated_at, displayName, messages };
+    return {
+      contactId:   contact.id,
+      displayName: contact.name ?? contact.phone ?? 'Unknown',
+      id:          primary.id,
+      status:      primary.status,
+      updated_at:  primary.updated_at,
+      bots,
+      messages,
+    };
   });
 
   // ── Build per-bot data structures ─────────────────────────────────────────

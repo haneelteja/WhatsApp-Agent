@@ -127,6 +127,7 @@ export default async function ConversationDetailPage({
       <ConversationMessages
         conversationId={id}
         initialMessages={messages ?? []}
+        productType={conversation.product_type}
       />
 
       {/* Actions */}

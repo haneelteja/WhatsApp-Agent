@@ -13,13 +13,22 @@ interface Message {
   confidence_score: number | null;
 }
 
+const BOT_AVATAR: Record<string, { label: string; bg: string; text: string }> = {
+  support_bot:   { label: 'SUP', bg: 'bg-sky-500',    text: 'text-white' },
+  sales_bot:     { label: 'SLS', bg: 'bg-violet-500', text: 'text-white' },
+  lifecycle_bot: { label: 'LFE', bg: 'bg-orange-500', text: 'text-white' },
+};
+
 export function ConversationMessages({
   conversationId,
   initialMessages,
+  productType,
 }: {
   conversationId: string;
   initialMessages: Message[];
+  productType?: string;
 }) {
+  const botAvatar = BOT_AVATAR[productType ?? ''] ?? { label: 'AI', bg: 'bg-emerald-500', text: 'text-white' };
   const [messages,  setMessages]  = useState<Message[]>(initialMessages);
   const [flagged,   setFlagged]   = useState<Set<string>>(new Set());
   const [, startTransition]       = useTransition();
@@ -119,8 +128,8 @@ export function ConversationMessages({
             </div>
           </div>
           {isBot && (
-            <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold shrink-0 mt-1 ml-2">
-              AI
+            <div className={`w-7 h-7 rounded-full ${botAvatar.bg} flex items-center justify-center ${botAvatar.text} text-[10px] font-bold shrink-0 mt-1 ml-2`}>
+              {botAvatar.label}
             </div>
           )}
         </div>
