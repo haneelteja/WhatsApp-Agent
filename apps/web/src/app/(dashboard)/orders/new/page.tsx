@@ -37,7 +37,7 @@ export default async function NewOrderPage() {
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
       <div className="mb-6">
         <h2 className="text-xl font-bold text-gray-900">New Order</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Create an order and send a PhonePe payment link via WhatsApp</p>
+        <p className="text-sm text-gray-500 mt-0.5">Create an order and send an Easebuzz payment link via WhatsApp</p>
       </div>
       <NewOrderForm
         tenantId={tenantId}

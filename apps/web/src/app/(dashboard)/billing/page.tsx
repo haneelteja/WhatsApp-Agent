@@ -116,7 +116,7 @@ export default async function BillingPage({
     { count: convThisMonth },
     { data: tokenRow },
   ] = await Promise.all([
-    admin.from('tenants').select('name, plan, status, razorpay_subscription_id, subscription_status').eq('id', tenantId).single(),
+    admin.from('tenants').select('name, plan, status, subscription_status').eq('id', tenantId).single(),
 
     admin.from('tenant_products').select('product_type, active').eq('tenant_id', tenantId).eq('active', true),
     admin.from('subscriptions').select('product_type, tier, billing_cycle, next_billing_date').eq('tenant_id', tenantId),

@@ -9,14 +9,6 @@ export default defineConfig({
     // Do NOT rely on process.env assignments inside test files for ESM modules —
     // imports are hoisted and constants are read before top-level test code runs.
     env: {
-      RAZORPAY_KEY_ID:         'rzp_test_key',
-      RAZORPAY_KEY_SECRET:     'test_secret_key',
-      RAZORPAY_WEBHOOK_SECRET: 'webhook_secret_xyz',
-      PHONEPE_CLIENT_ID:       'test_client_id',
-      PHONEPE_CLIENT_VERSION:  '1',
-      PHONEPE_CLIENT_SECRET:   'test_client_secret',
-      PHONEPE_WEBHOOK_SECRET:  'test_webhook_secret_abc',
-      PHONEPE_ENV:             'sandbox',
       API_BASE_URL:            'https://test-api.alphabot.app',
       WEB_BASE_URL:            'https://test.alphabot.app',
     },

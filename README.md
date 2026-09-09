@@ -30,7 +30,7 @@ alphabot/
 | Voice calls | Twilio / Exotel (telephony) · Deepgram / Sarvam (STT) · Google / Twilio Say (TTS) |
 | KB embeddings | Voyage AI (voyage-3, 1024-dim vectors) |
 | Caching + locks | Redis (ioredis), gracefully degrades if unavailable |
-| Payments | Razorpay + PhonePe |
+| Payments | Easebuzz |
 | Email | Resend |
 | Error tracking | Sentry |
 | API hosting | Render (Singapore region) |

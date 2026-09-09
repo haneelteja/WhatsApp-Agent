@@ -116,7 +116,7 @@ export async function createOrderAction(
   items: OrderItem[],
   total: number,
   sendLink: boolean,
-  provider: 'razorpay' | 'phonepe' = 'phonepe',
+  provider: 'easebuzz' = 'easebuzz',
 ): Promise<{ ok: true; orderId: string; linkUrl: string | null } | { error: string }> {
   const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
   if (!apiBase) return { error: 'API URL not configured' };

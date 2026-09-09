@@ -97,7 +97,7 @@ export async function resetTenantSubscriptionsAction(tenantId: string): Promise<
   const [{ error: subErr }, { error: tenantErr }] = await Promise.all([
     admin.from('subscriptions').delete().eq('tenant_id', tenantId),
     admin.from('tenants')
-      .update({ subscription_status: null, razorpay_subscription_id: null })
+      .update({ subscription_status: null })
       .eq('id', tenantId),
   ]);
 

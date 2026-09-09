@@ -1,16 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getServerClient } from '@alphabot/database';
 import {
-  createRazorpayPaymentLink,
-  verifyRazorpayWebhook,
-  parseRazorpayWebhook,
-} from '../../services/payment/razorpay.js';
-import {
-  createPhonePePaymentLink,
-  verifyPhonePeWebhook,
-  parsePhonePeWebhook,
-} from '../../services/payment/phonepe.js';
-import {
   createEasebuzzPaymentLink,
   verifyEasebuzzCallback,
 } from '../../services/payment/easebuzz.js';
@@ -24,14 +14,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.addHook('preHandler', requireAuth);
 
-  // ─── POST /api/orders — create order + generate Razorpay payment link ────
+  // ─── POST /api/orders — create order + generate payment link ────────────
   fastify.post<{ Body: {
     contactId:      string;
     conversationId: string;
     items:          Array<{ name: string; quantity: number; price: number; sku?: string }>;
     total:          number;
     sendLink?:      boolean;
-    provider?:      'easebuzz' | 'razorpay' | 'phonepe';
+    provider?:      'easebuzz';
   } }>('/', async (request, reply) => {
     const tenantId = request.tenantId;
     const { contactId, conversationId, items, total, sendLink = true, provider = 'easebuzz' } = request.body;
@@ -86,35 +76,6 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         contactPhone: contact.phone,
         contactName:  contact.name ?? null,
         amountRupees: total,
-        description:  `Order #${order.id.slice(0, 8)} — Elma Industries`,
-      });
-      if (result.success && result.linkUrl) {
-        linkUrl    = result.linkUrl;
-        paymentRef = result.paymentRef ?? null;
-      } else {
-        providerError = result.error;
-      }
-    } else if (provider === 'phonepe') {
-      const result = await createPhonePePaymentLink({
-        paymentId:    payment.id,
-        contactId,
-        contactPhone: contact.phone,
-        amountPaise:  Math.round(total * 100),
-        orderId:      order.id,
-        description:  `Order #${order.id.slice(0, 8)} — Elma Industries`,
-      });
-      if (result.success && result.redirectUrl) {
-        linkUrl    = result.redirectUrl;
-        paymentRef = result.phonePeRef;
-      } else {
-        providerError = result.error;
-      }
-    } else if (provider === 'razorpay') {
-      const result = await createRazorpayPaymentLink({
-        paymentId:    payment.id,
-        contactPhone: contact.phone,
-        contactName:  contact.name ?? null,
-        amountPaise:  Math.round(total * 100),
         description:  `Order #${order.id.slice(0, 8)} — Elma Industries`,
       });
       if (result.success && result.linkUrl) {
@@ -360,255 +321,3 @@ export async function easebuzzCallbackRoute(fastify: FastifyInstance): Promise<v
   });
 }
 
-// ─── PhonePe webhook ──────────────────────────────────────────────────────────
-export async function phonePeWebhookRoute(fastify: FastifyInstance): Promise<void> {
-  const db = getServerClient();
-
-  fastify.post('/phonepe/webhook', {
-    config: { rawBody: true },
-  }, async (request, reply) => {
-    reply.status(200).send('');
-
-    const checksumSignature = request.headers['x-phonepe-checksum-signature'] as string ?? '';
-    // rawBody gives us the exact bytes PhonePe signed; falls back to re-serialized body
-    const rawBody = (request as unknown as { rawBody?: string }).rawBody
-      ?? JSON.stringify(request.body);
-
-    if (!verifyPhonePeWebhook(rawBody, checksumSignature)) {
-      fastify.log.warn('[PhonePe Webhook] Signature verification failed');
-      return;
-    }
-
-    const event = parsePhonePeWebhook(request.body);
-    if (!event) return;
-
-    fastify.log.info({ state: event.state, txnId: event.merchantTransactionId }, '[PhonePe Webhook] received');
-
-    const paymentId = event.merchantTransactionId;
-
-    if (event.state === 'COMPLETED') {
-      const { data: payment } = await db
-        .from('payments')
-        .update({ status: 'paid', webhook_received_at: new Date().toISOString() })
-        .eq('id', paymentId)
-        .select('order_id')
-        .single();
-
-      if (!payment) return;
-
-      await db.from('orders')
-        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-        .eq('id', payment.order_id);
-
-      const { data: order } = await db
-        .from('orders')
-        .select('tenant_id, total, contact:contacts(phone)')
-        .eq('id', payment.order_id)
-        .single();
-
-      if (order) {
-        const tenantId = (order as unknown as { tenant_id: string }).tenant_id;
-        const contact  = (order as unknown as { contact: { phone: string } }).contact;
-
-        const { data: wn } = await db
-          .from('whatsapp_numbers')
-          .select('config_json, provider')
-          .eq('tenant_id', tenantId)
-          .eq('product_slug', 'lifecycle_bot')
-          .eq('active', true)
-          .maybeSingle();
-
-        if (wn && contact?.phone) {
-          const config  = wn.config_json as { phone_number_id: string; access_token: string };
-          const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
-          await gateway.sendMessage(config.phone_number_id, config.access_token, {
-            type: 'text',
-            to:   contact.phone,
-            text: `✅ *Payment Received!*\n\nThank you! Your payment of ₹${(order as { total: number }).total.toFixed(2)} is confirmed.\n\nYour order is being processed. We'll keep you updated! 🎉`,
-          });
-        }
-      }
-    }
-
-    if (event.state === 'FAILED') {
-      await db.from('payments')
-        .update({ status: 'failed', webhook_received_at: new Date().toISOString() })
-        .eq('id', paymentId);
-    }
-  });
-}
-
-// ─── Razorpay webhook ─────────────────────────────────────────────────────────
-export async function razorpayWebhookRoute(fastify: FastifyInstance): Promise<void> {
-  const db = getServerClient();
-
-  fastify.post('/razorpay/webhook', {
-    config: { rawBody: true },
-  }, async (request, reply) => {
-    reply.status(200).send('');
-
-    const signature = request.headers['x-razorpay-signature'] as string ?? '';
-    const rawBody   = (request as { rawBody?: string }).rawBody ?? JSON.stringify(request.body);
-
-    if (!verifyRazorpayWebhook(rawBody, signature)) {
-      fastify.log.warn('[Razorpay Webhook] Signature verification failed');
-      return;
-    }
-
-    const event = parseRazorpayWebhook(request.body);
-    if (!event) return;
-
-    fastify.log.info({ event: event.event }, '[Razorpay Webhook] received');
-
-    // Handle payment_link.paid event
-    if (event.event === 'payment_link.paid') {
-      const linkEntity = event.payload.payment_link?.entity;
-      if (!linkEntity) return;
-
-      // reference_id is our payment UUID
-      const paymentId = linkEntity.reference_id;
-      if (!paymentId) return;
-
-      const { data: payment } = await db
-        .from('payments')
-        .update({ status: 'paid', webhook_received_at: new Date().toISOString() })
-        .eq('id', paymentId)
-        .select('order_id')
-        .single();
-
-      if (!payment) return;
-
-      await db.from('orders')
-        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-        .eq('id', payment.order_id);
-
-      // Notify customer
-      const { data: order } = await db
-        .from('orders')
-        .select(`tenant_id, total, contact:contacts(phone)`)
-        .eq('id', payment.order_id)
-        .single();
-
-      if (order) {
-        const tenantId = (order as unknown as { tenant_id: string }).tenant_id;
-        const contact  = (order as unknown as { contact: { phone: string } }).contact;
-
-        const { data: wn } = await db
-          .from('whatsapp_numbers')
-          .select('config_json, provider')
-          .eq('tenant_id', tenantId)
-          .eq('product_slug', 'lifecycle_bot')
-          .eq('active', true)
-          .maybeSingle();
-
-        if (wn && contact?.phone) {
-          const config  = wn.config_json as { phone_number_id: string; access_token: string };
-          const gateway = new WhatsAppGateway(wn.provider as WhatsAppProvider);
-          await gateway.sendMessage(config.phone_number_id, config.access_token, {
-            type: 'text',
-            to:   contact.phone,
-            text: `✅ *Payment Received!*\n\nThank you! Your payment of ₹${(order as { total: number }).total.toFixed(2)} is confirmed.\n\nYour order is being processed. We'll keep you updated! 🎉`,
-          });
-        }
-      }
-    }
-
-    // Handle payment_link.expired or payment_link.cancelled
-    if (event.event === 'payment_link.expired' || event.event === 'payment_link.cancelled') {
-      const linkEntity = event.payload.payment_link?.entity;
-      if (!linkEntity?.reference_id) return;
-
-      await db.from('payments')
-        .update({ status: 'expired', webhook_received_at: new Date().toISOString() })
-        .eq('id', linkEntity.reference_id);
-    }
-
-    // ── Subscription lifecycle events ─────────────────────────────────────────
-    // subscription.activated — first payment succeeded, subscription is live
-    if (event.event === 'subscription.activated') {
-      const sub = event.payload.subscription?.entity;
-      if (!sub) return;
-
-      const tenantId  = sub.notes?.tenant_id;
-      const planName  = sub.notes?.target_plan;
-      if (!tenantId || !planName) return;
-
-      const nextBillingDate = sub.current_end
-        ? new Date(sub.current_end * 1000).toISOString().slice(0, 10)
-        : null;
-
-      await Promise.all([
-        db.from('tenants').update({
-          plan:                     planName,
-          status:                   'active',
-          razorpay_subscription_id: sub.id,
-          subscription_status:      'active',
-        }).eq('id', tenantId),
-        nextBillingDate
-          ? db.from('subscriptions')
-              .update({ tier: planName, next_billing_date: nextBillingDate })
-              .eq('tenant_id', tenantId)
-          : Promise.resolve(),
-      ]);
-      fastify.log.info({ tenantId, planName, subId: sub.id }, '[Razorpay] subscription activated');
-    }
-
-    // subscription.charged — recurring charge succeeded, update next billing date
-    if (event.event === 'subscription.charged') {
-      const sub = event.payload.subscription?.entity;
-      if (!sub) return;
-
-      const nextBillingDate = sub.current_end
-        ? new Date(sub.current_end * 1000).toISOString().slice(0, 10)
-        : null;
-
-      if (nextBillingDate) {
-        await db.from('subscriptions')
-          .update({ next_billing_date: nextBillingDate })
-          .eq('tenant_id', sub.notes?.tenant_id ?? '');
-      }
-
-      await db.from('tenants')
-        .update({ subscription_status: 'active' })
-        .eq('razorpay_subscription_id', sub.id);
-
-      fastify.log.info({ subId: sub.id, nextBillingDate }, '[Razorpay] subscription charged');
-    }
-
-    // subscription.cancelled — customer or admin cancelled
-    if (event.event === 'subscription.cancelled') {
-      const sub = event.payload.subscription?.entity;
-      if (!sub) return;
-
-      await db.from('tenants')
-        .update({ subscription_status: 'cancelled' })
-        .eq('razorpay_subscription_id', sub.id);
-
-      fastify.log.info({ subId: sub.id }, '[Razorpay] subscription cancelled');
-    }
-
-    // subscription.halted — payment retries exhausted, access at risk
-    if (event.event === 'subscription.halted') {
-      const sub = event.payload.subscription?.entity;
-      if (!sub) return;
-
-      await db.from('tenants')
-        .update({ subscription_status: 'halted' })
-        .eq('razorpay_subscription_id', sub.id);
-
-      fastify.log.warn({ subId: sub.id }, '[Razorpay] subscription halted — payment retries exhausted');
-    }
-
-    // subscription.pending — payment failed, Razorpay will retry
-    if (event.event === 'subscription.pending') {
-      const sub = event.payload.subscription?.entity;
-      if (!sub) return;
-
-      await db.from('tenants')
-        .update({ subscription_status: 'pending' })
-        .eq('razorpay_subscription_id', sub.id);
-
-      fastify.log.info({ subId: sub.id }, '[Razorpay] subscription pending retry');
-    }
-  });
-}
