@@ -193,7 +193,7 @@ export function AiInsightsPanel({ insight }: { insight: InsightRow | null }) {
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-bold text-slate-800">AI Coach</h3>
-          <p className="text-[10px] text-slate-400">Updated {generatedAt}</p>
+          <p className="text-[10px] text-slate-400" suppressHydrationWarning>Updated {generatedAt}</p>
         </div>
         {visible.length > 0 ? (
           <div className="flex items-center gap-1.5 shrink-0">
