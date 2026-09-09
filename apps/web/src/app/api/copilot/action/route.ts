@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
         const { error } = await admin.from('knowledge_base').insert({
           collection_id: realId,
           tenant_id: tenantId,
+          product_type: 'support_bot',
           question,
           answer,
           status: 'live',
@@ -128,6 +129,7 @@ export async function POST(request: NextRequest) {
         const rows = articles.map(a => ({
           collection_id: realId,
           tenant_id: tenantId,
+          product_type: 'support_bot',
           question: a.question,
           answer: a.answer,
           status: 'live',
