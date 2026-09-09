@@ -15,8 +15,13 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS notifications_tenant_unread
-  ON notifications(tenant_id, created_at DESC)
+-- Full index: used by getNotificationsInboxAction which fetches all (read + unread)
+CREATE INDEX IF NOT EXISTS notifications_tenant_created
+  ON notifications(tenant_id, created_at DESC);
+
+-- Partial index: used by the trigger dedup EXISTS check (conversation_id, unread only)
+CREATE INDEX IF NOT EXISTS notifications_conv_unread
+  ON notifications(conversation_id, created_at DESC)
   WHERE read_at IS NULL;
 
 -- RLS: tenants can only see their own notifications
