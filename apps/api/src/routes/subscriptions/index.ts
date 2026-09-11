@@ -138,7 +138,7 @@ export async function subscriptionRoutes(fastify: FastifyInstance): Promise<void
 
     if (!verifyEasebuzzCallback(body)) {
       fastify.log.warn({ txnid: body['txnid'] }, '[Subscriptions] Callback hash verification failed');
-      return reply.redirect(302, `${WEB_BASE}/subscription/status/${body['txnid'] ?? ''}?result=invalid`);
+      return reply.redirect(`${WEB_BASE}/subscription/status/${body['txnid'] ?? ''}?result=invalid`, 302);
     }
 
     const txnid  = body['txnid']  ?? '';
@@ -213,7 +213,7 @@ export async function subscriptionRoutes(fastify: FastifyInstance): Promise<void
         }
       }
 
-      return reply.redirect(302, `${WEB_BASE}/subscription/status/${txnid}?result=success`);
+      return reply.redirect(`${WEB_BASE}/subscription/status/${txnid}?result=success`, 302);
     }
 
     if (status === 'failure' || status === 'userCancelled') {
@@ -221,9 +221,9 @@ export async function subscriptionRoutes(fastify: FastifyInstance): Promise<void
         .update({ status: 'failed' })
         .eq('id', txnid);
 
-      return reply.redirect(302, `${WEB_BASE}/subscription/status/${txnid}?result=failed`);
+      return reply.redirect(`${WEB_BASE}/subscription/status/${txnid}?result=failed`, 302);
     }
 
-    return reply.redirect(302, `${WEB_BASE}/subscription/status/${txnid}?result=pending`);
+    return reply.redirect(`${WEB_BASE}/subscription/status/${txnid}?result=pending`, 302);
   });
 }
