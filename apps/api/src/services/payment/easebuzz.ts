@@ -42,11 +42,14 @@ export interface EasebuzzPaymentResult {
  * Returns a URL like https://pay.easebuzz.in/pay/<access_key>
  */
 export async function createEasebuzzPaymentLink(params: {
-  paymentId:    string;
-  contactPhone: string;
-  contactName:  string | null;
-  amountRupees: number;
-  description?: string;
+  paymentId:     string;
+  contactPhone:  string;
+  contactName:   string | null;
+  amountRupees:  number;
+  description?:  string;
+  surlOverride?: string;
+  furlOverride?: string;
+  emailOverride?: string;
 }): Promise<EasebuzzPaymentResult> {
   if (!KEY || !SALT || !SURL) {
     return { success: false, linkUrl: null, paymentRef: null, error: 'Easebuzz not configured' };
@@ -56,11 +59,13 @@ export async function createEasebuzzPaymentLink(params: {
   const amount      = params.amountRupees.toFixed(2);
   const productinfo = (params.description ?? 'Order Payment').slice(0, 100);
   const firstname   = (params.contactName ?? 'Customer').slice(0, 60);
-  const email       = '';
+  const email       = (params.emailOverride ?? '').slice(0, 100);
   const phone       = normalizePhone(params.contactPhone);
+  const surl        = params.surlOverride ?? SURL;
+  const furl        = params.furlOverride ?? SURL;
   const hash        = buildInitiateHash(KEY, txnid, amount, productinfo, firstname, email, [], SALT);
 
-  const body = new URLSearchParams({ key: KEY, txnid, amount, productinfo, firstname, email, phone, surl: SURL, furl: SURL, hash });
+  const body = new URLSearchParams({ key: KEY, txnid, amount, productinfo, firstname, email, phone, surl, furl, hash });
 
   try {
     const res  = await fetch(`${PAY_BASE}payment/initiateLink`, {
