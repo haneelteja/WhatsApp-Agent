@@ -12,6 +12,7 @@ export async function createTenantAction(formData: FormData) {
   const contactEmail = (formData.get('contactEmail') as string | null)?.trim();
   const plan = (formData.get('plan') as string) || 'starter';
   const trialDays = parseInt((formData.get('trialDays') as string) || '0', 10);
+  const isAgency = formData.get('isAgency') === 'true';
   const products = formData.getAll('products') as string[];
 
   if (!name || !contactEmail || products.length === 0) return;
@@ -25,6 +26,7 @@ export async function createTenantAction(formData: FormData) {
       plan,
       status: trialDays > 0 ? 'trial' : 'active',
       provider: 'meta_cloud',
+      is_agency: isAgency,
     })
     .select()
     .single();

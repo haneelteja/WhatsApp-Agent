@@ -62,6 +62,7 @@ interface WizardState {
   plan: Plan;
   products: string[];
   trialDays: string;
+  isAgency: boolean;
 }
 
 const INITIAL: WizardState = {
@@ -70,6 +71,7 @@ const INITIAL: WizardState = {
   plan: 'starter',
   products: [],
   trialDays: '14',
+  isAgency: false,
 };
 
 function StepIndicator({ current }: { current: number }) {
@@ -150,6 +152,7 @@ export default function NewClientPage() {
     fd.set('contactEmail', state.contactEmail.trim());
     fd.set('plan', state.plan);
     fd.set('trialDays', state.trialDays);
+    fd.set('isAgency', state.isAgency ? 'true' : 'false');
     state.products.forEach(p => fd.append('products', p));
 
     startTransition(async () => {
@@ -215,6 +218,28 @@ export default function NewClientPage() {
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder:text-slate-300"
               />
             </div>
+
+            <button
+              type="button"
+              onClick={() => update('isAgency', !state.isAgency)}
+              className={`flex items-center justify-between w-full px-4 py-3 rounded-xl border-2 transition-all text-left ${
+                state.isAgency
+                  ? 'border-indigo-400 bg-indigo-50/60'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div>
+                <p className={`text-sm font-semibold ${state.isAgency ? 'text-indigo-700' : 'text-slate-700'}`}>
+                  Agency Account
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  This tenant manages sub-clients and gets a "My Clients" tab in their dashboard
+                </p>
+              </div>
+              <div className={`w-10 h-5 rounded-full transition-colors shrink-0 ml-4 ${state.isAgency ? 'bg-indigo-500' : 'bg-slate-200'}`}>
+                <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-transform ${state.isAgency ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </div>
+            </button>
           </div>
 
           {/* Plan picker */}
@@ -302,6 +327,12 @@ export default function NewClientPage() {
                 <dt className="text-slate-400 font-medium">Plan</dt>
                 <dd className="font-semibold text-slate-800 capitalize">{selectedPlan.label} ({selectedPlan.price}/mo)</dd>
               </div>
+              {state.isAgency && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-400 font-medium">Account type</dt>
+                  <dd className="font-semibold text-indigo-700">Agency</dd>
+                </div>
+              )}
               <div className="flex justify-between items-start">
                 <dt className="text-slate-400 font-medium">Products</dt>
                 <dd className="flex flex-col items-end gap-1">

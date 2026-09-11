@@ -22,6 +22,7 @@ import {
   CalendarClock,
   ClipboardList,
   RotateCcw,
+  Users,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -40,20 +41,23 @@ const BASE_NAV = [
   { href: '/settings',         label: 'Settings',       icon: Settings         },
 ];
 
-const LEADS_ITEM        = { href: '/leads',        label: 'Leads',        icon: Target      };
-const INTEGRATIONS_ITEM = { href: '/integrations', label: 'Integrations', icon: Plug        };
-const ORDERS_ITEM       = { href: '/orders',       label: 'Orders',       icon: ShoppingCart };
-const RETURNS_ITEM      = { href: '/returns',      label: 'Returns',      icon: RotateCcw   };
+const LEADS_ITEM          = { href: '/leads',           label: 'Leads',       icon: Target      };
+const INTEGRATIONS_ITEM   = { href: '/integrations',   label: 'Integrations', icon: Plug        };
+const ORDERS_ITEM         = { href: '/orders',          label: 'Orders',       icon: ShoppingCart };
+const RETURNS_ITEM        = { href: '/returns',         label: 'Returns',      icon: RotateCcw   };
+const AGENCY_CLIENTS_ITEM = { href: '/agency-clients', label: 'My Clients',   icon: Users       };
 
 export function DashboardNav({
   tenantName,
   userRole,
   hasLifecycleBot,
+  isAgency = false,
   onLinkClick,
 }: {
   tenantName: string;
   userRole: string;
   hasLifecycleBot: boolean;
+  isAgency?: boolean;
   onLinkClick?: () => void;
 }) {
   const pathname = usePathname();
@@ -81,6 +85,11 @@ export function DashboardNav({
     if (['admin', 'client_manager'].includes(userRole)) {
       const analyticsIdx = items.findIndex(i => i.href === '/analytics');
       items.splice(analyticsIdx + 1, 0, { href: '/audit', label: 'Activity Log', icon: ClipboardList });
+    }
+    // My Clients — agency tenants only (admin / client_manager)
+    if (isAgency && ['admin', 'client_manager'].includes(userRole)) {
+      const settingsIdx = items.findIndex(i => i.href === '/settings');
+      items.splice(settingsIdx, 0, AGENCY_CLIENTS_ITEM);
     }
     if (userRole === 'agent') return items.filter(i => !ADMIN_ONLY_HREFS.has(i.href) && AGENT_HREFS.has(i.href));
     if (userRole === 'supervisor') return items.filter(i => !ADMIN_ONLY_HREFS.has(i.href) && SUPERVISOR_HREFS.has(i.href));
