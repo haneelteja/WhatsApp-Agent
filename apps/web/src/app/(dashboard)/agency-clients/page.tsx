@@ -162,7 +162,7 @@ export default function AgencyClientsPage() {
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
           <Users size={32} className="text-gray-300 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-500">No clients yet</p>
-          <p className="text-xs text-gray-400 mt-1">Click "Add Client" to onboard your first client.</p>
+          <p className="text-xs text-gray-400 mt-1">Click &ldquo;Add Client&rdquo; to onboard your first client.</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

@@ -233,7 +233,7 @@ export default function NewClientPage() {
                   Agency Account
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  This tenant manages sub-clients and gets a "My Clients" tab in their dashboard
+                  This tenant manages sub-clients and gets a &ldquo;My Clients&rdquo; tab in their dashboard
                 </p>
               </div>
               <div className={`w-10 h-5 rounded-full transition-colors shrink-0 ml-4 ${state.isAgency ? 'bg-indigo-500' : 'bg-slate-200'}`}>
