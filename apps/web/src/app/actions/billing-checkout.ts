@@ -180,7 +180,9 @@ export async function verifyEasebuzzBillingPaymentAction(
   }
 
   // Plan expiry: 30 days from today
-  const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const planExpiresAt     = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const planExpiresAtDate = planExpiresAt.toISOString().slice(0, 10);
+  const planExpiresAtISO  = planExpiresAt.toISOString();
 
   const admin = getSupabaseAdminClient();
   await Promise.all([
@@ -188,9 +190,12 @@ export async function verifyEasebuzzBillingPaymentAction(
       plan:                targetPlan,
       status:              'active',
       subscription_status: 'active',
+      plan_expires_at:     planExpiresAtISO,
+      renewal_7d_reminded_at: null,
+      renewal_3d_reminded_at: null,
     }).eq('id', session.tenantId),
     admin.from('subscriptions')
-      .update({ tier: targetPlan, next_billing_date: planExpiresAt })
+      .update({ tier: targetPlan, next_billing_date: planExpiresAtDate })
       .eq('tenant_id', session.tenantId),
   ]);
 
@@ -211,4 +216,68 @@ export async function cancelPlanAction(): Promise<{ success?: boolean; error?: s
 
   revalidatePath('/billing');
   return { success: true };
+}
+
+const PLAN_ORDER = ['starter', 'growth', 'scale'] as const;
+const PLAN_BOT_LIMIT: Record<string, number> = { starter: 1, growth: 2, scale: 3 };
+// Bots deactivated first when over the limit (least critical first)
+const BOT_DEACTIVATION_ORDER = ['lifecycle_bot', 'sales_bot', 'support_bot'];
+
+// ── Downgrade plan — immediately changes plan, deactivates excess bots ────────
+export async function downgradePlanAction(
+  targetPlan: string
+): Promise<{ success?: boolean; deactivatedBots?: string[]; error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const admin = getSupabaseAdminClient();
+
+  const { data: tenant } = await admin
+    .from('tenants')
+    .select('plan')
+    .eq('id', session.tenantId)
+    .single();
+
+  if (!tenant) return { error: 'Tenant not found' };
+
+  const currentIdx = PLAN_ORDER.indexOf(tenant.plan as typeof PLAN_ORDER[number]);
+  const targetIdx  = PLAN_ORDER.indexOf(targetPlan as typeof PLAN_ORDER[number]);
+
+  if (targetIdx < 0)          return { error: 'Invalid plan' };
+  if (targetIdx >= currentIdx) return { error: 'Cannot downgrade to the same or higher plan' };
+
+  const targetBotLimit = PLAN_BOT_LIMIT[targetPlan] ?? 1;
+
+  const { data: activeBots } = await admin
+    .from('tenant_products')
+    .select('product_type')
+    .eq('tenant_id', session.tenantId)
+    .eq('active', true);
+
+  const activeTypes  = (activeBots ?? []).map(b => b.product_type as string);
+  const deactivated: string[] = [];
+
+  // Deactivate excess bots in priority order
+  for (const botType of BOT_DEACTIVATION_ORDER) {
+    if (activeTypes.length - deactivated.length <= targetBotLimit) break;
+    if (activeTypes.includes(botType)) {
+      deactivated.push(botType);
+    }
+  }
+
+  await Promise.all([
+    admin.from('tenants')
+      .update({ plan: targetPlan, subscription_status: 'active' })
+      .eq('id', session.tenantId),
+    ...(deactivated.length > 0
+      ? [admin.from('tenant_products')
+          .update({ active: false })
+          .eq('tenant_id', session.tenantId)
+          .in('product_type', deactivated)]
+      : []),
+  ]);
+
+  revalidatePath('/billing');
+  revalidatePath('/settings');
+  return { success: true, deactivatedBots: deactivated };
 }

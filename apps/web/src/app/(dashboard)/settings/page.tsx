@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
+import { NotificationPreferences } from '@/components/dashboard/NotificationPreferences';
 import { WhatsAppNumbersManager} from '@/components/dashboard/WhatsAppNumbersManager';
 import { TeamInviteForm }        from '@/components/dashboard/TeamInviteForm';
 import { removeTeamMemberAction } from '@/app/actions/tenant-team';
@@ -643,11 +644,11 @@ export default async function SettingsPage({
   }
 
   // ── Notifications data ──────────────────────────────────────────────────────
-  const { data: notifSettings } = await admin
-    .from('tenant_notification_settings')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .single();
+  const [{ data: notifSettings }, { data: userNotifPrefs }] = await Promise.all([
+    admin.from('tenant_notification_settings').select('*').eq('tenant_id', tenantId).single(),
+    admin.from('user_notification_preferences').select('escalation_email, assignment_email')
+      .eq('user_id', user.id).eq('tenant_id', tenantId).maybeSingle(),
+  ]);
 
   return (
     <SettingsShell activeTab={activeTab}>
@@ -677,6 +678,15 @@ export default async function SettingsPage({
             initialResendKeyMasked={(notifSettings as { resend_api_key?: string | null } | null)?.resend_api_key
               ? '••••' + ((notifSettings as { resend_api_key: string }).resend_api_key).slice(-4)
               : ''}
+          />
+        </Section>
+
+        <Section icon={<Bell size={16} />} title="My Alert Preferences" hint="Control which notification emails you personally receive. These settings only affect your account.">
+          <NotificationPreferences
+            initial={{
+              escalation_email: userNotifPrefs?.escalation_email ?? true,
+              assignment_email: userNotifPrefs?.assignment_email ?? true,
+            }}
           />
         </Section>
       </div>

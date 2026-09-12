@@ -4,6 +4,20 @@ import { generateEmbedding } from './embedding.js';
 import { cacheGet, cacheSet, cacheDelPattern } from '../../lib/redis.js';
 import { createHash } from 'crypto';
 
+function logKBHits(tenantId: string, query: string, productType: ProductSlug, results: KnowledgeBase[]): void {
+  if (!results.length) return;
+  const db = getServerClient();
+  void db.from('kb_hit_log').insert(
+    results.map(r => ({
+      tenant_id:    tenantId,
+      entry_id:     r.id || null,
+      query:        query.slice(0, 500),
+      product_type: productType,
+      score:        null,
+    }))
+  ).then(() => {}).catch(() => {});
+}
+
 const KB_CACHE_TTL = 300; // 5 minutes — KB content changes infrequently
 
 /**
@@ -31,10 +45,16 @@ export async function lookupKB(
   const cacheKey = `kb:${tenantId}:${queryHash}`;
 
   const cached = await cacheGet<KnowledgeBase[]>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    logKBHits(tenantId, query, productSlug, cached);
+    return cached;
+  }
 
   const results = await _lookupKBFromDb(tenantId, productSlug, query, limit);
-  if (results.length > 0) await cacheSet(cacheKey, results, KB_CACHE_TTL);
+  if (results.length > 0) {
+    await cacheSet(cacheKey, results, KB_CACHE_TTL);
+    logKBHits(tenantId, query, productSlug, results);
+  }
   return results;
 }
 

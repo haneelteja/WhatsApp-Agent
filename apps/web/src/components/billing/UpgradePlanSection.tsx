@@ -6,6 +6,7 @@ import {
   createEasebuzzBillingPaymentAction,
   verifyEasebuzzBillingPaymentAction,
   cancelPlanAction,
+  downgradePlanAction,
 } from '@/app/actions/billing-checkout';
 import { useRouter } from 'next/navigation';
 
@@ -84,8 +85,10 @@ export default function UpgradePlanSection({
   const [loading,      setLoading]      = useState<string | null>(null);
   const [error,        setError]        = useState<string | null>(null);
   const [success,      setSuccess]      = useState<string | null>(null);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [cancelPending, startCancelTransition]    = useTransition();
+  const [showCancelConfirm,   setShowCancelConfirm]   = useState(false);
+  const [cancelPending,       startCancelTransition]  = useTransition();
+  const [downgradeTarget,     setDowngradeTarget]     = useState<string | null>(null);
+  const [downgradePending,    startDowngradeTransit]  = useTransition();
 
   // Show result from redirect-based payment (after returning from Easebuzz hosted page)
   useEffect(() => {
@@ -106,9 +109,30 @@ export default function UpgradePlanSection({
     document.head.appendChild(script);
   }, []);
 
-  const currentIdx   = PLAN_ORDER.indexOf(currentPlan);
-  const upgradePlans = PLANS.filter(p => PLAN_ORDER.indexOf(p.key) > currentIdx);
-  const hasActiveSub = subscriptionStatus === 'active';
+  const currentIdx      = PLAN_ORDER.indexOf(currentPlan);
+  const upgradePlans    = PLANS.filter(p => PLAN_ORDER.indexOf(p.key) > currentIdx);
+  const downgradePlanKeys = PLAN_ORDER.slice(0, currentIdx); // e.g. ['starter'] or ['starter','growth']
+  const hasActiveSub    = subscriptionStatus === 'active';
+
+  const DOWNGRADE_PLAN_LABELS: Record<string, string> = { starter: 'Starter (Free)', growth: 'Growth', scale: 'Scale' };
+  const DOWNGRADE_WARNINGS: Record<string, string[]> = {
+    growth:  ['Unlimited conversations → 2,000 / month', 'Lifecycle Bot will be deactivated if active'],
+    starter: ['Conversations limited to 500 / month', 'Only 1 active bot allowed — extras will be deactivated'],
+  };
+
+  function handleDowngradeConfirm() {
+    if (!downgradeTarget) return;
+    const target = downgradeTarget;
+    startDowngradeTransit(async () => {
+      const result = await downgradePlanAction(target);
+      setDowngradeTarget(null);
+      if (result.error) { setError(result.error); return; }
+      const planName = target.charAt(0).toUpperCase() + target.slice(1);
+      const botMsg   = result.deactivatedBots?.length ? ` (${result.deactivatedBots.join(', ')} deactivated)` : '';
+      setSuccess(`Downgraded to ${planName} plan${botMsg}. Refreshing…`);
+      setTimeout(() => router.refresh(), 1800);
+    });
+  }
 
   async function handleUpgrade(planKey: string) {
     setError(null);
@@ -230,6 +254,68 @@ export default function UpgradePlanSection({
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Downgrade options — show when on growth or scale */}
+        {downgradePlanKeys.length > 0 && (
+          <div className="border border-slate-200 rounded-xl p-4 bg-white">
+            <p className="text-sm font-medium text-slate-700 mb-1">Downgrade Plan</p>
+            <p className="text-xs text-slate-400 mb-3">Switch to a lower plan immediately. Bot access updates right away.</p>
+            <div className="flex gap-2 flex-wrap">
+              {downgradePlanKeys.map(key => (
+                <button
+                  key={key}
+                  onClick={() => setDowngradeTarget(key)}
+                  disabled={!!loading || !!success}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  Downgrade to {DOWNGRADE_PLAN_LABELS[key] ?? key}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Downgrade confirmation modal */}
+        {downgradeTarget && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 border border-slate-100">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-gray-900">
+                    Downgrade to {DOWNGRADE_PLAN_LABELS[downgradeTarget] ?? downgradeTarget}?
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">This takes effect immediately.</p>
+                </div>
+              </div>
+              <ul className="space-y-1.5 pl-2">
+                {(DOWNGRADE_WARNINGS[downgradeTarget] ?? []).map(w => (
+                  <li key={w} className="flex items-start gap-2 text-xs text-amber-700">
+                    <span className="w-1 h-1 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                    {w}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleDowngradeConfirm}
+                  disabled={downgradePending}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                >
+                  {downgradePending && <Loader2 size={12} className="animate-spin" />}
+                  Confirm downgrade
+                </button>
+                <button
+                  onClick={() => setDowngradeTarget(null)}
+                  disabled={downgradePending}
+                  className="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  Keep current plan
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

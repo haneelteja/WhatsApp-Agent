@@ -6,12 +6,13 @@ import {
   Plus, BookOpen, Trash2, ChevronRight, X,
   Sparkles, ChevronLeft, CheckSquare, Square,
   Loader2, AlertCircle, Check, Pencil,
-  ImageIcon, FileText, Upload, Eye, EyeOff, Send, Package, Wand2,
+  ImageIcon, FileText, Upload, Eye, EyeOff, Send, Package, Wand2, BarChart2,
 } from 'lucide-react';
 import { kbFetch, kbUpload } from '@/lib/kb-client';
 import { ProductCatalogueManager } from '@/app/(dashboard)/catalogue/ProductCatalogueManager';
 import { getProductsAction } from '@/app/actions/products';
 import type { ProductCatalogueItem } from '@alphabot/shared';
+import { getKBAnalyticsAction, type KBAnalyticsResult } from '@/app/actions/kb-analytics';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ export default function KnowledgeBasePage() {
   }, []);
 
   // ── Collections tab state ──────────────────────────────────────────────────
-  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media' | 'catalogue'>('collections');
+  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media' | 'catalogue' | 'analytics'>('collections');
   const [collections,  setCollections]  = useState<CollectionRow[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [showNew,      setShowNew]      = useState(false);
@@ -179,6 +180,10 @@ export default function KnowledgeBasePage() {
   const [catalogueProducts,  setCatalogueProducts]  = useState<ProductCatalogueItem[] | null>(null);
   const [catalogueLoading,   setCatalogueLoading]   = useState(false);
 
+  // ── Analytics tab state ────────────────────────────────────────────────────
+  const [analytics,        setAnalytics]          = useState<KBAnalyticsResult | null>(null);
+  const [analyticsLoading, setAnalyticsLoading]   = useState(false);
+
   // ── Load collections ───────────────────────────────────────────────────────
   const loadCollections = useCallback(async () => {
     setLoading(true);
@@ -241,6 +246,16 @@ export default function KnowledgeBasePage() {
       });
     }
   }, [activeTab, catalogueProducts, catalogueLoading]);
+
+  useEffect(() => {
+    if (activeTab === 'analytics' && analytics === null && !analyticsLoading) {
+      setAnalyticsLoading(true);
+      void getKBAnalyticsAction().then(result => {
+        setAnalytics(result);
+        setAnalyticsLoading(false);
+      });
+    }
+  }, [activeTab, analytics, analyticsLoading]);
 
   function addFilesToQueue(files: FileList | File[]) {
     const arr = Array.from(files);
@@ -561,6 +576,12 @@ export default function KnowledgeBasePage() {
             activeTab === 'catalogue' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}>
           <Package size={14} /> Catalogue
+        </button>
+        <button type="button" onClick={() => setActiveTab('analytics')}
+          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'analytics' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}>
+          <BarChart2 size={14} /> Analytics
         </button>
       </div>
 
@@ -1395,6 +1416,92 @@ export default function KnowledgeBasePage() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── ANALYTICS TAB ─────────────────────────────────────────────────── */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-5">
+          {analyticsLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : !analytics ? (
+            <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-10 text-center text-sm text-gray-400">
+              No analytics data yet.
+            </div>
+          ) : (
+            <>
+              {/* Summary stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {[
+                  { label: 'KB hits (30d)',          value: analytics.total_hits.toLocaleString()       },
+                  { label: 'Unanswered queries (30d)', value: analytics.unanswered_total.toLocaleString() },
+                  { label: 'Top entries tracked',     value: analytics.top_entries.length.toLocaleString() },
+                ].map(s => (
+                  <div key={s.label} className="bg-white rounded-2xl border border-green-100 shadow-sm p-4">
+                    <p className="text-2xl font-bold text-gray-900 tabular-nums">{s.value}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Top KB entries */}
+              <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-50">
+                  <p className="text-sm font-semibold text-gray-800">Most-Used KB Entries</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Questions your bot answered most in the last 30 days</p>
+                </div>
+                {analytics.top_entries.length === 0 ? (
+                  <p className="px-5 py-8 text-sm text-gray-400 text-center">No KB hits yet — they start logging once the bot uses your knowledge base.</p>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {analytics.top_entries.map((e, i) => (
+                      <div key={e.entry_id ?? i} className="flex items-start gap-4 px-5 py-3.5">
+                        <span className="text-xs font-bold text-gray-300 w-5 tabular-nums shrink-0 mt-0.5">{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 leading-snug">{e.question}</p>
+                          {e.category && (
+                            <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded border font-medium ${CATEGORY_COLORS[e.category] ?? 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                              {e.category}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-sm font-bold text-emerald-600 tabular-nums">{e.hit_count}</span>
+                          <span className="text-xs text-gray-400">hits</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Unanswered queries */}
+              <div className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-50">
+                  <p className="text-sm font-semibold text-gray-800">Unanswered Queries</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Customer questions with no KB match — add entries to close these gaps</p>
+                </div>
+                {analytics.unanswered.length === 0 ? (
+                  <p className="px-5 py-8 text-sm text-gray-400 text-center">No unanswered queries in the last 30 days. Your KB is covering all questions!</p>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {analytics.unanswered.map((q, i) => (
+                      <div key={i} className="flex items-start gap-4 px-5 py-3.5">
+                        <AlertCircle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                        <p className="flex-1 text-sm text-gray-700 leading-snug">{q.query}</p>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-sm font-bold text-amber-600 tabular-nums">{q.count}</span>
+                          <span className="text-xs text-gray-400">times</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 

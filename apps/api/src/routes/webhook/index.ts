@@ -777,6 +777,14 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       ? await lookupKB(tenantId, productType, incoming.text)
       : [];
 
+    if (incoming.text && toolEnabled(allowedTools, TOOL_IDS.KNOWLEDGE_BASE) && kbResults.length === 0) {
+      void db.from('kb_unanswered_queries').insert({
+        tenant_id:    tenantId,
+        query:        incoming.text.slice(0, 500),
+        product_type: productType,
+      }).then(() => {}).catch(() => {});
+    }
+
     const contactMemory = formatContactMemory(contactData.memory_json as unknown as Record<string, unknown> | null);
 
     // Fetch active button templates — skipped when button_templates tool is disabled
