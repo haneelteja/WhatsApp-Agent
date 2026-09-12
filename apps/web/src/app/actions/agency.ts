@@ -178,6 +178,138 @@ export async function createSubClientAction(formData: FormData): Promise<{ error
   return {};
 }
 
+// ── Detailed billing: per-client monthly charges with markup ─────────────────
+
+const PLAN_BASE_PRICE: Record<string, number> = {
+  starter:      0,
+  growth:       2499,
+  professional: 4999,
+  enterprise:   9999,
+};
+
+export type AgencyBillingClient = {
+  id:                string;
+  name:              string;
+  plan:              string;
+  status:            string;
+  conv_count_month:  number;
+  token_cost_inr:    number;
+  base_cost_inr:     number;
+  markup_percent:    number;
+  client_charge_inr: number;
+  markup_amount_inr: number;
+};
+
+export type AgencyBillingResult = {
+  month:             string;
+  clients:           AgencyBillingClient[];
+  markup_config:     Record<string, number>;
+  total_base_inr:    number;
+  total_markup_inr:  number;
+  total_charges_inr: number;
+};
+
+export async function getAgencyBillingAction(): Promise<AgencyBillingResult | null> {
+  const session = await getSession();
+  if (!session) return null;
+
+  const admin = getSupabaseAdminClient();
+
+  const { data: agencyTenant } = await admin
+    .from('tenants')
+    .select('is_agency')
+    .eq('id', session.tenantId)
+    .single();
+
+  if (!agencyTenant?.is_agency) return null;
+
+  const now        = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthKey   = monthStart.toISOString().split('T')[0]!; // YYYY-MM-DD
+  const monthLabel = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  const { data: subTenants } = await admin
+    .from('tenants')
+    .select('id, name, plan, status')
+    .eq('parent_tenant_id', session.tenantId);
+
+  if (!subTenants?.length) {
+    return { month: monthLabel, clients: [], markup_config: {}, total_base_inr: 0, total_markup_inr: 0, total_charges_inr: 0 };
+  }
+
+  const subIds = subTenants.map(t => t.id);
+
+  const [{ data: markupRows }, { data: tokenRows }, { data: convRows }] = await Promise.all([
+    admin.from('agency_markup_config').select('plan, markup_percent').eq('agency_id', session.tenantId),
+    admin.from('tenant_token_usage_monthly').select('tenant_id, cost_inr_month').eq('month', monthKey).in('tenant_id', subIds),
+    admin.from('conversations').select('tenant_id').in('tenant_id', subIds).gte('created_at', monthStart.toISOString()),
+  ]);
+
+  const markupConfig: Record<string, number> = {};
+  for (const r of markupRows ?? []) markupConfig[r.plan] = Number(r.markup_percent);
+
+  const tokenCosts = new Map<string, number>();
+  for (const r of tokenRows ?? []) tokenCosts.set(r.tenant_id, Number(r.cost_inr_month));
+
+  const convCounts = new Map<string, number>();
+  for (const r of convRows ?? []) convCounts.set(r.tenant_id, (convCounts.get(r.tenant_id) ?? 0) + 1);
+
+  let totalBase = 0, totalMarkup = 0, totalCharges = 0;
+
+  const clients: AgencyBillingClient[] = subTenants.map(t => {
+    const baseCost     = PLAN_BASE_PRICE[t.plan] ?? 0;
+    const markup       = markupConfig[t.plan] ?? 0;
+    const clientCharge = Math.round(baseCost * (1 + markup / 100));
+    const markupAmt    = clientCharge - baseCost;
+
+    totalBase    += baseCost;
+    totalMarkup  += markupAmt;
+    totalCharges += clientCharge;
+
+    return {
+      id:                t.id,
+      name:              t.name,
+      plan:              t.plan,
+      status:            t.status,
+      conv_count_month:  convCounts.get(t.id)  ?? 0,
+      token_cost_inr:    tokenCosts.get(t.id)  ?? 0,
+      base_cost_inr:     baseCost,
+      markup_percent:    markup,
+      client_charge_inr: clientCharge,
+      markup_amount_inr: markupAmt,
+    };
+  });
+
+  return { month: monthLabel, clients, markup_config: markupConfig, total_base_inr: totalBase, total_markup_inr: totalMarkup, total_charges_inr: totalCharges };
+}
+
+export async function updateAgencyMarkupAction(plan: string, markupPercent: number): Promise<{ error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
+
+  if (markupPercent < 0 || markupPercent > 500) return { error: 'Markup must be between 0% and 500%' };
+
+  const admin = getSupabaseAdminClient();
+
+  const { data: agencyTenant } = await admin
+    .from('tenants')
+    .select('is_agency')
+    .eq('id', session.tenantId)
+    .single();
+
+  if (!agencyTenant?.is_agency) return { error: 'Not an agency account' };
+
+  const { error } = await admin
+    .from('agency_markup_config')
+    .upsert(
+      { agency_id: session.tenantId, plan, markup_percent: markupPercent, updated_at: new Date().toISOString() },
+      { onConflict: 'agency_id,plan' }
+    );
+
+  if (error) return { error: error.message };
+  return {};
+}
+
 // ── Billing summary: aggregate usage across all sub-clients ──────────────────
 
 export type AgencyBillingSummary = {

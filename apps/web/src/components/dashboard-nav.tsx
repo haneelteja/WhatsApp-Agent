@@ -23,6 +23,7 @@ import {
   ClipboardList,
   RotateCcw,
   Users,
+  ReceiptText,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -45,7 +46,8 @@ const LEADS_ITEM          = { href: '/leads',           label: 'Leads',       ic
 const INTEGRATIONS_ITEM   = { href: '/integrations',   label: 'Integrations', icon: Plug        };
 const ORDERS_ITEM         = { href: '/orders',          label: 'Orders',       icon: ShoppingCart };
 const RETURNS_ITEM        = { href: '/returns',         label: 'Returns',      icon: RotateCcw   };
-const AGENCY_CLIENTS_ITEM = { href: '/agency-clients', label: 'My Clients',   icon: Users       };
+const AGENCY_CLIENTS_ITEM  = { href: '/agency-clients',  label: 'My Clients',      icon: Users       };
+const AGENCY_BILLING_ITEM  = { href: '/agency-billing',  label: 'Agency Billing',  icon: ReceiptText };
 
 export function DashboardNav({
   tenantName,
@@ -86,10 +88,10 @@ export function DashboardNav({
       const analyticsIdx = items.findIndex(i => i.href === '/analytics');
       items.splice(analyticsIdx + 1, 0, { href: '/audit', label: 'Activity Log', icon: ClipboardList });
     }
-    // My Clients — agency tenants only (admin / client_manager)
+    // My Clients + Agency Billing — agency tenants only (admin / client_manager)
     if (isAgency && ['admin', 'client_manager'].includes(userRole)) {
       const settingsIdx = items.findIndex(i => i.href === '/settings');
-      items.splice(settingsIdx, 0, AGENCY_CLIENTS_ITEM);
+      items.splice(settingsIdx, 0, AGENCY_CLIENTS_ITEM, AGENCY_BILLING_ITEM);
     }
     if (userRole === 'agent') return items.filter(i => !ADMIN_ONLY_HREFS.has(i.href) && AGENT_HREFS.has(i.href));
     if (userRole === 'supervisor') return items.filter(i => !ADMIN_ONLY_HREFS.has(i.href) && SUPERVISOR_HREFS.has(i.href));
