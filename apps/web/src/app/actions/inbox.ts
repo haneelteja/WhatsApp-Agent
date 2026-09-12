@@ -35,18 +35,20 @@ export async function getInboxConversationsAction(): Promise<{ conversations: In
     .order('updated_at', { ascending: false })
     .limit(100);
 
-  const conversations: InboxConversation[] = (data ?? []).map((row: {
-    id: string; status: string; product_type: string; updated_at: string; assigned_agent_id: string | null;
-    contacts: { phone: string | null; name: string | null } | null;
-  }) => ({
-    id:                row.id,
-    status:            row.status,
-    product_type:      row.product_type,
-    updated_at:        row.updated_at,
-    assigned_agent_id: row.assigned_agent_id,
-    contact_name:      row.contacts?.name ?? null,
-    contact_phone:     row.contacts?.phone ?? null,
-  }));
+  type ContactShape = { phone: string | null; name: string | null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conversations: InboxConversation[] = (data ?? []).map((row: any) => {
+    const c: ContactShape | null = Array.isArray(row.contacts) ? (row.contacts[0] ?? null) : (row.contacts ?? null);
+    return {
+      id:                row.id as string,
+      status:            row.status as string,
+      product_type:      row.product_type as string,
+      updated_at:        row.updated_at as string,
+      assigned_agent_id: row.assigned_agent_id as string | null,
+      contact_name:      c?.name ?? null,
+      contact_phone:     c?.phone ?? null,
+    };
+  });
 
   return { conversations, tenantId: session.tenantId };
 }
