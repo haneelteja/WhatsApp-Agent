@@ -36,15 +36,17 @@ export async function getInboxConversationsAction(): Promise<{ conversations: In
     .limit(100);
 
   type ContactShape = { phone: string | null; name: string | null };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const conversations: InboxConversation[] = (data ?? []).map((row: any) => {
-    const c: ContactShape | null = Array.isArray(row.contacts) ? (row.contacts[0] ?? null) : (row.contacts ?? null);
+  const conversations: InboxConversation[] = (data as unknown as Record<string, unknown>[]).map((row) => {
+    const raw = row['contacts'];
+    const c: ContactShape | null = Array.isArray(raw)
+      ? ((raw as ContactShape[])[0] ?? null)
+      : ((raw as ContactShape | null) ?? null);
     return {
-      id:                row.id as string,
-      status:            row.status as string,
-      product_type:      row.product_type as string,
-      updated_at:        row.updated_at as string,
-      assigned_agent_id: row.assigned_agent_id as string | null,
+      id:                row['id'] as string,
+      status:            row['status'] as string,
+      product_type:      row['product_type'] as string,
+      updated_at:        row['updated_at'] as string,
+      assigned_agent_id: (row['assigned_agent_id'] as string | null) ?? null,
       contact_name:      c?.name ?? null,
       contact_phone:     c?.phone ?? null,
     };
