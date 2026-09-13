@@ -243,6 +243,91 @@ Label each default clearly as "typical for [segment] at this volume."
 
 ---
 
+---
+
+## Appointment Bot — additional value streams
+
+Used when primary intent is "Book and manage appointments."
+Applies to: Restaurant & F&B, Salon & Beauty, Fitness & Wellness, Healthcare.
+
+### Stream 1 override — Booking automation
+
+Same formula as staff time recovered, but `AVG_MINS_PER_MSG` is replaced by
+`BOOKING_MINS` — the time a staff member currently spends processing one
+booking manually (phone call, WhatsApp back-and-forth, calendar entry).
+
+```
+BOOKING_MINS  = 5 minutes default [estimate] — range 3–8 min depending on
+                complexity. Salons: 4 min. Restaurants: 5 min. Healthcare: 6 min.
+bookings_automated  = msgs × deflection_rate
+                    (deflection rate for appointments: 75% [estimate])
+hours_saved         = bookings_automated × BOOKING_MINS ÷ 60
+cost_per_hour       = (sc × staff) ÷ 160
+monthly_value       = FLOOR(hours_saved × cost_per_hour)
+```
+
+### Stream 5 — No-show reduction
+
+**What it measures:** Revenue from slots that would have been left empty because
+a customer booked but didn't turn up.
+
+The bot sends:
+1. A confirmation message immediately on booking
+2. A reminder 24 hours before
+3. A morning-of reminder
+4. A follow-up for non-responses
+
+**Formula:**
+```
+confirmed_bookings  = msgs × (conv ÷ 100)
+current_noshows     = FLOOR(confirmed_bookings × (nsR ÷ 100))
+reduction_rate      = 0.30    [estimate — conservative]
+noshows_recovered   = FLOOR(current_noshows × reduction_rate)
+monthly_value       = FLOOR(noshows_recovered × aov)
+```
+
+**No-show rate defaults by segment:**
+
+| Segment | Default no-show rate | Source |
+|---|---|---|
+| Restaurant | 15% | **[estimate]** — OpenTable 2023 UK data; adjusted for Indian casual dining |
+| Salon & Beauty | 20% | **[estimate]** — Treatwell 2022 industry report range 15–30% |
+| Fitness | 18% | **[estimate]** — Mindbody industry data |
+| Healthcare / Clinics | 18% | **[estimate]** — WHO primary care literature; Indian context similar |
+
+**Reduction rate note:** 30% no-show reduction from WhatsApp reminders is
+conservative. Published studies on SMS reminder effectiveness show 25–45%
+reduction; WhatsApp has higher read rates (~70%) than SMS (~45%), so the upper
+end is achievable. Use 30% in client-facing models.
+
+**Ceiling:** No-show value ≤ 40% of confirmed booking revenue.
+
+---
+
+## Appointment Bot pricing (placeholder)
+
+| SKU | Monthly fee | Setup (one-time) |
+|---|---|---|
+| Appointment Bot | ₹5,999/month | ₹11,999 |
+
+**Replace with actual pricing before any client use.**
+
+---
+
+## New segments — defaults
+
+| Segment | Monthly msgs | AOV (₹) | Conv % | No-show % | Staff | Staff cost/mo | After-hours % |
+|---|---|---|---|---|---|---|---|
+| Restaurant & F&B | 250 | 800 | 35 | 15 | 2 | 15,000 | 30% |
+| Salon & Beauty | 200 | 600 | 40 | 20 | 1 | 15,000 | 20% |
+| Fitness & Wellness | 180 | 500 | 35 | 18 | 1 | 18,000 | 25% |
+
+Note: for appointment businesses, `conv` is enquiry-to-booking rate (not
+enquiry-to-sale). `aov` is the value of one confirmed booking or session
+(used for no-show loss calculation and lead recovery calculation).
+
+---
+
 ## Revision log
 
 | Date | Change | Author |
