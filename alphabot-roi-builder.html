@@ -1,0 +1,819 @@
+<title>Alphabot ROI Builder</title>
+<style>
+:root{
+  --bg:#090E09;--surface:#0F150F;--card:#141E14;--border:#1A2A1A;
+  --accent:#22C35E;--accent2:#15803D;--gold:#D4A843;--red:#D04040;
+  --text:#E6F0E6;--text2:#9AAA9A;--muted:#5A6A5A;
+  --r:14px;--rr:8px;font-size:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Trebuchet MS',sans-serif;min-height:100vh;padding:0}
+#app{min-height:100vh;display:flex;flex-direction:column}
+.shell{max-width:520px;margin:0 auto;width:100%;padding:20px 16px 80px;flex:1}
+
+/* progress */
+.prog{display:flex;gap:6px;margin-bottom:28px;padding-top:8px}
+.prog-dot{height:3px;flex:1;background:var(--border);border-radius:2px;transition:background .3s}
+.prog-dot.done{background:var(--accent)}
+.prog-dot.active{background:var(--accent);opacity:.5}
+
+/* logo */
+.logo{font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);opacity:.8;margin-bottom:4px}
+
+/* headings */
+h1{font-size:26px;font-weight:700;line-height:1.2;color:var(--text);margin-bottom:8px}
+h2{font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px}
+.sub{color:var(--text2);font-size:15px;line-height:1.5;margin-bottom:24px}
+
+/* option cards */
+.opts{display:flex;flex-direction:column;gap:10px}
+.opt{background:var(--card);border:1.5px solid var(--border);border-radius:var(--r);padding:14px 16px;cursor:pointer;transition:border-color .2s,background .2s;display:flex;align-items:center;gap:12px;-webkit-tap-highlight-color:transparent}
+.opt:active,.opt:hover{border-color:var(--accent2);background:#172617}
+.opt.sel{border-color:var(--accent);background:#162616}
+.opt-icon{font-size:22px;width:32px;text-align:center;flex-shrink:0}
+.opt-body{flex:1}
+.opt-label{font-size:15px;font-weight:600;color:var(--text)}
+.opt-desc{font-size:13px;color:var(--text2);margin-top:2px}
+.opt-check{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--muted);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s}
+.opt.sel .opt-check{background:var(--accent);border-color:var(--accent)}
+.opt-check-inner{width:8px;height:8px;border-radius:50%;background:var(--bg);display:none}
+.opt.sel .opt-check-inner{display:block}
+
+/* primary badge */
+.badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:20px;border:1px solid var(--border);color:var(--text2);cursor:pointer;transition:.2s;white-space:nowrap}
+.badge.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+
+/* 2-col grid for segment screen */
+.opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.opt-grid .opt{flex-direction:column;align-items:flex-start;padding:14px}
+.opt-grid .opt-icon{margin-bottom:4px}
+
+/* buttons */
+.btn{width:100%;padding:16px;border:none;border-radius:var(--r);font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;transition:.2s;-webkit-tap-highlight-color:transparent}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover{background:#2DD46A}
+.btn-secondary{background:var(--card);color:var(--text);border:1.5px solid var(--border)}
+.btn-ghost{background:transparent;color:var(--text2);font-size:14px}
+.btn:disabled{opacity:.4;cursor:default}
+.nav-row{display:flex;gap:10px;margin-top:24px}
+.nav-row .btn-ghost{flex:0 0 auto;width:auto;padding:14px 20px}
+
+/* inputs */
+.form-group{margin-bottom:16px}
+label{display:block;font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.label-row{display:flex;justify-content:space-between;align-items:baseline}
+.label-src{font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-style:italic}
+input[type=number],select{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:var(--rr);color:var(--text);font-family:inherit;font-size:16px;padding:12px 14px;-webkit-appearance:none;appearance:none;transition:border-color .2s}
+input[type=number]:focus,select:focus{outline:none;border-color:var(--accent2)}
+.input-prefix{position:relative}
+.input-prefix span{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text2);font-size:15px;pointer-events:none}
+.input-prefix input{padding-left:28px}
+.hint{font-size:12px;color:var(--muted);margin-top:5px}
+.rt-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.rt-opt{background:var(--card);border:1.5px solid var(--border);border-radius:var(--rr);padding:10px 12px;cursor:pointer;transition:.2s;text-align:center;font-size:13px;color:var(--text2)}
+.rt-opt.sel{border-color:var(--accent);color:var(--text);background:#162616}
+.section-hdr{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:24px 0 12px}
+
+/* results */
+.result-hero{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:16px}
+.result-hero-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:4px}
+.result-hero-val{font-size:40px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;line-height:1}
+.result-hero-sub{font-size:14px;color:var(--text2);margin-top:4px}
+
+.scenario-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px}
+.scenario{background:var(--card);border:1.5px solid var(--border);border-radius:var(--r);padding:12px}
+.scenario.cons{border-color:var(--accent2)}
+.scenario-name{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);margin-bottom:4px}
+.scenario.cons .scenario-name{color:var(--accent)}
+.scenario-val{font-size:22px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.scenario.cons .scenario-val{color:var(--accent)}
+.scenario-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+.streams{margin-bottom:20px}
+.stream{border-bottom:1px solid var(--border);padding:14px 0}
+.stream:last-child{border-bottom:none}
+.stream-row{display:flex;justify-content:space-between;align-items:center}
+.stream-name{font-size:14px;font-weight:600;color:var(--text)}
+.stream-val{font-size:15px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums}
+.stream-na{font-size:13px;color:var(--muted);font-style:italic}
+.stream-math{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6;display:none;background:var(--surface);border-radius:var(--rr);padding:10px;font-family:monospace}
+.stream-math.open{display:block}
+.show-math{font-size:12px;color:var(--text2);cursor:pointer;margin-top:5px;text-decoration:underline;background:none;border:none;color:var(--text2);padding:0;font-family:inherit}
+
+.uc-section{margin-bottom:20px}
+.uc-hdr{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;border-radius:6px;margin-bottom:8px}
+.uc-hdr.bot{background:#0A1E12;color:var(--accent)}
+.uc-hdr.confirm{background:#1A1A0A;color:var(--gold)}
+.uc-hdr.escalate{background:#1A0A0A;color:#E08060}
+.uc-item{font-size:14px;color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border);line-height:1.5}
+.uc-item:last-child{border-bottom:none}
+
+.close-card{background:var(--card);border:1.5px solid var(--accent2);border-radius:var(--r);padding:20px;margin-bottom:16px}
+.close-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.close-line{font-size:17px;font-weight:700;color:var(--text);line-height:1.4;margin-bottom:12px}
+.close-plan{font-size:14px;color:var(--text2)}
+.close-plan strong{color:var(--text)}
+
+.payback-warn{background:#1A0E0A;border:1px solid var(--red);border-radius:var(--rr);padding:12px 14px;font-size:13px;color:#E09070;margin-bottom:16px;line-height:1.5}
+.lowvol-warn{background:#141820;border:1px solid #2A3A5A;border-radius:var(--rr);padding:16px;font-size:14px;color:var(--text2);margin-bottom:16px;line-height:1.6}
+
+.divider{height:1px;background:var(--border);margin:20px 0}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:20px}
+.tag-sku-support{background:#0A1E2A;color:#60B0E0}
+.tag-sku-sales{background:#1A0A2A;color:#C080F0}
+.tag-sku-lifecycle{background:#0A1A0A;color:var(--accent)}
+.tag-sku-suite{background:#1A1A0A;color:var(--gold)}
+
+/* welcome hero */
+.welcome-hero{padding:32px 0 24px}
+.welcome-tag{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px}
+.welcome-h1{font-size:32px;font-weight:700;line-height:1.15;margin-bottom:12px}
+.welcome-h1 em{color:var(--accent);font-style:normal}
+.welcome-proof{display:flex;gap:20px;margin:20px 0;flex-wrap:wrap}
+.wp{font-size:13px;color:var(--text2)}.wp strong{color:var(--text)}
+.welcome-note{font-size:13px;color:var(--muted);margin-top:8px}
+
+/* print */
+@media print{
+  body{background:#fff;color:#111}
+  .prog,.nav-row,.btn,.show-math,.no-print{display:none!important}
+  .stream-math{display:block!important;background:#f5f5f5;color:#333}
+  :root{--text:#111;--text2:#444;--muted:#666;--gold:#B07A00;--accent:#16A34A;--card:#f9f9f9;--border:#ddd}
+  .scenario.cons{border-color:var(--accent)}
+}
+@media(max-width:380px){
+  .opt-grid{grid-template-columns:1fr}
+  .scenario-row{grid-template-columns:1fr}
+  h1{font-size:22px}
+  .result-hero-val{font-size:32px}
+}
+</style>
+
+<div id="app"></div>
+
+<script>
+// ── DATA ───────────────────────────────────────────────────
+var SEGMENTS = [
+  {id:'d2c',icon:'🛍️',label:'D2C / Online store',subs:['Apparel & fashion','Food & beverages','Electronics','Beauty & care','Home & lifestyle']},
+  {id:'services',icon:'💼',label:'Services or consulting',subs:['IT & software','Legal or financial','Marketing agency','Architecture / design','Other service']},
+  {id:'manufacturing',icon:'🏭',label:'Manufacturing / B2B',subs:['Packaging & materials','Industrial supply','Agriculture & agri','Textiles','Construction']},
+  {id:'subscription',icon:'🔄',label:'Subscription / recurring',subs:['SaaS or software','Wellness & fitness','Content or media','Box subscriptions','Maintenance']},
+  {id:'retail',icon:'🏪',label:'Retail / local storefront',subs:['Grocery & FMCG','Pharmacy','Electronics retail','Clothing','Home & furniture']},
+  {id:'healthcare',icon:'🏥',label:'Healthcare or clinics',subs:['General practice','Diagnostic lab','Dental or eye care','Physiotherapy','Specialty hospital']},
+  {id:'education',icon:'📚',label:'Education or coaching',subs:['Test prep / entrance','Skill & professional','School / tuition','Online courses','Preschool']},
+  {id:'realestate',icon:'🏘️',label:'Real estate',subs:['Residential developer','Commercial leasing','Property broker','Co-working spaces','Plots & land']}
+];
+
+var SEG_DEF = {
+  d2c:          {msgs:380,aov:1800,conv:4.0,staff:2,sc:16000,rt:'hours',ah:27,ad:13000},
+  services:     {msgs:100,aov:28000,conv:9.0,staff:1,sc:45000,rt:'hours',ah:14,ad:12000},
+  manufacturing:{msgs:150,aov:50000,conv:5.0,staff:2,sc:35000,rt:'hours',ah:12,ad:10000},
+  subscription: {msgs:280,aov:1800,conv:8.0,staff:1,sc:30000,rt:'hours',ah:22,ad:16000},
+  retail:       {msgs:300,aov:900,conv:10.0,staff:2,sc:16000,rt:'min30',ah:23,ad:8000},
+  healthcare:   {msgs:350,aov:1000,conv:19.0,staff:2,sc:20000,rt:'hours',ah:19,ad:5000},
+  education:    {msgs:320,aov:5000,conv:7.0,staff:2,sc:21000,rt:'hours',ah:22,ad:14000},
+  realestate:   {msgs:80,aov:3000000,conv:1.0,staff:2,sc:45000,rt:'hours',ah:17,ad:30000}
+};
+
+var INTENTS = [
+  {id:'support',icon:'💬',label:'Answer repeat customer questions',desc:'FAQ, product info, order status, returns',sku:'support'},
+  {id:'qualify',icon:'🎯',label:'Qualify and follow up on leads',desc:'Lead scoring, nurturing, pipeline management',sku:'sales'},
+  {id:'lifecycle',icon:'🌱',label:'Onboard new customers and drive repeat purchase',desc:'Welcome flows, tips, re-engagement',sku:'lifecycle'},
+  {id:'orders',icon:'📦',label:'Take and track orders',desc:'End-to-end order capture on WhatsApp',sku:'support'},
+  {id:'payments',icon:'💳',label:'Send payment links and confirm payment',desc:'Automated collection and receipts',sku:'support'},
+  {id:'bookings',icon:'📅',label:'Book appointments or slots',desc:'Scheduling, reminders, confirmations',sku:'support'},
+  {id:'campaigns',icon:'📣',label:'Run outbound campaigns to existing customers',desc:'Win-back, seasonal, and lifecycle campaigns',sku:'lifecycle'}
+];
+
+var SKU_INFO = {
+  support:  {name:'Conversational Support',monthly:4999,setup:9999,color:'tag-sku-support'},
+  sales:    {name:'AI Sales',monthly:6999,setup:14999,color:'tag-sku-sales'},
+  lifecycle:{name:'Onboarding & Lifecycle',monthly:8999,setup:19999,color:'tag-sku-lifecycle'},
+  suite:    {name:'Full Suite',monthly:12999,setup:24999,color:'tag-sku-suite'}
+};
+
+var DEFLECTION = {support:.68,qualify:.52,orders:.78,bookings:.62,payments:.72,lifecycle:.58,campaigns:.0};
+var LOSS_RATE = {min5:.10,min30:.20,hours:.42,nextday:.62};
+var RT_LABELS = {min5:'Under 5 min',min30:'5–30 min',hours:'1–8 hours',nextday:'Next day +'};
+
+var UC_BANK = {
+  support:[
+    {g:'bot',t:'Answers stock, size, and product questions at any hour — {ah}% of your messages arrive after 7 pm'},
+    {g:'bot',t:'Shares order tracking links instantly when a customer sends their order number'},
+    {g:'bot',t:'Handles return and refund policy questions — consistent, instant, zero staff time'},
+    {g:'bot',t:'Sends your price list or catalogue on request'},
+    {g:'confirm',t:'Collects return or exchange requests with issue details; your team reviews and approves'},
+    {g:'confirm',t:'Takes appointment requests and passes confirmed slots to your team to lock in'},
+    {g:'escalate',t:'Routes payment disputes and complaints to your team with the full conversation context'},
+    {g:'escalate',t:'Flags anything it cannot confidently answer — no bad guesses, ever'}
+  ],
+  qualify:[
+    {g:'bot',t:'Responds to every new lead in under 30 seconds — including the {ah}% who enquire after hours'},
+    {g:'bot',t:'Asks 3–4 qualifying questions and scores the lead before your team touches it'},
+    {g:'bot',t:'Sends brochures, pricing, and case studies matched to what the lead asked about'},
+    {g:'bot',t:'Follows up with prospects who went quiet — at the cadence you set'},
+    {g:'confirm',t:'Schedules demos or discovery calls and routes confirmed slots to your calendar'},
+    {g:'confirm',t:'Surfaces leads that meet all criteria to your team with full qualification notes'},
+    {g:'escalate',t:'Routes deal-size outliers and enterprise enquiries to a senior rep immediately'},
+    {g:'escalate',t:'Escalates leads who ask for a human — always, with zero friction'}
+  ],
+  lifecycle:[
+    {g:'bot',t:'Sends personalised replenishment reminders when a customer is likely to run out'},
+    {g:'bot',t:'Runs re-engagement campaigns to customers silent for 30+ days'},
+    {g:'bot',t:'Delivers onboarding tips and setup guides automatically after every new purchase'},
+    {g:'bot',t:'Collects post-purchase reviews and NPS responses — no manual outreach needed'},
+    {g:'confirm',t:'Flags at-risk customers to your team with suggested win-back offers for review'},
+    {g:'confirm',t:'Handles upgrade and upsell conversations up to the point of confirmation'},
+    {g:'escalate',t:'Escalates billing disputes, failed renewals, and high-value churners immediately'},
+    {g:'escalate',t:'Routes any customer who explicitly asks for a human to your team instantly'}
+  ],
+  orders:[
+    {g:'bot',t:'Takes orders end-to-end on WhatsApp — product, quantity, delivery address, payment link'},
+    {g:'bot',t:'Sends payment links and confirms receipt automatically'},
+    {g:'bot',t:'Books slots against your live availability and sends confirmations and reminders'},
+    {g:'bot',t:'Sends order updates and tracking links proactively — before the customer asks'},
+    {g:'confirm',t:'Flags large or unusual orders for your team to review before confirming'},
+    {g:'confirm',t:'Passes custom or special requests to your team with full order details attached'},
+    {g:'escalate',t:'Routes failed payments and order exceptions to your team with context'},
+    {g:'escalate',t:'Escalates customer-requested changes or cancellations with all relevant context'}
+  ],
+  payments:[
+    {g:'bot',t:'Sends payment links the moment an order is confirmed — no manual follow-up'},
+    {g:'bot',t:'Sends a friendly reminder 24 hours after an unpaid link is issued'},
+    {g:'bot',t:'Confirms payment receipt and triggers order/booking confirmation automatically'},
+    {g:'bot',t:'Answers "did you receive my payment?" instantly — zero staff involved'},
+    {g:'confirm',t:'Escalates payments that are delayed beyond your set threshold to your team'},
+    {g:'escalate',t:'Routes disputes and refund requests to your team with transaction context'},
+    {g:'escalate',t:'Flags suspicious or repeat-failure transactions for manual review'}
+  ],
+  bookings:[
+    {g:'bot',t:'Books appointments against your live calendar — no phone calls, no back-and-forth'},
+    {g:'bot',t:'Sends confirmations and reminders 24 hours before every appointment'},
+    {g:'bot',t:'Handles rescheduling and cancellations without any staff involvement'},
+    {g:'bot',t:'Answers availability questions — "is Dr. Sharma free Saturday?" — instantly'},
+    {g:'confirm',t:'Passes new booking details to your team for any additional pre-appointment prep'},
+    {g:'escalate',t:'Routes emergency or urgent-care requests to your team immediately'},
+    {g:'escalate',t:'Escalates repeat no-shows and VIP clients for personal follow-up'}
+  ],
+  campaigns:[
+    {g:'bot',t:'Runs win-back campaigns to customers silent for 30+ days — automatically'},
+    {g:'bot',t:'Sends seasonal and occasion-based offers at the right moment'},
+    {g:'bot',t:'Delivers post-purchase upsell messages when a customer is most receptive'},
+    {g:'bot',t:'Collects feedback from recent buyers as part of every outbound flow'},
+    {g:'confirm',t:'Queues campaign messages for your review before sending to any segment'},
+    {g:'escalate',t:'Routes high-intent campaign responders directly to your sales team'},
+    {g:'escalate',t:'Escalates opt-out requests and complaints to ensure immediate removal'}
+  ]
+};
+
+var UC_SEG_EXTRA = {
+  healthcare:[
+    {g:'bot',t:'Answers "do you take [insurance]?", consultation fees, and doctor availability — your most-asked questions'},
+    {g:'confirm',t:'Collects patient name, chief complaint, and preferred slot; your front desk confirms the booking'}
+  ],
+  education:[
+    {g:'bot',t:'Answers batch timing, fee structure, and eligibility questions for every programme'},
+    {g:'confirm',t:'Collects enquiry details and documents for admissions; your team makes the final call'}
+  ],
+  realestate:[
+    {g:'bot',t:'Qualifies buyer budget, timeline, and configuration before your team takes the call — cuts wasted site visits'},
+    {g:'confirm',t:'Books site visits and passes full buyer brief to your sales team ahead of the visit'}
+  ],
+  manufacturing:[
+    {g:'bot',t:'Sends spec sheets, MOQ tables, and lead times automatically when a prospect enquires'},
+    {g:'confirm',t:'Routes custom-fabrication and large-lot enquiries to your technical team with specs attached'}
+  ],
+  subscription:[
+    {g:'bot',t:'Handles "how do I cancel?", "can I pause?", and "how do I upgrade?" — deflects churn before it happens'},
+    {g:'escalate',t:'Routes cancellation-intent customers to your retention specialist with full context'}
+  ]
+};
+
+// ── STATE ──────────────────────────────────────────────────
+var S = {
+  screen:'welcome',
+  seg:null,sub:null,
+  channels:[],primaryChannel:null,
+  intents:[],primaryIntent:null,sku:null,
+  inp:{},
+  roi:null,
+  mathOpen:{}
+};
+
+// ── FORMATTERS ─────────────────────────────────────────────
+function fmtR(n){
+  if(n===null||n===undefined||isNaN(n))return '–';
+  n=Math.floor(n);
+  if(n>=10000000)return '₹'+(n/10000000).toFixed(1).replace(/\.0$/,'')+'Cr';
+  if(n>=100000)return '₹'+(n/100000).toFixed(1).replace(/\.0$/,'')+'L';
+  return '₹'+n.toLocaleString('en-IN');
+}
+function fmtN(n){return Math.floor(n).toLocaleString('en-IN')}
+
+// ── ROI ENGINE ─────────────────────────────────────────────
+function calcROI(inp,sku,primaryIntent) {
+  var msgs=+inp.msgs||0, aov=+inp.aov||0, conv=+inp.conv||0,
+      staff=+inp.staff||1, sc=+inp.sc||20000,
+      rt=inp.rt||'hours', ah=+inp.ah||20, adSpend=+inp.adSpend||0;
+
+  var defRate = DEFLECTION[primaryIntent]||0.60;
+  var lossRate = LOSS_RATE[rt]||0.42;
+  var fee = SKU_INFO[sku]||SKU_INFO.support;
+
+  // Stream 1: staff time
+  var hoursPerMonth = msgs * defRate * 3.5 / 60;
+  var costPerHour = (sc * staff) / 160;
+  var s1 = Math.floor(hoursPerMonth * costPerHour);
+  var s1Rev = Math.floor(msgs * (conv/100) * aov);
+  var s1Ceil = Math.floor((sc * staff) * 0.35);
+  s1 = Math.min(s1, s1Ceil);
+
+  // Stream 2: lead recovery
+  var ahMsgs = msgs * (ah/100);
+  var leadsLost = Math.floor(ahMsgs * lossRate);
+  var recoveredLeads = Math.floor(leadsLost * 0.50);
+  var s2 = Math.floor(recoveredLeads * (conv/100) * aov);
+  var s2Ceil = Math.floor(Math.max(s1Rev * 0.25, adSpend * 0.40));
+  s2 = Math.min(s2, s2Ceil);
+
+  // Stream 3: conversion lift (only for sales intents)
+  var hasSalesIntent = ['qualify','support','orders','bookings','payments'].indexOf(primaryIntent)>=0;
+  var s3 = 0;
+  if(hasSalesIntent){
+    s3 = Math.floor(msgs * 0.30 * 0.06 * aov);
+    var s3Ceil = Math.floor(s1Rev * 0.15);
+    s3 = Math.min(s3, s3Ceil);
+  }
+
+  // Stream 4: repeat / retention (lifecycle only)
+  var hasLifecycle = primaryIntent==='lifecycle'||primaryIntent==='campaigns';
+  var s4 = 0;
+  if(hasLifecycle){
+    s4 = Math.floor(msgs * 0.40 * 0.60 * 0.08 * aov);
+    var s4Ceil = Math.floor(s1Rev * 0.30);
+    s4 = Math.min(s4, s4Ceil);
+  }
+
+  var gross = s1+s2+s3+s4;
+
+  function scenario(mult){
+    var g = Math.floor(gross*mult);
+    var net = g - fee.monthly;
+    var paybackWks = net>0 ? Math.ceil(fee.setup/net*4.33) : 999;
+    var annual = Math.floor(net*12 - fee.setup);
+    var totalInvest = fee.setup + fee.monthly*12;
+    var mult2 = totalInvest>0 ? Math.floor(annual/totalInvest*10)/10 : 0;
+    return {gross:g,net:Math.max(0,net),paybackWks,annual:Math.max(0,annual),roiMult:Math.max(0,mult2)};
+  }
+
+  return {
+    s1,s2,s3,s4,gross,fee,
+    hoursPerMonth:Math.floor(hoursPerMonth),
+    recoveredLeads,
+    msgs,aov,conv,staff,sc,rt,ah,adSpend,defRate,lossRate,
+    hasLifecycle,hasSalesIntent,
+    cons:scenario(0.60),
+    exp:scenario(1.00),
+    opt:scenario(1.40),
+    lowVolume: msgs < 100
+  };
+}
+
+// ── HELPERS ────────────────────────────────────────────────
+function resolveInp(){
+  var d=SEG_DEF[S.seg]||SEG_DEF.d2c;
+  return {
+    msgs: S.inp.msgs!==undefined?S.inp.msgs:d.msgs,
+    aov:  S.inp.aov!==undefined?S.inp.aov:d.aov,
+    conv: S.inp.conv!==undefined?S.inp.conv:d.conv,
+    staff:S.inp.staff!==undefined?S.inp.staff:d.staff,
+    sc:   S.inp.sc!==undefined?S.inp.sc:d.sc,
+    rt:   S.inp.rt!==undefined?S.inp.rt:d.rt,
+    ah:   S.inp.ah!==undefined?S.inp.ah:d.ah,
+    adSpend:S.inp.adSpend!==undefined?S.inp.adSpend:d.ad
+  };
+}
+
+function getSku(){
+  if(!S.primaryIntent)return 'support';
+  var pi=S.primaryIntent;
+  var skuMap={support:'support',qualify:'sales',lifecycle:'lifecycle',orders:'support',payments:'support',bookings:'support',campaigns:'lifecycle'};
+  // if multiple intents cross SKUs, upgrade to suite
+  var skus=S.intents.map(function(id){return skuMap[id]||'support'});
+  var unique=[...new Set(skus)];
+  if(unique.length>=3)return 'suite';
+  if(unique.indexOf('lifecycle')>=0&&unique.indexOf('sales')>=0)return 'suite';
+  return skuMap[pi]||'support';
+}
+
+function getSegLabel(){
+  if(!S.seg)return 'your business';
+  var seg=SEGMENTS.find(function(s){return s.id===S.seg});
+  return seg?(seg.label+(S.sub?' — '+S.sub:'')):'your business';
+}
+
+function getSegShort(){
+  if(!S.seg)return 'your segment';
+  var seg=SEGMENTS.find(function(s){return s.id===S.seg});
+  return seg?seg.label:'your segment';
+}
+
+function getDefaultSrc(){
+  return 'typical for '+getSegShort().toLowerCase()+' at this volume';
+}
+
+// ── RENDERERS ──────────────────────────────────────────────
+function prog(step){
+  var steps=6, html='<div class="prog">';
+  for(var i=0;i<steps;i++){
+    var cls=i<step?'done':i===step?'active':'';
+    html+='<div class="prog-dot '+cls+'"></div>';
+  }
+  return html+'</div>';
+}
+
+function renderWelcome(){
+  return '<div class="shell">'+prog(0)+
+  '<div class="welcome-hero">'+
+  '<div class="welcome-tag">Alphabot ROI Builder</div>'+
+  '<h1 class="welcome-h1">Find out what <em>your WhatsApp bot</em> is worth — in rupees.</h1>'+
+  '<p class="sub">Three minutes. Real numbers you can defend. No sign-up.</p>'+
+  '<div class="welcome-proof">'+
+  '<div class="wp"><strong>~3 min</strong><br>to complete</div>'+
+  '<div class="wp"><strong>4 value streams</strong><br>modelled</div>'+
+  '<div class="wp"><strong>₹ only</strong><br>Indian defaults</div>'+
+  '</div>'+
+  '<p class="welcome-note">Every number is traceable to your inputs. Conservative scenario shown first.</p>'+
+  '</div>'+
+  '<button class="btn btn-primary" onclick="go(\'q_segment\')">Get my ROI estimate →</button>'+
+  '</div>';
+}
+
+function renderSegment(){
+  var html='<div class="shell">'+prog(1)+'<h2>What kind of business are you?</h2><p class="sub">Pick the closest match.</p><div class="opt-grid">';
+  SEGMENTS.forEach(function(s){
+    var sel=S.seg===s.id?'sel':'';
+    html+='<div class="opt '+sel+'" onclick="selectSeg(\''+s.id+'\')">'+
+      '<div class="opt-icon">'+s.icon+'</div>'+
+      '<div class="opt-label">'+s.label+'</div>'+
+      '</div>';
+  });
+  html+='</div></div>';
+  return html;
+}
+
+function renderSub(){
+  var seg=SEGMENTS.find(function(s){return s.id===S.seg});
+  if(!seg)return renderSegment();
+  var html='<div class="shell">'+prog(1)+'<h2>Which best describes you?</h2><p class="sub">'+seg.label+'</p><div class="opts">';
+  seg.subs.forEach(function(sub){
+    var sel=S.sub===sub?'sel':'';
+    html+='<div class="opt '+sel+'" onclick="selectSub(\''+esc(sub)+'\')">'+
+      '<div class="opt-check"><div class="opt-check-inner"></div></div>'+
+      '<div class="opt-label">'+sub+'</div>'+
+      '</div>';
+  });
+  html+='</div>'+
+  '<div class="nav-row">'+
+  '<button class="btn btn-ghost" onclick="go(\'q_segment\')">← Back</button>'+
+  '<button class="btn btn-primary" style="flex:1" onclick="advanceSub()" '+(S.sub?'':'disabled')+'>Continue →</button>'+
+  '</div></div>';
+  return html;
+}
+
+function renderChannels(){
+  var all=[
+    {id:'whatsapp',icon:'💬',label:'WhatsApp',desc:'Your primary channel today'},
+    {id:'phone',icon:'📞',label:'Phone calls',desc:'Inbound enquiries by voice'},
+    {id:'social',icon:'📲',label:'Instagram / Facebook DMs',desc:'Social media messages'},
+    {id:'web',icon:'🌐',label:'Website or email',desc:'Contact form or email inbox'},
+    {id:'walkin',icon:'🚶',label:'Walk-ins',desc:'Customers visit in person'}
+  ];
+  var html='<div class="shell">'+prog(2)+
+  '<h2>Where do customers reach you today?</h2>'+
+  '<p class="sub">Select all that apply, then mark your primary channel.</p>'+
+  '<div class="opts">';
+  all.forEach(function(c){
+    var sel=S.channels.indexOf(c.id)>=0?'sel':'';
+    var isPrimary=S.primaryChannel===c.id;
+    html+='<div class="opt '+sel+'" onclick="toggleChannel(\''+c.id+'\')">'+
+      '<div class="opt-icon">'+c.icon+'</div>'+
+      '<div class="opt-body">'+
+      '<div class="opt-label">'+c.label+'</div>'+
+      '<div class="opt-desc">'+c.desc+'</div>'+
+      '</div>';
+    if(sel){
+      html+='<div class="badge '+(isPrimary?'primary':'')+'" onclick="event.stopPropagation();setPrimary(\''+c.id+'\')">'+(isPrimary?'✓ Primary':'Set primary')+'</div>';
+    }
+    html+='</div>';
+  });
+  html+='</div>'+
+  '<div class="nav-row">'+
+  '<button class="btn btn-ghost" onclick="go(\'q_sub\')">← Back</button>'+
+  '<button class="btn btn-primary" style="flex:1" onclick="advanceChannels()" '+(S.channels.length?'':'disabled')+'>Continue →</button>'+
+  '</div></div>';
+  return html;
+}
+
+function renderIntent(){
+  var html='<div class="shell">'+prog(3)+
+  '<h2>What do you want the bot to do?</h2>'+
+  '<p class="sub">Select all that apply, then mark your primary goal.</p>'+
+  '<div class="opts">';
+  INTENTS.forEach(function(it){
+    var sel=S.intents.indexOf(it.id)>=0?'sel':'';
+    var isPrimary=S.primaryIntent===it.id;
+    html+='<div class="opt '+sel+'" onclick="toggleIntent(\''+it.id+'\')">'+
+      '<div class="opt-icon">'+it.icon+'</div>'+
+      '<div class="opt-body">'+
+      '<div class="opt-label">'+it.label+'</div>'+
+      '<div class="opt-desc">'+it.desc+'</div>'+
+      '</div>';
+    if(sel){
+      html+='<div class="badge '+(isPrimary?'primary':'')+'" onclick="event.stopPropagation();setPrimaryIntent(\''+it.id+'\')">'+(isPrimary?'✓ Primary':'Set primary')+'</div>';
+    }
+    html+='</div>';
+  });
+  html+='</div>'+
+  '<div class="nav-row">'+
+  '<button class="btn btn-ghost" onclick="go(\'q_channels\')">← Back</button>'+
+  '<button class="btn btn-primary" style="flex:1" onclick="advanceIntent()" '+(S.intents.length?'':'disabled')+'>Continue →</button>'+
+  '</div></div>';
+  return html;
+}
+
+function renderInputs(){
+  var d=SEG_DEF[S.seg]||SEG_DEF.d2c;
+  var inp=resolveInp();
+  var src=getDefaultSrc();
+  function fld(id,lbl,val,pfx,hint){
+    return '<div class="form-group">'+
+      '<div class="label-row"><label>'+lbl+'</label><span class="label-src">'+src+'</span></div>'+
+      '<div class="input-prefix">'+(pfx?'<span>'+pfx+'</span>':'')+
+      '<input type="number" id="inp_'+id+'" value="'+val+'" min="0" oninput="setInp(\''+id+'\',this.value)">'+
+      '</div>'+(hint?'<div class="hint">'+hint+'</div>':'')+
+      '</div>';
+  }
+  var rtHtml='<div class="form-group">'+
+    '<label>How quickly do you reply today?</label>'+
+    '<div class="rt-opts">';
+  Object.keys(RT_LABELS).forEach(function(k){
+    rtHtml+='<div class="rt-opt '+(inp.rt===k?'sel':'')+'" onclick="setRt(\''+k+'\')">'+RT_LABELS[k]+'</div>';
+  });
+  rtHtml+='</div></div>';
+
+  var showAd=S.intents.indexOf('qualify')>=0||S.intents.indexOf('campaigns')>=0;
+  var html='<div class="shell">'+prog(4)+
+  '<h2>Your numbers</h2>'+
+  '<p class="sub">Pre-filled with typical values for '+getSegShort().toLowerCase()+'. Edit anything — the model recalculates live.</p>'+
+  '<div class="section-hdr">Volume & revenue</div>'+
+  fld('msgs','Monthly WhatsApp messages',inp.msgs,'','Inbound threads, not individual messages')+
+  fld('aov','Average order / deal value',inp.aov,'₹','Per transaction, not lifetime value')+
+  fld('conv','Enquiry-to-customer conversion',inp.conv,'','%  — e.g. 4 means 4 in 100 enquiries buy')+
+  '<div class="section-hdr">Your team</div>'+
+  fld('staff','People handling WhatsApp replies',inp.staff,'')+
+  fld('sc','Fully-loaded monthly cost per person',inp.sc,'₹','Salary + PF/ESI + overheads')+
+  '<div class="section-hdr">Response & timing</div>'+
+  rtHtml+
+  fld('ah','Messages that arrive after 7 pm',inp.ah,'','% of total monthly messages')+
+  (showAd?('<div class="section-hdr">Marketing</div>'+fld('adSpend','Monthly ad / lead-gen spend',inp.adSpend,'₹','Used to cap lead-recovery estimates')):'');
+
+  html+='<div class="nav-row">'+
+  '<button class="btn btn-ghost" onclick="go(\'q_intent\')">← Back</button>'+
+  '<button class="btn btn-primary" style="flex:1" onclick="goResults()">See my ROI →</button>'+
+  '</div></div>';
+  return html;
+}
+
+function renderResults(){
+  var inp=resolveInp();
+  var sku=getSku();
+  var pi=S.primaryIntent||'support';
+  var roi=calcROI(inp,sku,pi);
+  S.roi=roi;
+
+  var html='<div class="shell">'+prog(5);
+
+  if(roi.lowVolume){
+    var thresh=100;
+    var testAov=inp.aov, testConv=inp.conv, testFee=roi.fee.monthly;
+    var threshMsgs=Math.ceil(testFee*1.5/(testAov*(testConv/100)*0.60*0.10+0.01));
+    html+='<div class="lowvol-warn">'+
+    '<strong>Honest answer:</strong> At '+fmtN(inp.msgs)+' messages a month, a WhatsApp bot won\'t pay for itself yet.<br><br>'+
+    'The crossover point for your AOV and conversion rate is around <strong>'+fmtN(Math.max(thresh,threshMsgs))+' messages/month</strong>. '+
+    'At that volume the conservative model breaks even within 3 months.<br><br>'+
+    'If you\'re growing toward that, it\'s still worth setting up now — the bot starts building your KB and customer database immediately.'+
+    '</div>';
+  }
+
+  if(roi.cons.paybackWks>26&&!roi.lowVolume){
+    html+='<div class="payback-warn">⚠️ At these numbers, conservative payback is '+roi.cons.paybackWks+' weeks ('+Math.ceil(roi.cons.paybackWks/4.33)+' months). We\'ve highlighted the lighter plan below.</div>';
+  }
+
+  // Hero: conservative net annual
+  html+='<div class="result-hero">'+
+  '<div class="result-hero-label">Conservative 12-month net return</div>'+
+  '<div class="result-hero-val">'+fmtR(roi.cons.annual)+'</div>'+
+  '<div class="result-hero-sub">After Alphabot fees, before setup cost amortisation</div>'+
+  '</div>';
+
+  // Scenarios
+  html+='<div class="scenario-row">'+
+  '<div class="scenario cons">'+
+  '<div class="scenario-name">Conservative</div>'+
+  '<div class="scenario-val">'+fmtR(roi.cons.net)+'/mo</div>'+
+  '<div class="scenario-sub">Payback: '+(roi.cons.paybackWks<900?roi.cons.paybackWks+' wks':'—')+'</div>'+
+  '</div>'+
+  '<div class="scenario">'+
+  '<div class="scenario-name">Expected</div>'+
+  '<div class="scenario-val">'+fmtR(roi.exp.net)+'/mo</div>'+
+  '<div class="scenario-sub">Payback: '+(roi.exp.paybackWks<900?roi.exp.paybackWks+' wks':'—')+'</div>'+
+  '</div>'+
+  '<div class="scenario">'+
+  '<div class="scenario-name">Optimistic</div>'+
+  '<div class="scenario-val">'+fmtR(roi.opt.net)+'/mo</div>'+
+  '<div class="scenario-sub">'+fmtR(roi.opt.annual)+'/yr</div>'+
+  '</div></div>';
+
+  // Value streams
+  html+='<div class="divider"></div><h2 style="margin-bottom:14px">Where the value comes from</h2>';
+  html+='<div class="streams">';
+  html+=streamRow('Staff time recovered',roi.s1,
+    'Monthly messages: '+fmtN(roi.msgs)+'\nDeflection rate: '+(roi.defRate*100).toFixed(0)+'% ('+pi+', industry est.)\nMessages deflected: '+fmtN(roi.msgs*roi.defRate)+'\nTime per message: 3.5 min\nHours saved: '+fmtN(roi.hoursPerMonth)+'\nCost per hour: '+fmtR(roi.sc*roi.staff/160)+'\nGross value: '+fmtR(roi.s1)+' (capped at 35% of message-handling cost)');
+  html+=streamRow('Leads recovered — after-hours',roi.s2,
+    'After-hours messages: '+fmtN(Math.floor(roi.msgs*(roi.ah/100)))+' ('+roi.ah+'% of '+fmtN(roi.msgs)+')\nLoss rate at "'+RT_LABELS[roi.rt]+'": '+(roi.lossRate*100).toFixed(0)+'%\nLeads lost today: '+fmtN(roi.recoveredLeads*2)+'\nBot recovery rate: 50% (conservative)\nRecovered leads: '+fmtN(roi.recoveredLeads)+'\nConversion: '+inp.conv+'%   AOV: '+fmtR(inp.aov)+'\nValue: '+fmtR(roi.s2));
+  if(roi.hasSalesIntent){
+    html+=streamRow('Conversion lift — instant response',roi.s3,
+      'Sales-intent message share: 30% (est.)\nSales-intent pool: '+fmtN(Math.floor(roi.msgs*0.30))+'\nLift multiplier: 6% (est. — conservative)\nIncremental orders: '+fmtN(Math.floor(roi.msgs*0.30*0.06))+'\nAOV: '+fmtR(inp.aov)+'\nValue: '+fmtR(roi.s3)+' (capped at 15% of monthly revenue)');
+  }
+  if(roi.hasLifecycle){
+    html+=streamRow('Repeat purchase & retention',roi.s4,
+      'Existing customer message share: 40% (est.)\nEligible base: '+fmtN(Math.floor(roi.msgs*0.40))+'\nCampaign reach rate: 60%\nReactivation rate: 8% (conservative)\nIncremental orders: '+fmtN(Math.floor(roi.msgs*0.0192))+'\nAOV: '+fmtR(inp.aov)+'\nValue: '+fmtR(roi.s4));
+  }
+  html+='</div>';
+
+  // Use cases
+  html+='<div class="divider"></div><h2 style="margin-bottom:4px">What the bot handles for you</h2>'+
+  '<p class="sub" style="margin-bottom:16px">'+getSegLabel()+'</p>';
+  html+=renderUseCases(pi,roi.ah);
+
+  // Close
+  html+='<div class="divider"></div>';
+  html+=renderClose(roi,sku);
+
+  html+='<div style="margin-top:24px">'+
+  '<button class="btn btn-secondary no-print" onclick="window.print()">🖨️ Print / save as PDF</button>'+
+  '</div>'+
+  '<div class="nav-row no-print" style="margin-top:12px">'+
+  '<button class="btn btn-ghost" onclick="go(\'roi_inputs\')">← Edit numbers</button>'+
+  '</div></div>';
+  return html;
+}
+
+function streamRow(name,val,math){
+  var id='m'+Math.random().toString(36).slice(2);
+  return '<div class="stream">'+
+  '<div class="stream-row">'+
+  '<div class="stream-name">'+name+'</div>'+
+  (val>0?'<div class="stream-val">'+fmtR(val)+'/mo</div>':'<div class="stream-na">Not applicable</div>')+
+  '</div>'+
+  (val>0?'<button class="show-math" onclick="toggleMath(\''+id+'\')">show the maths ↓</button>'+
+  '<pre class="stream-math" id="'+id+'">'+math+'</pre>':'')+
+  '</div>';
+}
+
+function renderUseCases(pi,ah){
+  var bank=UC_BANK[pi]||UC_BANK.support;
+  var extra=UC_SEG_EXTRA[S.seg]||[];
+  var all=bank.concat(extra);
+  // pick 3 bot, 2 confirm, 2 escalate
+  var bot=all.filter(function(u){return u.g==='bot'}).slice(0,3);
+  var confirm=all.filter(function(u){return u.g==='confirm'}).slice(0,2);
+  var escalate=all.filter(function(u){return u.g==='escalate'}).slice(0,2);
+
+  function ucList(items,hdrCls,hdrTxt){
+    if(!items.length)return '';
+    return '<div class="uc-section">'+
+    '<div class="uc-hdr '+hdrCls+'">'+hdrTxt+'</div>'+
+    items.map(function(u){
+      return '<div class="uc-item">'+u.t.replace('{ah}','~'+Math.round(ah))+'</div>';
+    }).join('')+
+    '</div>';
+  }
+  return ucList(bot,'bot','✓ Handled fully by the bot')+
+    ucList(confirm,'confirm','⚡ Bot handles — your team confirms')+
+    ucList(escalate,'escalate','👤 Escalated to your team');
+}
+
+function renderClose(roi,sku){
+  var fee=SKU_INFO[sku];
+  var inp=resolveInp();
+
+  // Strongest line
+  var strongLine='';
+  if(roi.s2>0){
+    strongLine='You\'re losing roughly <strong>'+fmtR(roi.s2)+' a month</strong> to messages nobody answers after 7 pm — the bot responds in seconds.';
+  } else if(roi.s1>0){
+    strongLine='Your team spends <strong>~'+fmtN(roi.hoursPerMonth)+' hours a month</strong> answering messages the bot would handle automatically.';
+  } else {
+    strongLine='The bot handles your most repetitive conversations — freeing your team for work that actually needs a human.';
+  }
+
+  return '<div class="close-card">'+
+  '<div class="close-label">Our recommendation</div>'+
+  '<div class="close-line">'+strongLine+'</div>'+
+  '<div class="close-plan">'+
+  '<span class="tag '+fee.color+'">'+fee.name+'</span>'+
+  ' &nbsp;<strong>'+fmtR(fee.monthly)+'/month</strong> &nbsp;·&nbsp; '+fmtR(fee.setup)+' setup'+
+  '</div>'+
+  '<div style="margin-top:12px;font-size:13px;color:var(--text2);line-height:1.6">'+
+  'Conservative payback: '+(roi.cons.paybackWks<900?roi.cons.paybackWks+' weeks':'>26 weeks')+
+  ' &nbsp;·&nbsp; 12-month net: '+fmtR(roi.cons.annual)+
+  '</div>'+
+  '</div>'+
+  '<div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">'+
+  '<button class="btn btn-primary" onclick="alert(\'WhatsApp the Alphabot demo: wa.me/... — update this link before going live\')">💬 Message the live demo bot</button>'+
+  '<button class="btn btn-secondary" onclick="alert(\'Callback request — connect this to your CRM/form before going live\')">📞 Request a callback</button>'+
+  '</div>';
+}
+
+// ── ACTIONS ────────────────────────────────────────────────
+function go(screen){S.screen=screen;render();window.scrollTo(0,0)}
+
+function selectSeg(id){
+  S.seg=id;S.sub=null;S.inp={};
+  go('q_sub');
+}
+
+function selectSub(sub){
+  S.sub=sub;
+  var el=document.querySelector('.opt.sel');
+  document.querySelectorAll('.opt').forEach(function(o){o.classList.remove('sel')});
+  var opts=document.querySelectorAll('.opt');
+  opts.forEach(function(o){
+    if(o.querySelector('.opt-label')&&o.querySelector('.opt-label').textContent===sub)o.classList.add('sel');
+  });
+  S.sub=sub;render();
+}
+
+function advanceSub(){if(S.sub)go('q_channels')}
+
+function toggleChannel(id){
+  var i=S.channels.indexOf(id);
+  if(i>=0){
+    S.channels.splice(i,1);
+    if(S.primaryChannel===id)S.primaryChannel=S.channels[0]||null;
+  } else {
+    S.channels.push(id);
+    if(!S.primaryChannel)S.primaryChannel=id;
+  }
+  render();
+}
+function setPrimary(id){S.primaryChannel=id;render()}
+function advanceChannels(){if(S.channels.length)go('q_intent')}
+
+function toggleIntent(id){
+  var i=S.intents.indexOf(id);
+  if(i>=0){
+    S.intents.splice(i,1);
+    if(S.primaryIntent===id)S.primaryIntent=S.intents[0]||null;
+  } else {
+    S.intents.push(id);
+    if(!S.primaryIntent)S.primaryIntent=id;
+  }
+  render();
+}
+function setPrimaryIntent(id){S.primaryIntent=id;render()}
+function advanceIntent(){if(S.intents.length)go('roi_inputs')}
+
+function setInp(id,val){S.inp[id]=parseFloat(val)||0}
+function setRt(val){S.inp.rt=val;render()}
+function goResults(){S.sku=getSku();go('results')}
+
+function toggleMath(id){
+  var el=document.getElementById(id);
+  if(el)el.classList.toggle('open');
+  var btn=el&&el.previousSibling;
+  if(btn&&btn.classList&&btn.classList.contains('show-math')){
+    btn.textContent=el.classList.contains('open')?'hide the maths ↑':'show the maths ↓';
+  }
+}
+
+function esc(s){return s.replace(/'/g,"\\'").replace(/"/g,'&quot;')}
+
+// ── RENDER ─────────────────────────────────────────────────
+function render(){
+  var el=document.getElementById('app');
+  switch(S.screen){
+    case 'welcome':     el.innerHTML=renderWelcome();break;
+    case 'q_segment':   el.innerHTML=renderSegment();break;
+    case 'q_sub':       el.innerHTML=renderSub();break;
+    case 'q_channels':  el.innerHTML=renderChannels();break;
+    case 'q_intent':    el.innerHTML=renderIntent();break;
+    case 'roi_inputs':  el.innerHTML=renderInputs();break;
+    case 'results':     el.innerHTML=renderResults();break;
+    default:            el.innerHTML=renderWelcome();
+  }
+}
+render();
+</script>
