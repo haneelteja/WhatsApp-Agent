@@ -160,7 +160,7 @@ var SEG_DEF = {
   healthcare:   {msgs:350, aov:1000,    conv:19.0, staff:2, sc:20000, rt:'hours',  ah:19, ad:5000,  nsR:18, bm:5},
   education:    {msgs:320, aov:5000,    conv:7.0,  staff:2, sc:21000, rt:'hours',  ah:22, ad:14000, nsR:0,  bm:3.5},
   realestate:   {msgs:80,  aov:3000000, conv:1.0,  staff:2, sc:45000, rt:'hours',  ah:17, ad:30000, nsR:0,  bm:3.5},
-  restaurant:   {msgs:250, aov:800,     conv:35.0, staff:2, sc:15000, rt:'min30',  ah:30, ad:5000,  nsR:15, bm:5},
+  restaurant:   {msgs:400, aov:1200,    conv:35.0, staff:2, sc:15000, rt:'min30',  ah:30, ad:5000,  nsR:18, bm:5},
   salon:        {msgs:200, aov:600,     conv:40.0, staff:1, sc:15000, rt:'min30',  ah:20, ad:3000,  nsR:20, bm:4},
   fitness:      {msgs:180, aov:500,     conv:35.0, staff:1, sc:18000, rt:'hours',  ah:25, ad:5000,  nsR:18, bm:5}
 };
@@ -336,7 +336,7 @@ function calcROI(inp, sku, primaryIntent){
   s2 = Math.min(s2, Math.floor(Math.max(revBase * 0.25, adSpend * 0.40)));
 
   // Stream 3: conversion lift (non-appointment sales intents)
-  var hasSales = !isAppt && ['qualify','support','orders','bookings','payments'].indexOf(primaryIntent) >= 0;
+  var hasSales = !isAppt && ['qualify','support','orders','payments'].indexOf(primaryIntent) >= 0;
   var s3 = 0;
   if(hasSales){
     s3 = Math.floor(msgs * 0.30 * 0.06 * aov);
@@ -377,7 +377,7 @@ function calcROI(inp, sku, primaryIntent){
   return {
     s1, s2, s3, s4, s5, gross, fee,
     hoursPerMonth: Math.floor(hoursPerMonth),
-    confirmedBookings, noShowsReduced, recoveredLeads,
+    confirmedBookings, noShowsReduced, recoveredLeads, leadsLost,
     msgs, aov, conv, staff, sc, rt, ah, adSpend, nsR, bm, minPerMsg,
     defRate, lossRate, isAppt, hasSales, hasLifecycle,
     cons: scenario(0.60), exp: scenario(1.00), opt: scenario(1.40),
@@ -449,7 +449,7 @@ function renderWelcome(){
     '<div class="welcome-hero">' +
     '<div class="welcome-tag">Alphabot ROI Builder</div>' +
     '<h1 class="welcome-h1" style="font-size:32px;font-weight:700;line-height:1.15;margin-bottom:12px">Find out what <em style="color:var(--accent);font-style:normal">your WhatsApp bot</em> is worth — in rupees.</h1>' +
-    '<p style="color:var(--text2);font-size:15px;line-height:1.5;margin-bottom:20px">Three minutes. Four value streams modelled. Conservative scenario shown first.</p>' +
+    '<p style="color:var(--text2);font-size:15px;line-height:1.5;margin-bottom:20px">Three minutes. Up to 5 value streams modelled. Conservative scenario shown first.</p>' +
     '<div class="welcome-proof">' +
     '<div class="wp"><strong>~3 min</strong><br>to complete</div>' +
     '<div class="wp"><strong>5 value streams</strong><br>modelled</div>' +
@@ -555,7 +555,7 @@ function renderInputs(){
 
   function fld(id, lbl, val, pfx, hint){
     return '<div class="form-group">' +
-      '<div class="label-row"><label>' + lbl + '</label><span class="label-src">' + src + '</span></div>' +
+      '<div class="label-row"><label for="inp_' + id + '">' + lbl + '</label><span class="label-src">' + src + '</span></div>' +
       '<div class="input-prefix">' + (pfx ? '<span>' + pfx + '</span>' : '') +
       '<input type="number" id="inp_' + id + '" value="' + val + '" min="0" oninput="setInp(\'' + id + '\',this.value)">' +
       '</div>' + (hint ? '<div class="hint">' + hint + '</div>' : '') +
@@ -610,10 +610,11 @@ function renderResults(){
   var roi = calcROI(inp, sku, pi);
   S.roi   = roi;
 
-  var html = '<div class="shell">' + prog(5);
+  var html = '<div class="shell">' + prog(6);
 
   if(roi.lowVolume){
-    var thresh = Math.ceil(roi.fee.monthly * 1.5 / Math.max(inp.aov * (inp.conv / 100) * 0.06 * 0.60, 1));
+    var perMsgConservative = roi.msgs > 0 ? (roi.gross / roi.msgs) * 0.60 : 0;
+    var thresh = perMsgConservative > 0 ? Math.ceil(roi.fee.monthly / perMsgConservative) : 300;
     html += '<div class="lowvol-warn">' +
       '<strong>Honest answer:</strong> At ' + fmtN(inp.msgs) + ' messages/month, a WhatsApp bot won\'t pay for itself yet.<br><br>' +
       'The crossover for your AOV and conversion rate is around <strong>' + fmtN(Math.max(100, thresh)) + ' messages/month</strong>. ' +
@@ -625,7 +626,7 @@ function renderResults(){
     html += '<div class="payback-warn">⚠️ Conservative payback is ' + roi.cons.paybackWks + ' weeks (' + Math.ceil(roi.cons.paybackWks / 4.33) + ' months) at these inputs. We\'ve recommended the best-fit plan below.</div>';
   }
 
-  var heroLabel = roi.isAppt ? 'Conservative 12-month net return' : 'Conservative 12-month net return';
+  var heroLabel = 'Conservative 12-month net return';
   html += '<div class="result-hero">' +
     '<div class="result-hero-label">' + heroLabel + '</div>' +
     '<div class="result-hero-val">' + fmtR(roi.cons.annual) + '</div>' +
@@ -660,7 +661,7 @@ function renderResults(){
 
   var s2Math = 'After-hours messages: ' + fmtN(Math.floor(roi.msgs*(roi.ah/100))) + ' (' + roi.ah + '% of ' + fmtN(roi.msgs) + ')\n' +
     'Loss rate at "' + RT_LABELS[roi.rt] + '": ' + (roi.lossRate*100).toFixed(0) + '%\n' +
-    'Leads/bookings lost: ' + fmtN(roi.recoveredLeads * 2) + '\n' +
+    'Leads/bookings lost: ' + fmtN(roi.leadsLost) + '\n' +
     'Bot recovery rate:   50% (conservative)\n' +
     'Recovered:           ' + fmtN(roi.recoveredLeads) + '\n' +
     'Conversion: ' + inp.conv + '%   Value: ' + fmtR(inp.aov) + '\n' +
@@ -782,7 +783,10 @@ function toggleIntent(id){
 }
 function setPrimaryIntent(id){ S.primaryIntent = id; render(); }
 function advanceIntent(){ if(S.intents.length) go('roi_inputs'); }
-function setInp(id, val){ S.inp[id] = parseFloat(val) || 0; }
+function setInp(id, val){
+  var n = parseFloat(val);
+  if(val === '' || isNaN(n)) { delete S.inp[id]; } else { S.inp[id] = n; }
+}
 function setRt(val){ S.inp.rt = val; render(); }
 function goResults(){ S.sku = getSku(); go('results'); }
 function toggleMath(id){
