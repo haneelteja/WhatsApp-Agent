@@ -1,0 +1,385 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alphabot.in/schemas/tenant-master-spec/1.0.json",
+  "title": "Alphabot Tenant Master Specification v1.0",
+  "description": "Compiled machine-readable output from the Tenant Intake. Every field carries a provenance wrapper. The .md is the editable source of truth; this .json is compiled from it. Regeneration from the same .md must be deterministic.",
+  "type": "object",
+  "required": ["spec_version","tenant_id","generated_at","generated_from","approved_at","approved_by","checksum","sections"],
+  "additionalProperties": false,
+
+  "properties": {
+    "spec_version": { "type": "string", "const": "1.0" },
+    "tenant_id":    { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "generated_from":{ "type": "string", "description": "Intake session ID" },
+    "approved_at":  { "type": ["string","null"], "format": "date-time" },
+    "approved_by":  { "type": ["string","null"] },
+    "checksum": {
+      "type": "string",
+      "description": "DJB2 hex hash of sections JSON (spec_version…approved_by excluded). Recompute after every edit.",
+      "pattern": "^[0-9a-f]{8}$"
+    },
+    "sections": {
+      "type": "object",
+      "required": ["tenant_identity","business_model","catalogue","policies","knowledge_base","scope","guardrails","voice","intents_flows","escalation","integrations","media_library","operating_calendar","success_criteria","gap_register"],
+      "additionalProperties": false,
+      "properties": {
+        "tenant_identity":    { "$ref": "#/$defs/TenantIdentity" },
+        "business_model":     { "$ref": "#/$defs/BusinessModel" },
+        "catalogue":          { "$ref": "#/$defs/Catalogue" },
+        "policies":           { "$ref": "#/$defs/Policies" },
+        "knowledge_base":     { "$ref": "#/$defs/KnowledgeBase" },
+        "scope":              { "$ref": "#/$defs/Scope" },
+        "guardrails":         { "$ref": "#/$defs/Guardrails" },
+        "voice":              { "$ref": "#/$defs/Voice" },
+        "intents_flows":      { "$ref": "#/$defs/IntentsFlows" },
+        "escalation":         { "$ref": "#/$defs/Escalation" },
+        "integrations":       { "$ref": "#/$defs/Integrations" },
+        "media_library":      { "$ref": "#/$defs/MediaLibrary" },
+        "operating_calendar": { "$ref": "#/$defs/OperatingCalendar" },
+        "success_criteria":   { "$ref": "#/$defs/SuccessCriteria" },
+        "gap_register":       { "$ref": "#/$defs/GapRegister" }
+      }
+    }
+  },
+
+  "$defs": {
+
+    "Provenance": {
+      "type": "object",
+      "required": ["source","confidence","blocking"],
+      "additionalProperties": false,
+      "properties": {
+        "source":     { "type": "string", "enum": ["stated","extracted","inferred","default","missing"] },
+        "confidence": { "type": "string", "enum": ["high","medium","low"] },
+        "evidence":   { "type": ["string","null"] },
+        "blocking":   { "type": "string", "enum": ["P0","P1","P2"] }
+      }
+    },
+
+    "StringField": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value":      { "type": ["string","null"] },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "StringArrayField": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value":      { "type": "array", "items": { "type": "string" } },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "BooleanField": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value":      { "type": ["boolean","null"] },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "FAQEntry": {
+      "type": "object", "required": ["question","answer"], "additionalProperties": false,
+      "properties": {
+        "question": { "type": "string" },
+        "answer":   { "type": "string" },
+        "intents":  { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "FAQField": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value":      { "type": "array", "items": { "$ref": "#/$defs/FAQEntry" } },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+
+    "CategoryEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["d2c","services","manufacturing_b2b","subscription","retail","other", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "PricingDisclosureEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["share_freely","share_with_disclaimer","on_request","never","custom", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "CompetitorPolicyEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["do_not_acknowledge","deflect","acknowledge_redirect","custom", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "PIIPolicyEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["minimum","for_delivery","no_sensitive","custom", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "ToneEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["formal","semi_formal","friendly_casual","warm_personal","custom", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "EmojiPolicyEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["none","minimal","moderate","expressive", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "ResponseLengthEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["very_short","short","medium","as_needed", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "OutOfHoursEnum": {
+      "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": ["string","null"],
+          "enum": ["hold_notify","auto_reply_callback","auto_reply_slot","bot_continues","custom", null]
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+
+    "TenantIdentity": {
+      "type": "object",
+      "required": ["legal_name","trade_name","category","locations_served","languages","owner_whatsapp","owner_email"],
+      "additionalProperties": false,
+      "properties": {
+        "legal_name":      { "$ref": "#/$defs/StringField" },
+        "trade_name":      { "$ref": "#/$defs/StringField" },
+        "category":        { "$ref": "#/$defs/CategoryEnum" },
+        "locations_served":{ "$ref": "#/$defs/StringField" },
+        "languages":       { "$ref": "#/$defs/StringArrayField" },
+        "owner_whatsapp":  { "$ref": "#/$defs/StringField" },
+        "owner_email":     { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "BusinessModel": {
+      "type": "object",
+      "required": ["what_they_sell","how_they_sell","typical_customer","avg_order_value","seasonality"],
+      "additionalProperties": false,
+      "properties": {
+        "what_they_sell":   { "$ref": "#/$defs/StringField" },
+        "how_they_sell":    { "$ref": "#/$defs/StringField" },
+        "typical_customer": { "$ref": "#/$defs/StringField" },
+        "avg_order_value":  { "$ref": "#/$defs/StringField" },
+        "seasonality":      { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "Catalogue": {
+      "type": "object",
+      "required": ["catalogue_overview","pricing_disclosure","pricing_disclaimer"],
+      "additionalProperties": false,
+      "properties": {
+        "catalogue_overview":  { "$ref": "#/$defs/StringField" },
+        "pricing_disclosure":  { "$ref": "#/$defs/PricingDisclosureEnum" },
+        "pricing_disclaimer":  { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "Policies": {
+      "type": "object",
+      "required": ["delivery_areas","delivery_lead_time","delivery_charges","payment_methods","cod_available","advance_payment","return_policy","warranty","cancellation_policy"],
+      "additionalProperties": false,
+      "properties": {
+        "delivery_areas":     { "$ref": "#/$defs/StringField" },
+        "delivery_lead_time": { "$ref": "#/$defs/StringField" },
+        "delivery_charges":   { "$ref": "#/$defs/StringField" },
+        "payment_methods":    { "$ref": "#/$defs/StringArrayField" },
+        "cod_available":      { "$ref": "#/$defs/BooleanField" },
+        "advance_payment":    { "$ref": "#/$defs/StringField" },
+        "return_policy":      { "$ref": "#/$defs/StringField" },
+        "warranty":           { "$ref": "#/$defs/StringField" },
+        "cancellation_policy":{ "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "KnowledgeBase": {
+      "type": "object",
+      "required": ["faq_pairs","faq_raw"],
+      "additionalProperties": false,
+      "properties": {
+        "faq_pairs": { "$ref": "#/$defs/FAQField" },
+        "faq_raw":   { "$ref": "#/$defs/StringField", "description": "Raw text from intake; parsed into faq_pairs by the AI Coach" }
+      }
+    },
+
+    "Scope": {
+      "type": "object",
+      "required": ["bot_handles","bot_does_not_handle"],
+      "additionalProperties": false,
+      "properties": {
+        "bot_handles":         { "$ref": "#/$defs/StringArrayField" },
+        "bot_does_not_handle": { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "Guardrails": {
+      "type": "object",
+      "required": ["never_say","escalation_topics","competitor_policy","pii_policy","regulatory_constraints"],
+      "additionalProperties": false,
+      "properties": {
+        "never_say":             { "$ref": "#/$defs/StringField" },
+        "escalation_topics":     { "$ref": "#/$defs/StringField" },
+        "competitor_policy":     { "$ref": "#/$defs/CompetitorPolicyEnum" },
+        "pii_policy":            { "$ref": "#/$defs/PIIPolicyEnum" },
+        "regulatory_constraints":{ "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "Voice": {
+      "type": "object",
+      "required": ["tone","greeting_message","emoji_policy","response_length","language_mix"],
+      "additionalProperties": false,
+      "properties": {
+        "tone":             { "$ref": "#/$defs/ToneEnum" },
+        "greeting_message": { "$ref": "#/$defs/StringField" },
+        "emoji_policy":     { "$ref": "#/$defs/EmojiPolicyEnum" },
+        "response_length":  { "$ref": "#/$defs/ResponseLengthEnum" },
+        "language_mix":     { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "IntentsFlows": {
+      "type": "object",
+      "required": ["activated_products","primary_intents","order_capture_fields"],
+      "additionalProperties": false,
+      "properties": {
+        "activated_products": {
+          "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["support_bot","sales_bot","lifecycle_bot"] }
+            },
+            "provenance": { "$ref": "#/$defs/Provenance" }
+          }
+        },
+        "primary_intents":     { "$ref": "#/$defs/StringField" },
+        "order_capture_fields":{ "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "Escalation": {
+      "type": "object",
+      "required": ["escalation_number","human_hours","out_of_hours","escalation_sla"],
+      "additionalProperties": false,
+      "properties": {
+        "escalation_number": { "$ref": "#/$defs/StringField" },
+        "human_hours":       { "$ref": "#/$defs/StringField" },
+        "out_of_hours":      { "$ref": "#/$defs/OutOfHoursEnum" },
+        "escalation_sla":    { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "Integrations": {
+      "type": "object",
+      "required": ["phonepe_enabled","crm_destination"],
+      "additionalProperties": false,
+      "properties": {
+        "phonepe_enabled": { "$ref": "#/$defs/BooleanField" },
+        "crm_destination": { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "MediaLibrary": {
+      "type": "object",
+      "required": ["catalogue_doc","media_other"],
+      "additionalProperties": false,
+      "properties": {
+        "catalogue_doc": { "$ref": "#/$defs/StringField" },
+        "media_other":   { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "OperatingCalendar": {
+      "type": "object",
+      "required": ["business_hours","holidays","timezone"],
+      "additionalProperties": false,
+      "properties": {
+        "business_hours": { "$ref": "#/$defs/StringField" },
+        "holidays":       { "$ref": "#/$defs/StringField" },
+        "timezone": {
+          "type": "object", "required": ["value","provenance"], "additionalProperties": false,
+          "properties": {
+            "value":      { "type": "string", "default": "Asia/Kolkata" },
+            "provenance": { "$ref": "#/$defs/Provenance" }
+          }
+        }
+      }
+    },
+
+    "SuccessCriteria": {
+      "type": "object",
+      "required": ["success_goals"],
+      "additionalProperties": false,
+      "properties": {
+        "success_goals": { "$ref": "#/$defs/StringField" }
+      }
+    },
+
+    "GapEntry": {
+      "type": "object",
+      "required": ["field_id","field_label","section","blocking","reason","business_impact"],
+      "additionalProperties": false,
+      "properties": {
+        "field_id":       { "type": "string" },
+        "field_label":    { "type": "string" },
+        "section":        { "type": "string" },
+        "blocking":       { "type": "string", "enum": ["P0","P1","P2"] },
+        "reason":         { "type": "string", "enum": ["missing","low_confidence","inferred_unconfirmed","incomplete"] },
+        "business_impact":{ "type": "string" }
+      }
+    },
+
+    "GapRegister": {
+      "type": "object",
+      "required": ["total_gaps","p0_count","p1_count","p2_count","entries"],
+      "additionalProperties": false,
+      "properties": {
+        "total_gaps": { "type": "integer", "minimum": 0 },
+        "p0_count":   { "type": "integer", "minimum": 0 },
+        "p1_count":   { "type": "integer", "minimum": 0 },
+        "p2_count":   { "type": "integer", "minimum": 0 },
+        "entries":    { "type": "array", "items": { "$ref": "#/$defs/GapEntry" } }
+      }
+    }
+  }
+}
