@@ -1,0 +1,664 @@
+
+<title>Alphabot — Bot Advisor</title>
+
+<style>
+/* ─── Reset & variables ─── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#070E0B;
+  --surf:#0C1913;
+  --card:#112018;
+  --border:#1B3224;
+  --text:#DCEDE4;
+  --muted:#527A62;
+  --dim:#2A4838;
+  --accent:#22C35E;
+  --font:'Trebuchet MS','DejaVu Sans',system-ui,sans-serif;
+}
+
+html{font-size:16px}
+body{
+  min-height:100vh;min-height:100dvh;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{cursor:pointer;font-family:var(--font)}
+
+/* ─── Accent stripe ─── */
+#stripe{
+  position:fixed;top:0;left:0;right:0;
+  height:2px;
+  background:var(--accent);
+  transition:background .45s ease;
+  z-index:10;
+}
+
+/* ─── App shell ─── */
+#app{
+  max-width:440px;
+  min-height:100vh;min-height:100dvh;
+  margin:0 auto;
+  padding:36px 22px 56px;
+  display:flex;flex-direction:column;
+}
+
+/* ─── Brand ─── */
+.brand{
+  display:flex;align-items:center;gap:11px;
+  margin-bottom:38px;
+}
+.brand-mark{
+  width:34px;height:34px;
+  background:var(--accent);
+  border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:19px;font-weight:700;
+  color:#050C08;
+  font-family:Georgia,'Times New Roman',serif;
+  flex-shrink:0;
+  transition:background .45s ease;
+  user-select:none;
+}
+.brand-name{font-size:17px;font-weight:700;letter-spacing:.01em;line-height:1.2}
+.brand-sub{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;line-height:1.2}
+
+/* ─── Progress dots ─── */
+.prog{display:flex;align-items:center;gap:5px;margin-bottom:30px}
+.dot{height:6px;border-radius:3px;background:var(--dim);transition:all .25s ease}
+.dot{width:6px}
+.dot.done{width:18px;background:var(--muted);opacity:.55}
+.dot.active{width:26px;background:var(--accent)}
+
+/* ─── Question ─── */
+.q-meta{
+  font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:11px;
+}
+.q-text{
+  font-size:21px;font-weight:700;line-height:1.35;
+  color:var(--text);margin-bottom:26px;
+  text-wrap:balance;
+}
+
+/* ─── Option cards ─── */
+.opts{display:flex;flex-direction:column;gap:9px}
+.opt{
+  position:relative;overflow:hidden;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:11px;
+  padding:15px 18px;
+  text-align:left;color:var(--text);
+  font-size:15px;line-height:1.4;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  transition:border-color .15s,background .15s,transform .1s;
+  -webkit-tap-highlight-color:transparent;
+}
+.opt::before{
+  content:'';
+  position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--accent);
+  transform:scaleX(0);transform-origin:left;
+  transition:transform .15s ease;
+}
+.opt:hover{border-color:var(--accent);background:#162E22}
+.opt:hover::before{transform:scaleX(1)}
+.opt:active{transform:scale(.97);background:#1A3628}
+.opt-label{flex:1}
+.opt-chev{
+  flex-shrink:0;width:22px;height:22px;
+  border-radius:50%;border:1.5px solid var(--dim);
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:var(--dim);
+  transition:all .15s;
+}
+.opt:hover .opt-chev{border-color:var(--accent);color:var(--accent)}
+
+/* ─── Back button ─── */
+.back-btn{
+  background:none;border:none;
+  color:var(--muted);font-size:14px;padding:0;
+  margin-top:22px;display:flex;align-items:center;gap:5px;
+  transition:color .15s;
+}
+.back-btn:hover{color:var(--text)}
+
+/* ─── Result screen ─── */
+.result-scr{animation:fadeUp .28s ease}
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(10px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+.fit-badge{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:4px 13px 4px 8px;
+  border-radius:20px;
+  font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--accent);
+  margin-bottom:14px;
+}
+.fit-dot{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+
+.result-name{
+  font-size:25px;font-weight:700;line-height:1.25;
+  color:var(--accent);margin-bottom:14px;
+  transition:color .45s;
+}
+.result-reason{
+  font-size:14px;color:var(--muted);line-height:1.65;
+  margin-bottom:30px;
+  padding-left:14px;
+  border-left-width:2px;border-left-style:solid;
+}
+
+/* ─── Result sections ─── */
+.rs{margin-bottom:26px}
+.rs-lbl{
+  font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:11px;
+}
+.uc-list{display:flex;flex-direction:column;gap:8px}
+.uc{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.5;color:var(--text)}
+.uc-dot{flex-shrink:0;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:8px;transition:background .45s}
+
+.impact-box{
+  background:var(--card);border:1px solid var(--border);
+  border-left-width:3px;border-left-style:solid;
+  border-radius:10px;
+  padding:14px 16px;
+  font-size:14px;line-height:1.6;color:var(--text);
+}
+
+.runner-box{
+  background:var(--surf);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;
+}
+.runner-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px}
+.runner-text{font-size:13px;color:var(--muted);line-height:1.55}
+
+/* ─── CTA ─── */
+.cta{margin-top:28px;border-top:1px solid var(--border);padding-top:26px}
+.cta-title{font-size:16px;font-weight:700;margin-bottom:6px}
+.cta-sub{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:18px}
+
+.ph-field{
+  width:100%;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:10px;padding:13px 16px;
+  color:var(--text);font-family:var(--font);font-size:14px;
+  outline:none;margin-bottom:10px;
+  transition:border-color .15s;
+  display:block;
+}
+.ph-field::placeholder{color:var(--dim)}
+.ph-field:focus{border-color:var(--accent)}
+
+.wa-btn{
+  width:100%;background:var(--accent);border:none;
+  border-radius:10px;padding:15px 20px;
+  color:#040B07;font-family:var(--font);font-size:15px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  transition:opacity .15s,transform .1s;
+  margin-bottom:9px;
+}
+.wa-btn:hover{opacity:.87}
+.wa-btn:active{transform:scale(.98)}
+
+.reset-btn{
+  width:100%;background:none;
+  border:1px solid var(--border);border-radius:10px;
+  padding:12px;color:var(--muted);
+  font-family:var(--font);font-size:14px;
+  transition:border-color .15s,color .15s;
+}
+.reset-btn:hover{border-color:var(--dim);color:var(--text)}
+
+/* ─── Honest-fit ─── */
+.honest-title{font-size:21px;font-weight:700;line-height:1.35;color:var(--text);margin-bottom:12px}
+.honest-body{font-size:14px;color:var(--muted);line-height:1.65;margin-bottom:24px}
+
+.threshold-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:10px;padding:16px;
+  margin-bottom:24px;
+  display:flex;align-items:center;gap:14px;
+}
+.threshold-num{
+  font-size:32px;font-weight:700;color:var(--accent);
+  line-height:1;flex-shrink:0;transition:color .45s;
+}
+.threshold-sub{font-size:13px;color:var(--muted);line-height:1.45}
+
+/* ─── Transitions ─── */
+.screen{animation:fadeUp .22s ease}
+
+@media(prefers-reduced-motion:reduce){
+  .screen,.result-scr{animation:none}
+  *,*::before,*::after{transition-duration:.01ms!important}
+}
+
+@media(min-width:600px){
+  #app{padding-top:52px}
+}
+</style>
+
+<div id="stripe"></div>
+
+<div id="app">
+  <header class="brand">
+    <div class="brand-mark" id="bmark">α</div>
+    <div>
+      <div class="brand-name">Alphabot</div>
+      <div class="brand-sub">Bot Advisor</div>
+    </div>
+  </header>
+  <main id="screen"></main>
+</div>
+
+<script>
+/* ──────────────────────────────────
+   CONFIG  — replace with real number
+   ────────────────────────────────── */
+var DEMO = '919999999999';
+
+/* ──────────────────────────────────
+   ACCENTS (one per product)
+   ────────────────────────────────── */
+var ACCENTS = { support:'#22C35E', sales:'#C99820', lifecycle:'#6FE078', appointments:'#D070B0' };
+
+/* ──────────────────────────────────
+   QUESTIONS + SCORES
+   ────────────────────────────────── */
+var Q = [
+  {
+    meta:'Your business',
+    text:'What kind of business are you running?',
+    opts:[
+      {lbl:'D2C / online store',               sc:[['support',3],['lifecycle',1]]},
+      {lbl:'Services or consulting',            sc:[['sales',3],['lifecycle',2]]},
+      {lbl:'Manufacturing or B2B supply',       sc:[['support',2],['sales',3]]},
+      {lbl:'Subscription or recurring orders',  sc:[['lifecycle',4]]},
+      {lbl:'Retail or local storefront',         sc:[['support',2]]},
+      {lbl:'Restaurant, café or F&B',           sc:[['appointments',5]]},
+      {lbl:'Salon, spa or beauty studio',       sc:[['appointments',5]]},
+      {lbl:'Fitness, gym or wellness studio',   sc:[['appointments',5]]},
+    ]
+  },
+  {
+    meta:'Customer channel',
+    text:'Where do most customer conversations happen today?',
+    opts:[
+      {lbl:'WhatsApp',                   sc:[['support',2]]},
+      {lbl:'Phone calls',                sc:[['support',2],['appointments',1]]},
+      {lbl:'Instagram or Facebook DMs',  sc:[['sales',3]]},
+      {lbl:'Website or email',           sc:[['sales',2]]},
+      {lbl:'Walk-ins',                   sc:[['support',1],['appointments',1]]},
+    ]
+  },
+  {
+    meta:'Biggest bottleneck',
+    text:"What's the biggest bottleneck right now?",
+    opts:[
+      {lbl:'Same questions asked over and over',             sc:[['support',5]]},
+      {lbl:"Leads come in but don't get followed up",        sc:[['sales',5]]},
+      {lbl:'New customers need hand-holding to get started', sc:[['lifecycle',5]]},
+      {lbl:'Customers buy once and vanish',                  sc:[['lifecycle',5]]},
+      {lbl:"Nobody's free to reply at all",                  sc:[['support',3],['sales',2]]},
+      {lbl:'Bookings and appointments are hard to manage',   sc:[['appointments',6]]},
+    ]
+  },
+  {
+    meta:'Monthly volume',
+    text:'How many customer enquiries do you get a month?',
+    opts:[
+      {lbl:'Under 100',   sc:[], honest:true},
+      {lbl:'100–500',     sc:[['sales',2],['appointments',1]]},
+      {lbl:'500–2,000',   sc:[['support',2],['sales',2],['lifecycle',1],['appointments',1]]},
+      {lbl:'2,000+',      sc:[['support',3],['lifecycle',2],['appointments',2]]},
+    ]
+  },
+  {
+    meta:'Your team',
+    text:'Who handles customer replies today?',
+    opts:[
+      {lbl:'Just me',             sc:[['support',1],['sales',1],['appointments',1]]},
+      {lbl:'One or two people',   sc:[['support',1],['appointments',1]]},
+      {lbl:'A small team',        sc:[['sales',1],['lifecycle',1]]},
+      {lbl:'Nobody consistently', sc:[['support',2],['sales',1],['appointments',2]]},
+    ]
+  }
+];
+
+/* ──────────────────────────────────
+   COPY
+   ────────────────────────────────── */
+var PNAME = {
+  support:      'Conversational Support Bot',
+  sales:        'AI Sales Bot',
+  lifecycle:    'Onboarding & Lifecycle Bot',
+  appointments: 'Appointment Bot'
+};
+
+var REASON = {
+  support:[
+    "For your online store, the biggest time-save is answering 'where's my order', COD confirmations, and return queries automatically — without anyone on your team lifting a finger.",
+    "For your service business, getting customers an instant reply — even at midnight — keeps them from calling the next name on their list.",
+    "For your B2B operation, responding to order-status checks and rate-card queries instantly removes friction from every distributor relationship.",
+    "For your subscription business, handling billing and account queries automatically means your team can focus on growth, not the support queue.",
+    "For your retail store, answering stock, timing, and directions queries around the clock means more customers walk in rather than walk past.",
+    "For your F&B business, handling reservation queries, menu questions, and directions automatically means your front-of-house team can focus on guests, not the phone.",
+    "For your salon or studio, answering pricing, availability, and directions queries around the clock means fewer calls missed and more customers booked.",
+    "For your fitness studio, handling class queries, membership questions, and session info automatically keeps your front desk free for the members already there."
+  ],
+  sales:[
+    "For your online store, every lead that doesn't hear back within the hour is probably buying from someone else. The Sales Bot fixes that automatically.",
+    "For your service business, the biggest revenue leak is enquiries that go quiet. A bot that qualifies and follows up instantly — before they cool off — closes that gap.",
+    "For your B2B operation, distributor and bulk enquiries need fast qualification and structured follow-up. That's exactly what the Sales Bot handles.",
+    "For your subscription business, trial users and warm leads need timely nudges to convert. The Sales Bot tracks and follows up without any manual effort.",
+    "For your retail store, every customer who messages you is a potential sale. The Sales Bot makes sure none of them go unanswered.",
+    "For your F&B business, every enquiry that doesn't get a quick reply is a table going to the restaurant next door. The Sales Bot captures and converts them automatically.",
+    "For your salon or studio, new-client enquiries that go cold are revenue lost forever. The Sales Bot responds instantly and guides them to book.",
+    "For your fitness studio, leads from Instagram and WhatsApp campaigns need fast follow-up to convert to memberships. The Sales Bot handles every single one."
+  ],
+  lifecycle:[
+    "For your online store, a second or third order from an existing buyer costs a fraction of acquiring a new one. The Lifecycle Bot automates the entire retention loop.",
+    "For your service business, a structured onboarding experience and timely check-ins turn first-time clients into long-term retainers.",
+    "For your B2B operation, automated repeat-order reminders and distributor touchpoints keep every relationship warm — without any manual follow-up.",
+    "For your subscription business, the difference between a churned subscriber and a loyal one is often a single well-timed message. The Lifecycle Bot sends it.",
+    "For your retail store, your best customers are the ones who've already bought. The Lifecycle Bot brings them back with reminders, offers, and loyalty rewards.",
+    "For your F&B business, turning a first-time diner into a regular is the most profitable growth lever you have. The Lifecycle Bot runs re-engagement and loyalty automatically.",
+    "For your salon or studio, clients who haven't booked in 60 days are the easiest revenue to recover. The Lifecycle Bot sends the right message at the right time.",
+    "For your fitness studio, members who go quiet are on their way out. The Lifecycle Bot re-engages them before they cancel."
+  ],
+  appointments:[
+    "For your online store, if you run any service or consultation component, the Appointment Bot takes bookings automatically — so no lead slips through while you're busy.",
+    "For your service or consulting business, back-and-forth scheduling is one of the biggest hidden time drains. The Appointment Bot handles it end-to-end — availability, confirmation, and reminders.",
+    "For your B2B operation, if you run demos, site visits, or field consultations, the Appointment Bot books and confirms them automatically without any phone calls.",
+    "For your subscription business, onboarding calls and renewal check-ins are easier to schedule when a bot handles the calendar back-and-forth.",
+    "For your retail store, whether it's fitting appointments, home deliveries, or consultations, the Appointment Bot takes bookings without tying up your team.",
+    "For your restaurant or café, the Appointment Bot handles table reservations, confirms bookings, and sends reminders that cut no-shows by up to 30% — so every slot earns its full value.",
+    "For your salon or beauty studio, the Appointment Bot books appointments 24/7, sends reminders before each session, and recovers no-shows that would otherwise be lost revenue.",
+    "For your fitness or wellness studio, the Appointment Bot handles class bookings, session reservations, and reminder sequences — so your coaches can focus on coaching, not scheduling."
+  ]
+};
+
+var USE_CASES = {
+  support:[
+    ["Answers 'where's my order?' without anyone touching the phone","Handles COD confirmation and rescheduling automatically","Replies to size, shade, and compatibility questions 24/7","Processes return and exchange requests before they become refund demands","Escalates complaints to a human before the situation blows up"],
+    ["Answers pricing and availability questions at any hour","Sends intake forms automatically when a prospect asks 'how do I start?'","Handles 'can you do X?' queries without eating your calendar","Covers client questions while you're in a meeting or on-site","Escalates unhappy clients before they go quiet and churn"],
+    ["Responds to order-status and delivery queries instantly","Handles MOQ, rate-card, and spec queries without a phone call","Routes technical questions to the right person on your team","Covers distributor enquiries while your team is on the factory floor","Sends payment reminders and invoice copies automatically"],
+    ["Handles 'how do I pause, change, or cancel?' without losing the subscriber","Answers billing and invoice queries automatically","Escalates dissatisfied subscribers before they churn","Covers queries at every hour, not just 9 to 6","Sends account-status updates without manual effort"],
+    ["Answers stock and pricing questions without a call or walk-in","Handles store timings, directions, and parking automatically","Responds to WhatsApp broadcast replies at scale","Covers evenings and Sundays without extra staff","Escalates complaints before they reach Google Reviews"],
+    ["Answers menu, allergy, and timing questions around the clock","Handles directions, parking, and opening hours automatically","Responds to event and group booking enquiries instantly","Covers WhatsApp queries while the kitchen is busy","Escalates complaints before they become a bad review"],
+    ["Answers pricing, service menu, and availability questions 24/7","Handles directions and parking queries automatically","Responds to product queries and aftercare questions instantly","Covers late-night enquiries when the reception is closed","Escalates complaints before they reach social media"],
+    ["Answers class schedule, pricing, and membership queries 24/7","Handles directions and parking automatically","Responds to trainer availability and session-type questions","Covers morning and evening enquiries when the desk is unstaffed","Escalates complaints to management before they escalate elsewhere"]
+  ],
+  sales:[
+    ["Qualifies visitors who are browsing vs. those who are ready to buy","Follows up with enquiries that went quiet after the first message","Runs time-limited offer campaigns over WhatsApp","Captures leads from Instagram comments and moves them to a DM conversation","Re-engages cold leads with an automated follow-up sequence"],
+    ["Qualifies every inbound lead before it reaches your calendar","Responds within seconds — before the prospect moves on","Sends your portfolio, case studies, or brochures automatically","Books discovery calls without the back-and-forth","Re-engages warm leads who went quiet after receiving a quote"],
+    ["Qualifies distributor and bulk-order enquiries before your team calls","Follows up on trade-fair and exhibition leads automatically","Sends product catalogues and price lists on demand","Nurtures long-cycle B2B deals with scheduled touchpoints","Re-engages dormant accounts with a seasonal check-in"],
+    ["Converts free-trial users who haven't upgraded yet","Runs upsell campaigns at the right moment in the customer journey","Follows up on lapsed subscribers with a win-back offer","Routes high-value enterprise leads to your sales team instantly"],
+    ["Captures walk-in enquirers as WhatsApp prospects before they leave","Runs flash-sale notifications to opted-in customers","Follows up with customers who enquired but didn't purchase","Converts social-media DMs into WhatsApp sales conversations"],
+    ["Captures every enquiry from Instagram, Facebook, and WhatsApp instantly","Follows up with prospects who asked but never confirmed a booking","Runs limited-time offers and special-menu promotions automatically","Sends your menu and event packages on demand","Re-engages past diners who haven't visited in 60+ days"],
+    ["Responds to new-client enquiries within seconds — before they book elsewhere","Follows up on leads who asked for availability but never confirmed","Runs introductory-offer campaigns for new clients automatically","Sends your service menu and pricing on demand","Re-engages dormant clients with a personalised comeback offer"],
+    ["Responds to every trial enquiry and membership lead immediately","Follows up with leads from Instagram and WhatsApp campaigns automatically","Runs introductory-offer and free-trial campaigns","Sends class schedules and membership packages on demand","Re-engages inactive members with a targeted win-back sequence"]
+  ],
+  lifecycle:[
+    ["Sends order confirmation and delivery updates automatically","Walks new buyers through how to get the best from their purchase","Triggers a replenishment reminder before they run out","Sends a loyalty reward at the third and fifth order","Re-engages customers 60 days after their last purchase with a personalised offer"],
+    ["Sends onboarding checklists to new clients without typing them each time","Checks in at day 7, day 30, and day 90 after sign-up","Triggers a renewal reminder before a retainer or contract lapses","Asks for a testimonial or referral once the project wraps"],
+    ["Sends payment reminders before due dates, not after","Follows up on repeat-order cycles automatically","Notifies distributors of new stock arrivals or price changes","Reactivates dormant accounts with a seasonal check-in message"],
+    ["Onboards new subscribers step by step over the first two weeks","Triggers intervention messages when usage drops below a threshold","Sends renewal reminders 7, 3, and 1 day before expiry","Runs a win-back sequence automatically after cancellation"],
+    ["Follows up with customers two weeks after a purchase to check in","Sends birthday and anniversary offers automatically","Re-engages customers who haven't visited in 90 days","Runs a referral campaign to your existing buyers"],
+    ["Sends a thank-you message after each visit with a re-booking nudge","Triggers a 'we miss you' message when a regular hasn't visited in 30 days","Runs a loyalty campaign for repeat diners automatically","Sends birthday and anniversary dining offers without any manual effort","Notifies opted-in customers about new menus, special events, and seasonal offers"],
+    ["Sends a post-visit follow-up with an easy re-booking link","Triggers a 'time for a top-up?' message at the natural rebooking interval","Sends birthday and anniversary pampering offers automatically","Re-engages clients who haven't booked in 60 days","Runs loyalty campaigns for your most frequent visitors"],
+    ["Sends a post-session check-in to new members in the first two weeks","Triggers a re-engagement message when a member misses their usual sessions","Sends renewal reminders before memberships lapse","Runs referral campaigns automatically to your active member base","Re-engages cancelled members with a personalised win-back offer"]
+  ],
+  appointments:[
+    ["Books consultations and service appointments automatically around the clock","Sends an instant confirmation with all the details on every booking","Sends a reminder 24 hours before to cut no-shows","Handles rescheduling and cancellations without a phone call","Follows up after the appointment to gather feedback and prompt re-booking"],
+    ["Books discovery calls and consultations without email back-and-forth","Sends a confirmation with a calendar link immediately on booking","Reminds clients the day before and the morning of every appointment","Handles rescheduling requests automatically","Follows up after calls to prompt the next step in the engagement"],
+    ["Books demos, site visits, and field consultations automatically","Sends confirmations with all logistics details on booking","Reminds distributors and prospects before every scheduled call","Handles rescheduling without your team getting involved","Follows up after meetings with next-step materials automatically"],
+    ["Books onboarding calls and renewal check-ins without manual scheduling","Sends a calendar invite and confirmation on every booking","Reminds subscribers before each check-in or renewal conversation","Handles rescheduling requests automatically","Follows up after calls to keep the relationship active"],
+    ["Books fitting appointments, home deliveries, and consultations 24/7","Sends an instant confirmation on every booking","Reminds customers before every appointment to reduce no-shows","Handles rescheduling without tying up your team","Follows up after service appointments to prompt repeat visits"],
+    ["Takes table reservations, event bookings, and group enquiries 24/7","Sends an instant confirmation on every reservation","Sends a reminder the day before and the morning of each booking","Handles rescheduling and cancellations without a phone call","Re-offers cancelled slots immediately to fill the table before service"],
+    ["Books appointments for every service across your menu, 24/7","Sends an instant confirmation with all the details immediately","Reminds clients 24 hours before and the morning of each appointment","Handles rescheduling and cancellations without any manual effort","Re-offers cancelled slots to the waitlist immediately to fill the gap"],
+    ["Books classes, PT sessions, and wellness appointments around the clock","Sends an instant booking confirmation with all session details","Reminds members before every session to reduce no-shows","Handles rescheduling and cancellations without front-desk involvement","Re-offers cancelled slots to the waitlist immediately to keep classes full"]
+  ]
+};
+
+var IMPACT = {
+  support:{
+    1:"Saves your team roughly 4–10 hours a week on repeat queries — that's your first weekend back.",
+    2:"Handles 60–80% of questions automatically — 10–25 hours saved per week, response times under 60 seconds.",
+    3:"Deflects 70–85% of inbound volume, the equivalent of 1–2 full-time support agents at a fraction of the cost."
+  },
+  sales:{
+    1:"Follows up 80–200 leads a month without any manual effort. No lead goes uncontacted again.",
+    2:"Qualifies and nurtures 400–1,600 leads a month. Conversion rates typically lift 20–40% from faster first response alone.",
+    3:"Closes the follow-up gap on over 1,600 leads a month. At this volume, speed-to-lead is the single biggest revenue lever — and it's now automatic."
+  },
+  lifecycle:{
+    1:"Runs 100–500 automated customer touchpoints a month. Repeat purchase rates typically lift 15–25% within 90 days.",
+    2:"Drives 15–30% more repeat purchases through automated retention — no added headcount required.",
+    3:"At this volume, a 10% lift in repeat-purchase rate is material revenue. The Lifecycle Bot runs that lift automatically, at scale."
+  },
+  appointments:{
+    1:"Saves 5–10 hours a week of manual booking and phone-call time. Every slot is confirmed, reminded, and filled automatically.",
+    2:"Automates 75%+ of all booking activity and cuts no-shows by 20–30%. That's more revenue from the same number of available slots.",
+    3:"At this volume, automated bookings and reminder sequences recover the equivalent of 1–2 lost slots per day — directly to your bottom line."
+  }
+};
+
+var RUNNER_TRIGGER = {
+  'support→sales':        "The AI Sales Bot is the natural next step. Add it when lead volume grows faster than your team can qualify them — usually around the 300/month mark.",
+  'support→lifecycle':    "Once support is on autopilot, the Lifecycle Bot turns one-time buyers into repeat customers. Most businesses add it within 3–6 months.",
+  'support→appointments': "If you take bookings of any kind, the Appointment Bot handles them end-to-end — so your support queue stays clean and every slot gets filled.",
+  'sales→support':        "As lead volume grows, so does the support queue. Add the Conversational Support Bot when your team starts spending more than an hour a day on repeat questions.",
+  'sales→lifecycle':      "After the top of the funnel is working, the Lifecycle Bot keeps those customers coming back. Most add it 3–6 months after launching the Sales Bot.",
+  'sales→appointments':   "Once leads are coming in, the Appointment Bot removes the biggest drop-off point — the scheduling back-and-forth. Add it to convert more of those leads into confirmed bookings.",
+  'lifecycle→support':    "Customer questions scale with your customer base. Add the Conversational Support Bot when repeat queries start eating into your team's time.",
+  'lifecycle→sales':      "Good retention is half the equation. The AI Sales Bot handles new-customer acquisition. Add it once you're confident the onboarding flow is solid.",
+  'lifecycle→appointments':"For retention to work, the next booking has to be easy. The Appointment Bot makes re-booking frictionless — so clients come back before they drift away.",
+  'appointments→support': "As your booking volume grows, so do pre- and post-appointment questions. The Conversational Support Bot handles them automatically.",
+  'appointments→sales':   "Once bookings are flowing, the AI Sales Bot captures and converts the leads that haven't booked yet. Add it to fill the gaps in your calendar proactively.",
+  'appointments→lifecycle':"Consistent bookings are built on repeat visits. The Lifecycle Bot re-engages clients between appointments and turns occasional visitors into regulars."
+};
+
+/* ──────────────────────────────────
+   STATE
+   ────────────────────────────────── */
+var step     = 0;
+var scr      = 'quiz';
+var scores   = {support:0, sales:0, lifecycle:0, appointments:0};
+var contribs = [];
+
+/* ──────────────────────────────────
+   LOGIC
+   ────────────────────────────────── */
+function selectOpt(q, i) {
+  var opt = Q[q].opts[i];
+  var contrib = {};
+  (opt.sc||[]).forEach(function(sp){ scores[sp[0]] += sp[1]; contrib[sp[0]] = (contrib[sp[0]]||0) + sp[1]; });
+  contribs[q] = {i:i, c:contrib};
+  if (opt.honest) { scr='honest'; render(); return; }
+  if (q === Q.length-1) { scr='result'; render(); return; }
+  step = q+1; render();
+}
+
+function goBack() {
+  if (scr==='honest')  { undoStep(3);          step=3;          scr='quiz'; render(); return; }
+  if (scr==='result')  { undoStep(Q.length-1); step=Q.length-1; scr='quiz'; render(); return; }
+  if (step===0) return;
+  undoStep(step-1); step--; render();
+}
+
+function undoStep(idx) {
+  if (!contribs[idx]) return;
+  Object.keys(contribs[idx].c).forEach(function(p){ scores[p] -= contribs[idx].c[p]; });
+  contribs[idx] = null;
+}
+
+function resetQuiz() {
+  step=0; scr='quiz';
+  scores={support:0, sales:0, lifecycle:0, appointments:0};
+  contribs=[];
+  setAccent('support'); render();
+}
+
+function winner() {
+  return ['support','sales','lifecycle','appointments'].reduce(function(b,p){ return scores[p]>scores[b]?p:b; },'support');
+}
+function runnerUp(w) {
+  var o = ['support','sales','lifecycle','appointments'].filter(function(p){return p!==w;});
+  return o.reduce(function(b,p){ return scores[p]>scores[b]?p:b; }, o[0]);
+}
+function q1i()  { return contribs[0] ? contribs[0].i : 0; }
+function voli() { return contribs[3] ? contribs[3].i : 1; }
+
+function openDemo(id) {
+  var phone = ((document.getElementById(id)||{}).value||'').trim().replace(/\D/g,'');
+  var msg = phone
+    ? 'Hi, I went through the Alphabot Bot Advisor quiz. Please start the demo for me — my number is +'+phone
+    : "Hi, I'd like to see the Alphabot demo";
+  window.open('https://wa.me/'+DEMO+'?text='+encodeURIComponent(msg),'_blank');
+}
+
+function setAccent(p) {
+  var c = ACCENTS[p]||ACCENTS.support;
+  document.documentElement.style.setProperty('--accent', c);
+  var bm = document.getElementById('bmark');
+  if (bm) bm.style.background = c;
+  var stripe = document.getElementById('stripe');
+  if (stripe) stripe.style.background = c;
+}
+
+function rgba(hex, a) {
+  var r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+
+/* ──────────────────────────────────
+   RENDER
+   ────────────────────────────────── */
+function render() {
+  var el = document.getElementById('screen');
+  if (!el) return;
+  if (scr==='quiz')   { setAccent('support'); renderQuiz(el); }
+  else if (scr==='honest') { setAccent('support'); renderHonest(el); }
+  else { var w=winner(); setAccent(w); renderResult(el,w); }
+}
+
+function makeDots(cur, total, allDone) {
+  var h='<div class="prog">';
+  for (var i=0;i<total;i++) {
+    var c = allDone ? 'dot done' : (i<cur ? 'dot done' : (i===cur ? 'dot active' : 'dot'));
+    h += '<span class="'+c+'"></span>';
+  }
+  return h+'</div>';
+}
+
+function renderQuiz(el) {
+  var q = Q[step];
+  var opts = q.opts.map(function(o,i){
+    return '<button class="opt" onclick="selectOpt('+step+','+i+')" type="button">'
+          +'<span class="opt-label">'+o.lbl+'</span>'
+          +'<span class="opt-chev">›</span></button>';
+  }).join('');
+  var back = step>0 ? '<button class="back-btn" onclick="goBack()" type="button">← Back</button>' : '';
+  el.innerHTML = '<div class="screen">'
+    +makeDots(step, Q.length, false)
+    +'<p class="q-meta">Question '+(step+1)+' of '+Q.length+' · '+q.meta+'</p>'
+    +'<h2 class="q-text">'+q.text+'</h2>'
+    +'<div class="opts">'+opts+'</div>'
+    +back+'</div>';
+}
+
+function renderResult(el, w) {
+  var r    = runnerUp(w);
+  var qi   = q1i();
+  var vi   = voli();
+  var ac   = ACCENTS[w];
+  var reason  = (REASON[w]  && REASON[w][qi])  || REASON[w][0];
+  var cases   = (USE_CASES[w] && USE_CASES[w][qi]) || USE_CASES[w][0];
+  var impact  = (IMPACT[w]  && IMPACT[w][vi])  || IMPACT[w][1];
+  var trigger = RUNNER_TRIGGER[w+'→'+r] || '';
+
+  var ucHtml = cases.map(function(c){
+    return '<div class="uc"><span class="uc-dot"></span><span>'+c+'</span></div>';
+  }).join('');
+
+  el.innerHTML = '<div class="screen result-scr">'
+    +makeDots(0, Q.length, true)
+
+    +'<div class="fit-badge" style="background:'+rgba(ac,.1)+';border:1px solid '+rgba(ac,.28)+';">'
+    +'<span class="fit-dot" style="background:'+ac+'"></span>Your fit</div>'
+
+    +'<div class="result-name" style="color:'+ac+'">'+PNAME[w]+'</div>'
+    +'<div class="result-reason" style="border-left-color:'+rgba(ac,.38)+'">'+reason+'</div>'
+
+    +'<div class="rs"><div class="rs-lbl">What it handles for you</div>'
+    +'<div class="uc-list">'+ucHtml+'</div></div>'
+
+    +'<div class="rs"><div class="rs-lbl">Realistic impact at your volume</div>'
+    +'<div class="impact-box" style="border-left-color:'+ac+'">'+impact+'</div></div>'
+
+    +'<div class="rs"><div class="rs-lbl">Add next</div>'
+    +'<div class="runner-box"><div class="runner-name">'+PNAME[r]+'</div>'
+    +'<div class="runner-text">'+trigger+'</div></div></div>'
+
+    +'<div class="cta">'
+    +'<div class="cta-title">See it live</div>'
+    +'<div class="cta-sub">Message the demo bot — or leave your number and we\'ll start the conversation your side.</div>'
+    +'<input class="ph-field" id="ph-r" type="tel" placeholder="Your WhatsApp number (optional)" />'
+    +'<button class="wa-btn" style="background:'+ac+'" onclick="openDemo(\'ph-r\')" type="button">'
+    +waIcon()+'Message the demo bot</button>'
+    +'<button class="reset-btn" onclick="resetQuiz()" type="button">← Start over</button>'
+    +'</div>'
+
+    +'<button class="back-btn" onclick="goBack()" type="button" style="margin-top:20px">← Back</button>'
+    +'</div>';
+}
+
+function renderHonest(el) {
+  var ac = ACCENTS.support;
+  el.innerHTML = '<div class="screen result-scr">'
+    +makeDots(0, Q.length, true)
+
+    +'<h2 class="honest-title">A bot won\'t pay for itself yet — and we\'d rather tell you that.</h2>'
+    +'<p class="honest-body">For fewer than 100 enquiries a month, you\'d spend more setting up a bot than you\'d save in the first few months. That\'s not where we want to start a relationship.</p>'
+
+    +'<div class="threshold-card">'
+    +'<div class="threshold-num" style="color:'+ac+'">~150</div>'
+    +'<div class="threshold-sub">enquiries a month is roughly where a WhatsApp bot starts to pay for itself — the hours saved become real and consistent.</div>'
+    +'</div>'
+
+    +'<p class="honest-body">If you\'re building toward that number, seeing the platform now makes sense. You\'ll know exactly what to set up when you\'re ready.</p>'
+
+    +'<div class="cta" style="border-top:none;padding-top:0;margin-top:0">'
+    +'<div class="cta-title">See the demo anyway</div>'
+    +'<div class="cta-sub">No pressure. Explore what\'s possible before you need it.</div>'
+    +'<input class="ph-field" id="ph-h" type="tel" placeholder="Your WhatsApp number (optional)" />'
+    +'<button class="wa-btn" style="background:'+ac+'" onclick="openDemo(\'ph-h\')" type="button">'
+    +waIcon()+'Message the demo bot</button>'
+    +'<button class="reset-btn" onclick="resetQuiz()" type="button">← Start over</button>'
+    +'</div>'
+
+    +'<button class="back-btn" onclick="goBack()" type="button" style="margin-top:20px">← Back</button>'
+    +'</div>';
+}
+
+function waIcon() {
+  return '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="flex-shrink:0">'
+    +'<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>'
+    +'</svg>';
+}
+
+/* ──────────────────────────────────
+   INIT
+   ────────────────────────────────── */
+render();
+</script>

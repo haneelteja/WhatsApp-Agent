@@ -1,0 +1,1400 @@
+<title>Alphabot Tenant Intake</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#090E09;--surface:#111811;--card:#182018;--border:#253225;
+  --accent:#22C35E;--accent-dim:rgba(34,195,94,0.10);
+  --text:#DDE8DD;--muted:#7A957A;
+  --danger:#E05555;--danger-dim:rgba(224,85,85,0.12);
+  --warn:#C99820;--warn-dim:rgba(201,152,32,0.12);
+  --font:'Trebuchet MS','Helvetica Neue',Arial,sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;font-size:14px;line-height:1.5}
+.stripe{height:3px;background:var(--accent);width:100%}
+header{padding:14px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:var(--surface)}
+.logo{font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent)}
+.hdr-title{font-size:13px;color:var(--muted)}
+.session-id{font-size:11px;color:var(--border);margin-left:auto;font-family:monospace}
+.layout{display:flex;min-height:calc(100vh - 52px)}
+.sidebar{width:210px;flex-shrink:0;border-right:1px solid var(--border);padding:16px 0;overflow-y:auto}
+.sb-item{display:flex;align-items:center;gap:10px;padding:7px 16px;cursor:pointer;font-size:12px;color:var(--muted);transition:background 0.12s}
+.sb-item:hover{background:var(--accent-dim);color:var(--text)}
+.sb-item.active{background:var(--accent-dim);color:var(--text)}
+.sb-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--border);transition:background 0.2s}
+.sb-dot.ok{background:var(--accent)}
+.sb-dot.warn{background:var(--warn)}
+.sb-dot.bad{background:var(--danger)}
+.sb-num{font-size:10px;letter-spacing:0.05em;color:var(--border);min-width:18px}
+main{flex:1;padding:32px;min-width:0}
+.main-inner{max-width:680px}
+.screen{display:none}.screen.active{display:block}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 20px;border-radius:6px;font-family:var(--font);font-size:13px;font-weight:700;letter-spacing:0.03em;cursor:pointer;border:none;transition:all 0.12s;text-decoration:none}
+.btn-primary{background:var(--accent);color:#000}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-secondary{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--accent);color:var(--text)}
+.btn-ghost{background:transparent;color:var(--muted);padding:8px 12px}
+.btn-ghost:hover{color:var(--text)}
+.btn-danger{background:var(--danger-dim);color:var(--danger);border:1px solid transparent}
+.btn-sm{padding:6px 12px;font-size:12px}
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:22px;margin-bottom:18px}
+.card-title{font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+/* Badges */
+.badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:2px 6px;border-radius:3px}
+.badge-p0{background:var(--danger-dim);color:var(--danger)}
+.badge-p1{background:var(--warn-dim);color:var(--warn)}
+.badge-p2{background:rgba(122,149,122,0.12);color:var(--muted)}
+.badge-ok{background:var(--accent-dim);color:var(--accent)}
+/* Form */
+input[type=text],input[type=tel],input[type=email],textarea,select{
+  width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:var(--font);font-size:14px;padding:10px 14px;
+  outline:none;transition:border-color 0.15s;
+}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:90px;line-height:1.5}
+::placeholder{color:var(--muted)}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.field-hint{font-size:11px;color:var(--muted);margin-top:5px;font-style:italic}
+/* Options */
+.opt-list{display:flex;flex-direction:column;gap:7px}
+.opt-item{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:all 0.12s;font-size:13px;user-select:none}
+.opt-item:hover{border-color:var(--accent)}
+.opt-item.sel{border-color:var(--accent);background:var(--accent-dim);color:var(--text)}
+.opt-mark{width:15px;height:15px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;transition:all 0.12s}
+.opt-item.sel .opt-mark{background:var(--accent);border-color:var(--accent)}
+.opt-mark-sq{border-radius:3px}
+/* Q&A screen */
+.qa-step{font-size:10px;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px}
+.qa-q{font-size:19px;font-weight:700;line-height:1.4;margin-bottom:8px}
+.qa-hint{font-size:13px;color:var(--muted);margin-bottom:20px}
+.qa-nav{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;align-items:center}
+.qa-skip{font-size:12px;color:var(--muted);cursor:pointer;padding:8px;margin-left:auto;text-decoration:underline}
+.qa-skip:hover{color:var(--text)}
+/* Progress */
+.prog-wrap{background:var(--border);height:2px;border-radius:2px;margin-bottom:24px}
+.prog-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s}
+/* Review */
+.rev-section{margin-bottom:28px}
+.rev-sec-hdr{display:flex;align-items:center;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:10px}
+.rev-sec-title{font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);flex:1}
+.rev-field{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(37,50,37,0.4);font-size:13px}
+.rev-label{color:var(--muted);width:150px;flex-shrink:0;padding-top:1px;line-height:1.4}
+.rev-val{flex:1;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.rev-val.empty{color:var(--danger);font-style:italic}
+.rev-edit{font-size:11px;color:var(--muted);cursor:pointer;padding:2px 6px;border-radius:3px;flex-shrink:0;margin-top:1px}
+.rev-edit:hover{color:var(--accent)}
+.prov-pill{display:inline-block;font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;padding:1px 5px;border-radius:3px;margin-left:4px}
+.prov-stated{background:var(--accent-dim);color:var(--accent)}
+.prov-extracted{background:var(--warn-dim);color:var(--warn)}
+.prov-missing{background:var(--danger-dim);color:var(--danger)}
+/* Export */
+.export-btns{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+.gap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.gap-card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center}
+.gap-n{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+.gap-n.p0c{color:var(--danger)}.gap-n.p1c{color:var(--warn)}.gap-n.p2c{color:var(--muted)}
+.gap-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-top:4px}
+.preview-box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px;font-family:monospace;font-size:11px;color:var(--muted);overflow-x:auto;white-space:pre;max-height:200px;overflow-y:auto;margin-bottom:14px}
+/* Welcome */
+.path-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:20px}
+.path-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;cursor:pointer;transition:all 0.15s}
+.path-card:hover{border-color:var(--accent);background:var(--accent-dim)}
+.path-letter{font-size:24px;font-weight:700;color:var(--accent);margin-bottom:8px}
+.path-name{font-size:13px;font-weight:700;margin-bottom:4px}
+.path-desc{font-size:12px;color:var(--muted)}
+/* Extracted preview */
+.extract-row{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
+.extract-key{color:var(--muted);width:140px;flex-shrink:0}
+.extract-val{color:var(--text);flex:1}
+/* Toast */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--accent);color:#000;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;transform:translateY(60px);opacity:0;transition:all 0.25s;z-index:999;pointer-events:none}
+#toast.show{transform:translateY(0);opacity:1}
+/* Divider */
+.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+@media(max-width:768px){
+  .sidebar{display:none}
+  main{padding:16px}
+  .qa-q{font-size:16px}
+  .gap-grid{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+
+<div class="stripe"></div>
+<header>
+  <span class="logo">Alphabot</span>
+  <span class="hdr-title">Tenant Intake</span>
+  <span class="session-id" id="hdr-session"></span>
+</header>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <div class="main-inner">
+
+      <!-- Welcome -->
+      <div class="screen active" id="screen-welcome">
+        <div style="margin-bottom:8px;font-size:11px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase">Onboarding</div>
+        <h1 style="font-size:26px;font-weight:700;margin-bottom:10px;line-height:1.3">Build your bot's Master Spec</h1>
+        <p style="color:var(--muted);margin-bottom:28px;max-width:520px">This intake session collects everything the AI Coach needs to configure and launch your WhatsApp bot. Choose how you'd like to provide your information.</p>
+        <div class="path-cards">
+          <div class="path-card" onclick="startPath('a')">
+            <div class="path-letter">A</div>
+            <div class="path-name">Paste text</div>
+            <div class="path-desc">Copy-paste from your website, catalogue, or any document. We'll extract what we can, then ask for the rest.</div>
+          </div>
+          <div class="path-card" onclick="startPath('b')">
+            <div class="path-letter">B</div>
+            <div class="path-name">Upload a file</div>
+            <div class="path-desc">Upload a plain-text or .txt file. Same extraction as Path A.</div>
+          </div>
+          <div class="path-card" onclick="startPath('c')">
+            <div class="path-letter">C</div>
+            <div class="path-name">Answer questions</div>
+            <div class="path-desc">We'll ask one question at a time, starting with the most critical fields. Takes about 10–15 minutes.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Path A: Paste -->
+      <div class="screen" id="screen-path_a">
+        <div style="margin-bottom:16px">
+          <span class="badge badge-p0" style="margin-right:8px">Path A</span>
+          <span style="font-size:13px;color:var(--muted)">Paste your business text</span>
+        </div>
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Copy-paste anything about your business</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:18px">Your website homepage, catalogue, product descriptions, policy pages — whatever you have. We'll extract as much as we can.</p>
+        <textarea id="paste-input" style="min-height:180px" placeholder="Paste your text here..."></textarea>
+        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="runExtraction('paste')">Extract information</button>
+          <button class="btn btn-secondary" onclick="goBack()">← Back</button>
+        </div>
+        <div id="extract-results" style="display:none;margin-top:20px">
+          <hr class="divider">
+          <div class="card-title">Extracted — <span id="extract-count">0</span> fields found</div>
+          <div id="extract-list"></div>
+          <div style="display:flex;gap:10px;margin-top:14px">
+            <button class="btn btn-primary" onclick="acceptExtraction()">Accept &amp; continue</button>
+            <button class="btn btn-secondary" onclick="showScreen('path_a')">Re-paste</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Path B: File Upload -->
+      <div class="screen" id="screen-path_b">
+        <div style="margin-bottom:16px">
+          <span class="badge badge-p1" style="margin-right:8px">Path B</span>
+          <span style="font-size:13px;color:var(--muted)">Upload a file</span>
+        </div>
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Upload a text document</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:18px">Plain text (.txt) files work best. For PDFs or Word docs, copy-paste the content into Path A instead.</p>
+        <div style="margin-bottom:14px">
+          <label>Select file</label>
+          <input type="file" id="file-input" accept=".txt,.md,.csv,.text" style="padding:8px" onchange="loadFile(this)">
+        </div>
+        <label>Or paste the text content here</label>
+        <textarea id="file-text" style="min-height:140px" placeholder="File content will appear here after upload, or paste directly..."></textarea>
+        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="runExtraction('file')">Extract information</button>
+          <button class="btn btn-secondary" onclick="goBack()">← Back</button>
+        </div>
+        <div id="extract-results-b" style="display:none;margin-top:20px">
+          <hr class="divider">
+          <div class="card-title">Extracted — <span id="extract-count-b">0</span> fields found</div>
+          <div id="extract-list-b"></div>
+          <div style="display:flex;gap:10px;margin-top:14px">
+            <button class="btn btn-primary" onclick="acceptExtraction()">Accept &amp; continue</button>
+            <button class="btn btn-secondary" onclick="showScreen('path_b')">Re-upload</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Path C: Q&A -->
+      <div class="screen" id="screen-path_c">
+        <div id="qa-prog-wrap" class="prog-wrap"></div>
+        <div id="qa-body"></div>
+      </div>
+
+      <!-- Review -->
+      <div class="screen" id="screen-review">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+          <h2 style="font-size:20px;font-weight:700">Spec Review</h2>
+          <span id="review-gaps-badge"></span>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="showScreen('export')">Export spec →</button>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Review every field below. Click any value to edit it. Fields with red markers are required before go-live.</p>
+        <div id="review-body"></div>
+        <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="showScreen('export')">Export spec →</button>
+          <button class="btn btn-secondary" onclick="continueFilling()">Fill remaining fields</button>
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="screen" id="screen-export">
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Export Master Spec</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Download both files. The <code style="background:var(--surface);padding:1px 4px;border-radius:3px">.md</code> is the editable source of truth. The <code style="background:var(--surface);padding:1px 4px;border-radius:3px">.json</code> is the compiled machine-readable output.</p>
+        <div class="gap-grid" id="gap-summary-grid"></div>
+        <div class="export-btns">
+          <button class="btn btn-primary" onclick="downloadMD()">↓ Download .md</button>
+          <button class="btn btn-secondary" onclick="downloadJSON()">↓ Download .json</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('md')">Copy .md</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('json')">Copy .json</button>
+        </div>
+        <div class="card-title">Preview — Master Spec (.md)</div>
+        <div class="preview-box" id="md-preview"></div>
+        <div class="card-title" style="margin-top:16px">Preview — JSON Schema (.json)</div>
+        <div class="preview-box" id="json-preview"></div>
+        <hr class="divider">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary" onclick="showScreen('review')">← Back to review</button>
+          <button class="btn btn-ghost btn-sm" onclick="resetAll()" style="margin-left:auto">Start over</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── DATA MODEL ───────────────────────────────────────────────────────────────
+
+var SECTIONS = [
+  {id:'tenant_identity',   label:'Tenant Identity',    num:'§1'},
+  {id:'business_model',    label:'Business Model',     num:'§2'},
+  {id:'catalogue',         label:'Catalogue',          num:'§3'},
+  {id:'policies',          label:'Policies',           num:'§4'},
+  {id:'knowledge_base',    label:'Knowledge Base',     num:'§5'},
+  {id:'scope',             label:'Scope',              num:'§6'},
+  {id:'guardrails',        label:'Guardrails',         num:'§7'},
+  {id:'voice',             label:'Voice',              num:'§8'},
+  {id:'intents_flows',     label:'Intents & Flows',   num:'§9'},
+  {id:'escalation',        label:'Escalation',         num:'§10'},
+  {id:'integrations',      label:'Integrations',       num:'§11'},
+  {id:'media_library',     label:'Media Library',      num:'§12'},
+  {id:'operating_calendar',label:'Calendar',           num:'§13'},
+  {id:'success_criteria',  label:'Success Criteria',   num:'§14'}
+];
+
+var FIELDS = [
+  // §1
+  {id:'legal_name',       section:'tenant_identity',   priority:'P0', type:'text',
+   label:'Legal business name',
+   q:'What is the legal registered name of your business?',
+   placeholder:'e.g. Acme Textiles Private Limited',
+   hint:'As it appears on your GST or business registration.'},
+  {id:'trade_name',       section:'tenant_identity',   priority:'P0', type:'text',
+   label:'Brand / trade name',
+   q:'What name do your customers know you by?',
+   placeholder:'e.g. AcmeThreads',
+   hint:'The bot will introduce itself as "Hi, I\'m the AcmeThreads assistant."'},
+  {id:'category',         section:'tenant_identity',   priority:'P0', type:'select',
+   label:'Business category',
+   q:'Which best describes your business?',
+   opts:['D2C / online store','Services or consulting','Manufacturing or B2B supply','Subscription or recurring orders','Retail or local storefront','Other']},
+  {id:'locations_served', section:'tenant_identity',   priority:'P1', type:'text',
+   label:'Locations served',
+   q:'Which cities or states do you serve?',
+   placeholder:'e.g. Hyderabad, Bangalore, Mumbai — or Pan-India'},
+  {id:'languages',        section:'tenant_identity',   priority:'P0', type:'multiselect',
+   label:'Customer languages',
+   q:'Which languages do your customers use when they message you?',
+   opts:['English','Hindi','Telugu','Tamil','Kannada','Malayalam','Marathi','Bengali','Gujarati','Punjabi','Other']},
+  {id:'owner_whatsapp',   section:'tenant_identity',   priority:'P0', type:'phone',
+   label:'Owner WhatsApp',
+   q:'What\'s your WhatsApp number? (Used for testing and approval messages)',
+   placeholder:'+91 98765 43210'},
+  {id:'owner_email',      section:'tenant_identity',   priority:'P1', type:'text',
+   label:'Owner email',
+   q:'What email should we use for spec approvals and account notices?',
+   placeholder:'you@example.com'},
+  // §2
+  {id:'what_they_sell',   section:'business_model',    priority:'P0', type:'textarea',
+   label:'What you sell',
+   q:'In 2–3 sentences, describe what your business sells or does.',
+   placeholder:'e.g. We sell handmade cotton kurtas and co-ord sets for women aged 20–45, primarily through WhatsApp and Instagram.'},
+  {id:'how_they_sell',    section:'business_model',    priority:'P1', type:'multiselect',
+   label:'Order pathway',
+   q:'How do customers typically place an order or book your service?',
+   opts:['WhatsApp order','Instagram DM','Website / online store','Walk-in / visit','Phone call','Distributor / reseller','Other']},
+  {id:'typical_customer', section:'business_model',    priority:'P1', type:'text',
+   label:'Typical customer',
+   q:'Who is your typical customer? (A short profile is fine.)',
+   placeholder:'e.g. Women 20–40 in Tier 1 cities, price-conscious but quality-aware'},
+  {id:'avg_order_value',  section:'business_model',    priority:'P2', type:'text',
+   label:'Average order value',
+   q:'What\'s the typical order value in rupees? (Approximate is fine.)',
+   placeholder:'e.g. ₹800–1,500 per order'},
+  {id:'seasonality',      section:'business_model',    priority:'P2', type:'text',
+   label:'Seasonality',
+   q:'Is your business seasonal? When are your peak and quiet months?',
+   placeholder:'e.g. Peaks Oct–Nov (festive season), quiet May–Jul'},
+  // §3
+  {id:'catalogue_overview',section:'catalogue',        priority:'P0', type:'textarea',
+   label:'Products / services',
+   q:'List your main product or service categories. A brief list is fine.',
+   placeholder:'e.g.\n- Kurtas and co-ord sets (₹400–1,200)\n- Sarees (₹600–2,500)\n- Accessories (₹150–400)'},
+  {id:'pricing_disclosure',section:'catalogue',        priority:'P0', type:'select',
+   label:'Pricing disclosure rule',
+   q:'When a customer asks for a price, what should the bot do?',
+   opts:['Yes — share prices freely','Yes — but always add disclaimer','Only if customer specifically asks','Never — always direct to contact','Custom rule']},
+  {id:'pricing_disclaimer',section:'catalogue',        priority:'P1', type:'textarea',
+   label:'Pricing disclaimer text',
+   q:'What disclaimer should appear whenever the bot shares a price?',
+   placeholder:'e.g. Prices may vary. DM or call us to confirm before ordering.',
+   hint:'Only needed if you chose "always add disclaimer" above.'},
+  // §4
+  {id:'delivery_areas',   section:'policies',          priority:'P0', type:'textarea',
+   label:'Delivery coverage',
+   q:'Where do you deliver? The bot will use this to answer "do you deliver to [city]?"',
+   placeholder:'e.g. Pan-India via courier. Same-day in Hyderabad only.'},
+  {id:'delivery_lead_time',section:'policies',         priority:'P0', type:'text',
+   label:'Delivery lead time',
+   q:'How long does delivery take after an order is placed?',
+   placeholder:'e.g. 3–5 business days, 7–10 days for remote areas'},
+  {id:'delivery_charges', section:'policies',          priority:'P1', type:'text',
+   label:'Delivery charges',
+   q:'What are your delivery charges, if any?',
+   placeholder:'e.g. Free above ₹999. ₹60 flat below that.'},
+  {id:'payment_methods',  section:'policies',          priority:'P0', type:'multiselect',
+   label:'Payment methods',
+   q:'Which payment methods do you accept?',
+   opts:['UPI / GPay / PhonePe','NEFT / bank transfer','Cash on delivery','Credit / debit card','Cheque','Other']},
+  {id:'cod_available',    section:'policies',          priority:'P0', type:'boolean',
+   label:'COD available',
+   q:'Do you offer cash on delivery (COD)?'},
+  {id:'advance_payment',  section:'policies',          priority:'P1', type:'text',
+   label:'Advance / token',
+   q:'Do you require any advance or token payment for custom orders or bookings?',
+   placeholder:'e.g. 50% advance for custom orders. Full payment before dispatch otherwise.'},
+  {id:'return_policy',    section:'policies',          priority:'P0', type:'textarea',
+   label:'Return and refund',
+   q:'What is your return and refund policy? The bot will answer "can I return this?" using this text.',
+   placeholder:'e.g. Returns accepted within 7 days of delivery for defective items only. Refund in 5–7 days.'},
+  {id:'warranty',         section:'policies',          priority:'P1', type:'text',
+   label:'Warranty',
+   q:'Do you offer any warranty or guarantee? If not, just say "No warranty."',
+   placeholder:'e.g. 6-month manufacturing defect warranty.'},
+  {id:'cancellation_policy',section:'policies',        priority:'P1', type:'textarea',
+   label:'Cancellation',
+   q:'Can customers cancel an order? Under what conditions?',
+   placeholder:'e.g. Cancellations accepted within 24 hours. After that, exchange only.'},
+  // §5
+  {id:'faq_raw',          section:'knowledge_base',    priority:'P1', type:'textarea',
+   label:'FAQ raw text',
+   q:'Paste your most-asked customer questions and their answers. Any format is fine.',
+   placeholder:'e.g.\nQ: What sizes do you have?\nA: XS to 3XL. Size chart on our website.\n\nQ: Can I exchange a size?\nA: Yes, within 7 days.',
+   hint:'The AI Coach structures these into Q&A pairs during setup.'},
+  // §6
+  {id:'bot_handles',      section:'scope',             priority:'P0', type:'multiselect',
+   label:'Bot handles independently',
+   q:'What should the bot handle on its own, without involving you?',
+   opts:['Order status queries','Product / pricing questions','Return / refund requests','Delivery queries','FAQs / general info','Lead capture and qualification','Booking / appointments','Payment confirmations','Repeat order intake']},
+  {id:'bot_does_not_handle',section:'scope',           priority:'P0', type:'textarea',
+   label:'Always escalates to human',
+   q:'What should ALWAYS be passed to a human — no exceptions?',
+   placeholder:'e.g.\n- Complaints about wrong or damaged products\n- Custom design requests\n- Bulk / wholesale enquiries\n- Any customer who asks to speak to someone'},
+  // §7
+  {id:'never_say',        section:'guardrails',        priority:'P0', type:'textarea',
+   label:'Never-say list',
+   q:'Are there topics, claims, or phrases the bot must NEVER say — no matter what?',
+   placeholder:'e.g.\n- Never quote below ₹400 for any item\n- Never promise delivery within 24 hours\n- Never confirm a custom order without my approval'},
+  {id:'escalation_topics',section:'guardrails',        priority:'P0', type:'textarea',
+   label:'Force-escalate topics',
+   q:'If any of these topics come up, the bot must immediately transfer to you.',
+   placeholder:'e.g.\n- Legal disputes or threats\n- Media / press enquiries\n- Bulk orders above ₹50,000'},
+  {id:'competitor_policy',section:'guardrails',        priority:'P1', type:'select',
+   label:'Competitor mention policy',
+   q:'If a customer mentions a competitor, what should the bot do?',
+   opts:['Ignore competitors','Deflect to own brand','Acknowledge and redirect','Custom']},
+  {id:'pii_policy',       section:'guardrails',        priority:'P0', type:'select',
+   label:'PII collection policy',
+   q:'What personal information may the bot collect from customers?',
+   opts:['Minimum — name and contact only','For delivery — name, address, contact','No sensitive info ever','Custom']},
+  {id:'regulatory_constraints',section:'guardrails',   priority:'P1', type:'textarea',
+   label:'Regulatory constraints',
+   q:'Any regulatory, legal, or compliance constraints the bot must respect?',
+   placeholder:'e.g. FSSAI-licensed — must not make medical or health claims.',
+   hint:'Leave blank if none apply.'},
+  // §8
+  {id:'tone',             section:'voice',             priority:'P0', type:'select',
+   label:'Tone and personality',
+   q:'How should the bot sound when talking to customers?',
+   opts:['Formal','Semi-formal','Friendly and casual','Warm and personal','Custom']},
+  {id:'emoji_policy',     section:'voice',             priority:'P2', type:'select',
+   label:'Emoji policy',
+   q:'Should the bot use emoji in replies?',
+   opts:['None','Minimal (1–2 per message max)','Moderate','Expressive (emoji-rich)']},
+  {id:'response_length',  section:'voice',             priority:'P1', type:'select',
+   label:'Response length ceiling',
+   q:'How long should bot replies be?',
+   opts:['Very short — 1–2 lines max','Short — 3–5 lines','Medium — up to a short paragraph','As needed — length matches complexity']},
+  {id:'language_mix',     section:'voice',             priority:'P1', type:'text',
+   label:'Language mix rule',
+   q:'Should the bot match the customer\'s language, or always reply in a fixed language?',
+   placeholder:'e.g. English default; switch to Hindi if customer writes in Hindi.'},
+  {id:'greeting_message', section:'voice',             priority:'P0', type:'textarea',
+   label:'Opening greeting',
+   q:'Write the first message the bot sends when a new customer messages your number.',
+   placeholder:'e.g. Hi! 👋 Welcome to AcmeThreads. I can help with products, orders, delivery, and returns.\n\nWhat can I help you with today?'},
+  // §9
+  {id:'activated_products',section:'intents_flows',   priority:'P0', type:'multiselect',
+   label:'Activated products',
+   q:'Which Alphabot products is this tenant subscribing to?',
+   opts:['Conversational Support Bot','AI Sales Bot','Onboarding & Lifecycle Bot']},
+  {id:'primary_intents',  section:'intents_flows',    priority:'P0', type:'textarea',
+   label:'Primary customer intents',
+   q:'List the main reasons customers message you — the top 5–10 things they ask or want to do.',
+   placeholder:'e.g.\n1. Ask about availability or sizes\n2. Place or modify an order\n3. Track a delivery\n4. Request a return or exchange\n5. Ask about pricing'},
+  {id:'order_capture_fields',section:'intents_flows', priority:'P1', type:'textarea',
+   label:'Order capture fields',
+   q:'When the bot captures an order, what information does it need from the customer?',
+   placeholder:'e.g. Full name, delivery address, product name + size + colour, quantity, payment preference (UPI/COD)'},
+  // §10
+  {id:'escalation_number',section:'escalation',       priority:'P0', type:'phone',
+   label:'Escalation WhatsApp number',
+   q:'Which WhatsApp number should the bot transfer customers to when they need a human?',
+   placeholder:'+91 98765 43210',
+   hint:'Can be the owner number or a dedicated support line.'},
+  {id:'human_hours',      section:'escalation',       priority:'P0', type:'text',
+   label:'Human availability hours',
+   q:'When are you or your team available to take over from the bot?',
+   placeholder:'e.g. Mon–Sat, 10am–7pm IST'},
+  {id:'out_of_hours',     section:'escalation',       priority:'P0', type:'select',
+   label:'Out-of-hours behaviour',
+   q:'Outside your availability hours, what should the bot tell customers who need a human?',
+   opts:['Hold the chat and notify you immediately','Auto-reply that team will call back tomorrow','Auto-reply offering to book a callback slot','Bot continues handling (no handoff after hours)','Custom']},
+  {id:'escalation_sla',   section:'escalation',       priority:'P1', type:'text',
+   label:'Escalation response SLA',
+   q:'When a customer is transferred to a human, how fast do you commit to responding?',
+   placeholder:'e.g. Within 2 hours during business hours.'},
+  // §11
+  {id:'phonepe_enabled',  section:'integrations',     priority:'P2', type:'boolean',
+   label:'PhonePe payment links',
+   q:'Should the bot generate PhonePe payment links so customers can pay directly in chat?'},
+  {id:'crm_destination',  section:'integrations',     priority:'P2', type:'text',
+   label:'CRM / data destination',
+   q:'Where should captured leads and orders be sent? (Leave blank if not applicable.)',
+   placeholder:'e.g. Google Sheet, Zoho CRM, Notion, or a webhook URL'},
+  // §12
+  {id:'catalogue_doc',    section:'media_library',    priority:'P2', type:'text',
+   label:'Catalogue / brochure',
+   q:'Is there a product catalogue or brochure the bot should be able to share?',
+   placeholder:'e.g. Google Drive link, PDF URL, or "will upload later"'},
+  {id:'media_other',      section:'media_library',    priority:'P2', type:'text',
+   label:'Other shareable documents',
+   q:'Any other documents the bot should share? (Size chart, care guide, price list, etc.)',
+   placeholder:'e.g. Size chart PDF, care instructions, bank details for NEFT'},
+  // §13
+  {id:'business_hours',   section:'operating_calendar',priority:'P0', type:'text',
+   label:'Business hours',
+   q:'What are your business operating hours?',
+   placeholder:'e.g. Mon–Sat 10am–8pm, Sun 11am–5pm IST'},
+  {id:'holidays',         section:'operating_calendar',priority:'P1', type:'text',
+   label:'Closures / holidays',
+   q:'Are there specific dates or periods when your business is closed?',
+   placeholder:'e.g. Diwali week (Oct), 1 Jan. Updated in dashboard as needed.'},
+  // §14
+  {id:'success_goals',    section:'success_criteria', priority:'P2', type:'textarea',
+   label:'90-day goals',
+   q:'What would make the first 90 days a success? What metrics or outcomes matter most?',
+   placeholder:'e.g. Reduce repeat questions to under 20% of chats. Response time under 1 minute 24/7.'}
+];
+
+var ENUM_MAP = {
+  category:{'D2C / online store':'d2c','Services or consulting':'services','Manufacturing or B2B supply':'manufacturing_b2b','Subscription or recurring orders':'subscription','Retail or local storefront':'retail','Other':'other'},
+  pricing_disclosure:{'Yes — share prices freely':'share_freely','Yes — but always add disclaimer':'share_with_disclaimer','Only if customer specifically asks':'on_request','Never — always direct to contact':'never','Custom rule':'custom'},
+  competitor_policy:{'Ignore competitors':'do_not_acknowledge','Deflect to own brand':'deflect','Acknowledge and redirect':'acknowledge_redirect','Custom':'custom'},
+  pii_policy:{'Minimum — name and contact only':'minimum','For delivery — name, address, contact':'for_delivery','No sensitive info ever':'no_sensitive','Custom':'custom'},
+  tone:{'Formal':'formal','Semi-formal':'semi_formal','Friendly and casual':'friendly_casual','Warm and personal':'warm_personal','Custom':'custom'},
+  emoji_policy:{'None':'none','Minimal (1–2 per message max)':'minimal','Moderate':'moderate','Expressive (emoji-rich)':'expressive'},
+  response_length:{'Very short — 1–2 lines max':'very_short','Short — 3–5 lines':'short','Medium — up to a short paragraph':'medium','As needed — length matches complexity':'as_needed'},
+  out_of_hours:{'Hold the chat and notify you immediately':'hold_notify','Auto-reply that team will call back tomorrow':'auto_reply_callback','Auto-reply offering to book a callback slot':'auto_reply_slot','Bot continues handling (no handoff after hours)':'bot_continues','Custom':'custom'},
+  activated_products:{'Conversational Support Bot':'support_bot','AI Sales Bot':'sales_bot','Onboarding & Lifecycle Bot':'lifecycle_bot'}
+};
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+
+var state = {
+  screen: 'welcome',
+  path: null,
+  answers: {},    // { field_id: {value, source, confidence, evidence} }
+  skipped: {},    // { field_id: true }
+  history: [],    // ordered list of field IDs answered in path_c this session
+  focused: null,  // field_id being edited from review screen
+  sessionId: genSessionId(),
+  pendingExtract: {} // extracted values awaiting acceptance
+};
+
+var qaVal = null; // current Q&A selection (reset each question)
+
+// ─── UTILITIES ────────────────────────────────────────────────────────────────
+
+function genSessionId() {
+  return 'ses_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+}
+
+function djb2(str) {
+  var h = 5381;
+  for (var i = 0; i < str.length; i++) {
+    h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  }
+  return (h >>> 0).toString(16).padStart(8,'0');
+}
+
+function sortKeys(obj) {
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return obj;
+  var s = {};
+  Object.keys(obj).sort().forEach(function(k){ s[k] = sortKeys(obj[k]); });
+  return s;
+}
+
+function fld(id) { return FIELDS.find(function(f){ return f.id === id; }); }
+
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+// ─── DATA ACCESS ──────────────────────────────────────────────────────────────
+
+function getAnswer(fid) { return state.answers[fid] || null; }
+
+function setAnswer(fid, value, source, confidence, evidence) {
+  if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
+    delete state.answers[fid];
+    return;
+  }
+  state.answers[fid] = { value: value, source: source || 'stated', confidence: confidence || 'high', evidence: evidence || null };
+}
+
+function sectionStatus(sid) {
+  var fields = FIELDS.filter(function(f){ return f.section === sid; });
+  var p0 = 0, p0ok = 0, p1 = 0, p1ok = 0, p2 = 0, p2ok = 0;
+  fields.forEach(function(f){
+    var has = !!state.answers[f.id];
+    var sk = !!state.skipped[f.id];
+    if (f.priority==='P0'){p0++;if(has)p0ok++;}
+    else if(f.priority==='P1'){p1++;if(has||sk)p1ok++;}
+    else{p2++;if(has||sk)p2ok++;}
+  });
+  return {p0:p0,p0ok:p0ok,p1:p1,p1ok:p1ok,p2:p2,p2ok:p2ok,total:fields.length,totalOk:p0ok+p1ok+p2ok};
+}
+
+function computePending() {
+  var pending = FIELDS.filter(function(f){
+    return !state.answers[f.id] && !state.skipped[f.id];
+  });
+  pending.sort(function(a,b){
+    var o={P0:0,P1:1,P2:2};
+    return o[a.priority]-o[b.priority];
+  });
+  return pending;
+}
+
+function countGaps() {
+  var p0=0,p1=0,p2=0;
+  FIELDS.forEach(function(f){
+    if(!state.answers[f.id]){
+      if(f.priority==='P0')p0++;
+      else if(f.priority==='P1')p1++;
+      else p2++;
+    }
+  });
+  return {p0:p0,p1:p1,p2:p2};
+}
+
+// ─── EXTRACTION ───────────────────────────────────────────────────────────────
+
+function extractFromText(text) {
+  var found = {};
+  if (!text || !text.trim()) return found;
+  var t = text;
+
+  // Phone numbers
+  var ph = t.match(/(?:\+91|91)?[6-9]\d{9}/g);
+  if (ph && ph.length) {
+    var num = ph[0].replace(/\D/g,'');
+    if (num.length > 10) num = num.slice(-10);
+    found['owner_whatsapp'] = {value:'+91'+num,source:'extracted',confidence:'medium',evidence:'Phone number found in text'};
+  }
+
+  // Languages
+  var langMap = {english:'English',hindi:'Hindi',telugu:'Telugu',tamil:'Tamil',kannada:'Kannada',malayalam:'Malayalam',marathi:'Marathi',bengali:'Bengali',gujarati:'Gujarati',punjabi:'Punjabi'};
+  var langs = [];
+  Object.keys(langMap).forEach(function(k){ if(t.toLowerCase().indexOf(k)>=0) langs.push(langMap[k]); });
+  if (langs.length) found['languages'] = {value:langs,source:'extracted',confidence:'medium',evidence:'Languages mentioned in text'};
+
+  // COD
+  if (/\bcod\b|cash.on.delivery/i.test(t)) {
+    var noCod = /no\s+cod|cod\s+not|do\s+not.*cod|don'?t.*cod|cod\s+unavail/i.test(t);
+    found['cod_available'] = {value:!noCod,source:'extracted',confidence:'medium',evidence:'COD mention detected'};
+  }
+
+  // Business category hints
+  if (/\bd2c\b|online\s+store|ecommerce|e-commerce/i.test(t)) {
+    found['category'] = {value:'D2C / online store',source:'extracted',confidence:'medium',evidence:'D2C/online store mentioned'};
+  } else if (/\bsubscription\b|recurring\s+order/i.test(t)) {
+    found['category'] = {value:'Subscription or recurring orders',source:'extracted',confidence:'medium',evidence:'Subscription mentioned'};
+  } else if (/\bretail\b|storefront|local\s+shop/i.test(t)) {
+    found['category'] = {value:'Retail or local storefront',source:'extracted',confidence:'medium',evidence:'Retail/shop mentioned'};
+  } else if (/\bb2b\b|distributor|wholesale|manufacturing/i.test(t)) {
+    found['category'] = {value:'Manufacturing or B2B supply',source:'extracted',confidence:'medium',evidence:'B2B/manufacturing mentioned'};
+  } else if (/\bservices?\b|consulting|agency/i.test(t)) {
+    found['category'] = {value:'Services or consulting',source:'extracted',confidence:'low',evidence:'Services/consulting mentioned'};
+  }
+
+  // Delivery time
+  var dm = t.match(/(\d+[-–]\d+\s*(?:business\s+)?days?|same.day\s+delivery|next.day\s+delivery)/i);
+  if (dm) found['delivery_lead_time'] = {value:dm[0],source:'extracted',confidence:'medium',evidence:'Delivery time pattern found'};
+
+  // Delivery area hints
+  var pan = /pan.india|all\s+over\s+india|nationwide|across\s+india/i.test(t);
+  if (pan) found['delivery_areas'] = {value:'Pan-India',source:'extracted',confidence:'medium',evidence:'Pan-India delivery mentioned'};
+
+  // Payment methods
+  var pmOpts = [];
+  if(/\bupi\b|gpay|phonepe|google\s*pay/i.test(t)) pmOpts.push('UPI / GPay / PhonePe');
+  if(/\bneft\b|bank\s*transfer/i.test(t)) pmOpts.push('NEFT / bank transfer');
+  if(/cash\s*on\s*delivery|\bcod\b/i.test(t)) pmOpts.push('Cash on delivery');
+  if(/credit\s*card|debit\s*card/i.test(t)) pmOpts.push('Credit / debit card');
+  if(pmOpts.length) found['payment_methods'] = {value:pmOpts,source:'extracted',confidence:'medium',evidence:'Payment methods detected in text'};
+
+  // Business hours
+  var hm = t.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|–|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i);
+  if (hm) found['business_hours'] = {value:hm[0],source:'extracted',confidence:'low',evidence:'Hours pattern found in text'};
+
+  // Return policy mentions
+  var rm = t.match(/returns?\s+(?:accepted|allowed|within)[^\n.]{0,80}/i);
+  if (rm) found['return_policy'] = {value:rm[0].trim(),source:'extracted',confidence:'medium',evidence:'Return policy mention found'};
+
+  return found;
+}
+
+// ─── GENERATION ───────────────────────────────────────────────────────────────
+
+function provWrap(fid, defVal) {
+  var f = fld(fid);
+  var ans = state.answers[fid];
+  if (!ans) return {value: defVal !== undefined ? defVal : null, provenance:{source:'missing',confidence:'low',evidence:null,blocking:f.priority}};
+  return {value: ans.value, provenance:{source:ans.source,confidence:ans.confidence,evidence:ans.evidence||null,blocking:f.priority}};
+}
+
+function enumWrap(fid, enumKey) {
+  var w = provWrap(fid);
+  if (w.value && ENUM_MAP[enumKey]) {
+    w.value = ENUM_MAP[enumKey][w.value] || w.value;
+  }
+  return w;
+}
+
+function arrWrap(fid) {
+  var f = fld(fid);
+  var ans = state.answers[fid];
+  if (!ans) return {value:[],provenance:{source:'missing',confidence:'low',evidence:null,blocking:f.priority}};
+  var v = Array.isArray(ans.value) ? ans.value : [ans.value];
+  return {value:v,provenance:{source:ans.source,confidence:ans.confidence,evidence:ans.evidence||null,blocking:f.priority}};
+}
+
+function arrEnumWrap(fid, enumKey) {
+  var w = arrWrap(fid);
+  if (ENUM_MAP[enumKey]) {
+    w.value = w.value.map(function(v){ return ENUM_MAP[enumKey][v] || v; });
+  }
+  return w;
+}
+
+function buildGaps() {
+  var gaps = [];
+  FIELDS.forEach(function(f){
+    if (!state.answers[f.id]) {
+      var reason = 'missing';
+      gaps.push({field_id:f.id,field_label:f.label,section:f.section,blocking:f.priority,reason:reason,business_impact:f.q});
+    }
+  });
+  return gaps;
+}
+
+function buildSections() {
+  var s = {};
+  s.tenant_identity = {
+    legal_name: provWrap('legal_name'),
+    trade_name: provWrap('trade_name'),
+    category: enumWrap('category','category'),
+    locations_served: provWrap('locations_served'),
+    languages: arrWrap('languages'),
+    owner_whatsapp: provWrap('owner_whatsapp'),
+    owner_email: provWrap('owner_email')
+  };
+  s.business_model = {
+    what_they_sell: provWrap('what_they_sell'),
+    how_they_sell: arrWrap('how_they_sell'),
+    typical_customer: provWrap('typical_customer'),
+    avg_order_value: provWrap('avg_order_value'),
+    seasonality: provWrap('seasonality')
+  };
+  s.catalogue = {
+    catalogue_overview: provWrap('catalogue_overview'),
+    pricing_disclosure: enumWrap('pricing_disclosure','pricing_disclosure'),
+    pricing_disclaimer: provWrap('pricing_disclaimer')
+  };
+  s.policies = {
+    delivery_areas: provWrap('delivery_areas'),
+    delivery_lead_time: provWrap('delivery_lead_time'),
+    delivery_charges: provWrap('delivery_charges'),
+    payment_methods: arrWrap('payment_methods'),
+    cod_available: provWrap('cod_available', null),
+    advance_payment: provWrap('advance_payment'),
+    return_policy: provWrap('return_policy'),
+    warranty: provWrap('warranty'),
+    cancellation_policy: provWrap('cancellation_policy')
+  };
+  s.knowledge_base = {
+    faq_raw: provWrap('faq_raw'),
+    faq_pairs: {value:[],provenance:{source:'missing',confidence:'low',evidence:'Parsed by AI Coach during ingest',blocking:'P1'}}
+  };
+  s.scope = {
+    bot_handles: arrWrap('bot_handles'),
+    bot_does_not_handle: provWrap('bot_does_not_handle')
+  };
+  s.guardrails = {
+    never_say: provWrap('never_say'),
+    escalation_topics: provWrap('escalation_topics'),
+    competitor_policy: enumWrap('competitor_policy','competitor_policy'),
+    pii_policy: enumWrap('pii_policy','pii_policy'),
+    regulatory_constraints: provWrap('regulatory_constraints')
+  };
+  s.voice = {
+    tone: enumWrap('tone','tone'),
+    greeting_message: provWrap('greeting_message'),
+    emoji_policy: enumWrap('emoji_policy','emoji_policy'),
+    response_length: enumWrap('response_length','response_length'),
+    language_mix: provWrap('language_mix')
+  };
+  s.intents_flows = {
+    activated_products: arrEnumWrap('activated_products','activated_products'),
+    primary_intents: provWrap('primary_intents'),
+    order_capture_fields: provWrap('order_capture_fields')
+  };
+  s.escalation = {
+    escalation_number: provWrap('escalation_number'),
+    human_hours: provWrap('human_hours'),
+    out_of_hours: enumWrap('out_of_hours','out_of_hours'),
+    escalation_sla: provWrap('escalation_sla')
+  };
+  s.integrations = {
+    phonepe_enabled: provWrap('phonepe_enabled', null),
+    crm_destination: provWrap('crm_destination')
+  };
+  s.media_library = {
+    catalogue_doc: provWrap('catalogue_doc'),
+    media_other: provWrap('media_other')
+  };
+  s.operating_calendar = {
+    business_hours: provWrap('business_hours'),
+    holidays: provWrap('holidays'),
+    timezone: {value:'Asia/Kolkata',provenance:{source:'default',confidence:'high',evidence:'Auto-set',blocking:'P2'}}
+  };
+  s.success_criteria = {
+    success_goals: provWrap('success_goals')
+  };
+  var gaps = buildGaps();
+  s.gap_register = {
+    total_gaps: gaps.length,
+    p0_count: gaps.filter(function(g){return g.blocking==='P0';}).length,
+    p1_count: gaps.filter(function(g){return g.blocking==='P1';}).length,
+    p2_count: gaps.filter(function(g){return g.blocking==='P2';}).length,
+    entries: gaps
+  };
+  return s;
+}
+
+function generateJSON() {
+  var sections = buildSections();
+  var cs = djb2(JSON.stringify(sortKeys(sections)));
+  var tenantId = (state.answers['trade_name'] ? 'ten_' + state.answers['trade_name'].value.toLowerCase().replace(/\W+/g,'_').slice(0,16) : 'ten_unknown') + '_' + Date.now().toString(36).slice(-4);
+  var obj = {
+    spec_version: '1.0',
+    tenant_id: tenantId,
+    generated_at: new Date().toISOString(),
+    generated_from: state.sessionId,
+    approved_at: null,
+    approved_by: null,
+    checksum: cs,
+    sections: sections
+  };
+  return JSON.stringify(obj, null, 2);
+}
+
+function displayVal(fid) {
+  var ans = state.answers[fid];
+  if (!ans) return null;
+  var v = ans.value;
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  return String(v);
+}
+
+function generateMD() {
+  var now = new Date().toISOString();
+  var tradeName = displayVal('trade_name') || '{{TRADE_NAME}}';
+  var gaps = buildGaps();
+  var gapP0 = gaps.filter(function(g){return g.blocking==='P0';});
+  var gapP1 = gaps.filter(function(g){return g.blocking==='P1';});
+  var gapP2 = gaps.filter(function(g){return g.blocking==='P2';});
+  var sections = buildSections();
+  var cs = djb2(JSON.stringify(sortKeys(sections)));
+
+  function row(f) {
+    var ans = state.answers[f.id];
+    var val = ans ? displayVal(f.id) : '—';
+    var src = ans ? ans.source : 'missing';
+    var conf = ans ? ans.confidence : 'low';
+    var ev = ans && ans.evidence ? ans.evidence : '—';
+    return '| ' + f.label + ' | ' + val + ' | ' + src + ' | ' + conf + ' | ' + f.priority + ' | ' + ev + ' |';
+  }
+
+  function sectionTable(sectionId) {
+    var fields = FIELDS.filter(function(f){ return f.section===sectionId; });
+    var lines = ['| Field | Value | Source | Confidence | Priority | Evidence / Notes |','|-------|-------|--------|------------|----------|-----------------|'];
+    fields.forEach(function(f){ lines.push(row(f)); });
+    return lines.join('\n');
+  }
+
+  function gapRows() {
+    if (!gaps.length) return '| — | — | — | — | — | — | What\'s Missing | — |';
+    return gaps.map(function(g,i){
+      return '| '+(i+1)+' | '+g.field_label+' | '+g.section+' | '+g.blocking+' | missing | low | '+g.business_impact.slice(0,60)+'… | Bot cannot answer this correctly without it |';
+    }).join('\n');
+  }
+
+  var md = [];
+  md.push('---');
+  md.push('spec_version: "1.0"');
+  md.push('tenant_id: "ten_' + tradeName.toLowerCase().replace(/\W+/g,'_').slice(0,16) + '_draft"');
+  md.push('generated_at: "' + now + '"');
+  md.push('generated_from: "' + state.sessionId + '"');
+  md.push('approved_at: null');
+  md.push('approved_by: null');
+  md.push('checksum: "' + cs + '"');
+  md.push('---');
+  md.push('');
+  md.push('# Tenant Master Specification');
+  md.push('## ' + tradeName);
+  md.push('');
+  md.push('**Generated:** ' + now);
+  md.push('**Status:** `draft — pending approval`');
+  md.push('**Session:** ' + state.sessionId);
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §1 Tenant Identity');
+  md.push('');
+  md.push(sectionTable('tenant_identity'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §2 Business Model');
+  md.push('');
+  md.push(sectionTable('business_model'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §3 Catalogue');
+  md.push('');
+  md.push(sectionTable('catalogue'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §4 Policies');
+  md.push('');
+  md.push(sectionTable('policies'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §5 Knowledge Base');
+  md.push('');
+  var faqAns = state.answers['faq_raw'];
+  md.push('**Raw Q&A Input:**');
+  md.push('```');
+  md.push(faqAns ? faqAns.value : '');
+  md.push('```');
+  md.push('');
+  md.push('Source: ' + (faqAns ? faqAns.source : 'missing') + ' | Confidence: ' + (faqAns ? faqAns.confidence : 'low') + ' | Priority: P1');
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §6 Scope of Conversation');
+  md.push('');
+  md.push(sectionTable('scope'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §7 Guardrails');
+  md.push('');
+  md.push('<!-- GUARDRAIL CHANGES REQUIRE EXPLICIT CONFIRMATION -->');
+  md.push('');
+  md.push(sectionTable('guardrails'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §8 Voice');
+  md.push('');
+  md.push(sectionTable('voice'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §9 Intents and Flows');
+  md.push('');
+  md.push(sectionTable('intents_flows'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §10 Escalation');
+  md.push('');
+  md.push(sectionTable('escalation'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §11 Integrations');
+  md.push('');
+  md.push(sectionTable('integrations'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §12 Media Library');
+  md.push('');
+  md.push(sectionTable('media_library'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §13 Operating Calendar');
+  md.push('');
+  md.push(sectionTable('operating_calendar'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §14 Success Criteria');
+  md.push('');
+  var sgAns = state.answers['success_goals'];
+  md.push('**90-Day Goals (P2):**');
+  md.push('```');
+  md.push(sgAns ? sgAns.value : '');
+  md.push('```');
+  md.push('Source: ' + (sgAns ? sgAns.source : 'missing') + ' | Confidence: ' + (sgAns ? sgAns.confidence : 'low'));
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('## §15 Gap and Confidence Register');
+  md.push('');
+  md.push('**Summary:** ' + gaps.length + ' gaps (P0: ' + gapP0.length + ', P1: ' + gapP1.length + ', P2: ' + gapP2.length + ')');
+  md.push('');
+  md.push('| # | Field | Section | Priority | Current Source | Confidence | What\'s Missing | Business Impact |');
+  md.push('|---|-------|---------|----------|---------------|------------|----------------|-----------------|');
+  md.push(gapRows());
+  md.push('');
+  md.push('---');
+  md.push('');
+  md.push('*Generated by Alphabot Tenant Intake · Session ' + state.sessionId + ' · Spec v1.0*');
+
+  return md.join('\n');
+}
+
+// ─── RENDERING ────────────────────────────────────────────────────────────────
+
+function renderSidebar() {
+  var html = '';
+  SECTIONS.forEach(function(sec){
+    var st = sectionStatus(sec.id);
+    var dotCls = 'sb-dot';
+    if (st.p0 > 0 && st.p0ok < st.p0) dotCls += ' bad';
+    else if (st.totalOk === st.total) dotCls += ' ok';
+    else if (st.totalOk > 0) dotCls += ' warn';
+    html += '<div class="sb-item" onclick="jumpToSection(\''+sec.id+'\')">';
+    html += '<span class="sb-num">'+sec.num+'</span>';
+    html += '<div class="'+dotCls+'"></div>';
+    html += '<span>'+sec.label+'</span>';
+    html += '</div>';
+  });
+  document.getElementById('sidebar').innerHTML = html;
+}
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(function(el){ el.classList.remove('active'); });
+  var el = document.getElementById('screen-' + name);
+  if (el) el.classList.add('active');
+  state.screen = name;
+  renderSidebar();
+  if (name === 'review') renderReview();
+  if (name === 'export') renderExport();
+  if (name === 'path_c') renderQA();
+}
+
+function jumpToSection(sid) {
+  if (state.screen === 'review') {
+    var el = document.getElementById('rev-sec-' + sid);
+    if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+}
+
+// ─── Q&A RENDER ───────────────────────────────────────────────────────────────
+
+function renderQA() {
+  var field = state.focused ? fld(state.focused) : null;
+  if (!field) {
+    var pending = computePending();
+    if (!pending.length) { showScreen('review'); return; }
+    field = pending[0];
+  }
+
+  var totalFields = FIELDS.length;
+  var answered = Object.keys(state.answers).length + Object.keys(state.skipped).length;
+  var pct = Math.round(answered / totalFields * 100);
+
+  qaVal = null;
+  var existing = state.answers[field.id];
+
+  var html = '';
+  // Progress bar
+  document.getElementById('qa-prog-wrap').innerHTML = '<div class="prog-fill" style="width:'+pct+'%"></div>';
+
+  html += '<div class="qa-step"><span class="badge badge-'+field.priority.toLowerCase()+'">'+field.priority+'</span>&nbsp;&nbsp;'+esc(field.section.replace(/_/g,' '))+'</div>';
+  html += '<div class="qa-q">'+esc(field.q)+'</div>';
+  if (field.hint) html += '<div class="qa-hint">'+esc(field.hint)+'</div>';
+
+  if (field.type === 'select') {
+    var cur = existing ? existing.value : null;
+    html += '<div class="opt-list" id="qa-opts">';
+    field.opts.forEach(function(o){
+      var sel = cur === o ? 'sel' : '';
+      html += '<div class="opt-item '+sel+'" data-opt="'+esc(o)+'" onclick="selectOpt(this,false)">';
+      html += '<div class="opt-mark"></div><span>'+esc(o)+'</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+    if (cur) qaVal = cur;
+  } else if (field.type === 'multiselect') {
+    var curArr = existing ? (Array.isArray(existing.value) ? existing.value : [existing.value]) : [];
+    html += '<div class="opt-list" id="qa-opts">';
+    field.opts.forEach(function(o){
+      var sel = curArr.indexOf(o) >= 0 ? 'sel' : '';
+      html += '<div class="opt-item '+sel+'" data-opt="'+esc(o)+'" onclick="toggleMSOpt(this)">';
+      html += '<div class="opt-mark opt-mark-sq"></div><span>'+esc(o)+'</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+    qaVal = curArr.slice();
+  } else if (field.type === 'boolean') {
+    var curBool = existing ? existing.value : null;
+    html += '<div style="display:flex;gap:12px;margin-top:4px">';
+    html += '<div class="opt-item'+(curBool===true?' sel':'')+'" data-opt="true" onclick="setBool(this,true)" style="flex:1;justify-content:center;padding:14px">';
+    html += '<div class="opt-mark"></div><span style="font-size:15px">Yes</span></div>';
+    html += '<div class="opt-item'+(curBool===false?' sel':'')+'" data-opt="false" onclick="setBool(this,false)" style="flex:1;justify-content:center;padding:14px">';
+    html += '<div class="opt-mark"></div><span style="font-size:15px">No</span></div>';
+    html += '</div>';
+    if (curBool !== null && curBool !== undefined) qaVal = curBool;
+  } else {
+    var curText = existing ? String(existing.value) : '';
+    var tag = (field.type === 'textarea') ? 'textarea' : 'input type="'+(field.type==='phone'?'tel':'text')+'"';
+    var closetag = (field.type === 'textarea') ? '</textarea>' : '';
+    var ph = field.placeholder ? ' placeholder="'+esc(field.placeholder)+'"' : '';
+    html += '<' + tag + ' id="qa-input"' + ph + ' oninput="qaVal=this.value">' + esc(curText) + closetag;
+  }
+
+  html += '<div class="qa-nav">';
+  html += '<button class="btn btn-primary" onclick="submitQA()">Continue →</button>';
+  if (state.history.length > 0 && !state.focused) {
+    html += '<button class="btn btn-secondary" onclick="backQA()">← Back</button>';
+  }
+  if (state.focused) {
+    html += '<button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button>';
+  }
+  if (field.priority !== 'P0' && !state.focused) {
+    html += '<span class="qa-skip" onclick="skipField(\''+field.id+'\')">Skip for now</span>';
+  }
+  html += '</div>';
+
+  document.getElementById('qa-body').innerHTML = html;
+
+  // Focus text input
+  var inp = document.getElementById('qa-input');
+  if (inp) { setTimeout(function(){ inp.focus(); }, 50); }
+}
+
+function selectOpt(el, multi) {
+  var val = el.getAttribute('data-opt');
+  var list = el.parentNode.querySelectorAll('.opt-item');
+  list.forEach(function(item){ item.classList.remove('sel'); });
+  el.classList.add('sel');
+  qaVal = val;
+}
+
+function toggleMSOpt(el) {
+  var val = el.getAttribute('data-opt');
+  if (!Array.isArray(qaVal)) qaVal = [];
+  var idx = qaVal.indexOf(val);
+  if (idx >= 0) {
+    qaVal.splice(idx, 1);
+    el.classList.remove('sel');
+  } else {
+    qaVal.push(val);
+    el.classList.add('sel');
+  }
+}
+
+function setBool(el, val) {
+  var list = el.parentNode.querySelectorAll('.opt-item');
+  list.forEach(function(item){ item.classList.remove('sel'); });
+  el.classList.add('sel');
+  qaVal = val;
+}
+
+function submitQA() {
+  var field = state.focused ? fld(state.focused) : computePending()[0];
+  if (!field) { showScreen('review'); return; }
+
+  var inp = document.getElementById('qa-input');
+  var val = inp ? inp.value.trim() : qaVal;
+  if (field.type === 'boolean') val = qaVal;
+  if (field.type === 'multiselect') val = Array.isArray(qaVal) ? qaVal.slice() : [];
+  if (field.type === 'select') val = qaVal;
+
+  // Validation: require value for P0
+  if ((val === null || val === undefined || val === '' || (Array.isArray(val) && !val.length)) && field.priority === 'P0') {
+    showToast('This field is required to go live.');
+    return;
+  }
+
+  if (val !== null && val !== undefined && val !== '' && !(Array.isArray(val) && !val.length)) {
+    setAnswer(field.id, val, 'stated', 'high', 'Path C Q&A — session ' + state.sessionId);
+    if (!state.focused) state.history.push(field.id);
+  }
+
+  if (state.focused) {
+    state.focused = null;
+    showScreen('review');
+  } else {
+    renderQA();
+  }
+  renderSidebar();
+}
+
+function skipField(fid) {
+  state.skipped[fid] = true;
+  renderQA();
+  renderSidebar();
+}
+
+function backQA() {
+  if (!state.history.length) return;
+  var lastId = state.history.pop();
+  delete state.answers[lastId];
+  delete state.skipped[lastId];
+  renderQA();
+  renderSidebar();
+}
+
+function cancelEdit() {
+  state.focused = null;
+  showScreen('review');
+}
+
+function editField(fid) {
+  state.focused = fid;
+  showScreen('path_c');
+}
+
+// ─── PATH A / B ───────────────────────────────────────────────────────────────
+
+function startPath(p) {
+  state.path = p;
+  if (p === 'c') {
+    showScreen('path_c');
+  } else {
+    showScreen('path_' + p);
+  }
+}
+
+function loadFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('file-text').value = e.target.result;
+  };
+  reader.readAsText(file);
+}
+
+function runExtraction(source) {
+  var text = source === 'paste'
+    ? document.getElementById('paste-input').value
+    : document.getElementById('file-text').value;
+
+  state.pendingExtract = extractFromText(text);
+  var keys = Object.keys(state.pendingExtract);
+  var isA = source === 'paste';
+  var suffix = isA ? '' : '-b';
+
+  var countEl = document.getElementById('extract-count' + suffix);
+  var listEl = document.getElementById('extract-list' + suffix);
+  var resultsEl = document.getElementById('extract-results' + (isA ? '' : '-b'));
+
+  if (countEl) countEl.textContent = keys.length;
+
+  var html = '';
+  if (!keys.length) {
+    html = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No fields could be automatically extracted. Continue to answer questions manually.</div>';
+  } else {
+    keys.forEach(function(k){
+      var f = fld(k);
+      var v = state.pendingExtract[k].value;
+      var disp = Array.isArray(v) ? v.join(', ') : (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v));
+      html += '<div class="extract-row">';
+      html += '<span class="extract-key">'+esc(f ? f.label : k)+'</span>';
+      html += '<span class="extract-val">'+esc(disp)+'</span>';
+      html += '<span class="badge badge-p1" style="flex-shrink:0">extracted</span>';
+      html += '</div>';
+    });
+  }
+  if (listEl) listEl.innerHTML = html;
+  if (resultsEl) resultsEl.style.display = 'block';
+}
+
+function acceptExtraction() {
+  Object.keys(state.pendingExtract).forEach(function(k){
+    var ex = state.pendingExtract[k];
+    setAnswer(k, ex.value, ex.source, ex.confidence, ex.evidence);
+  });
+  state.pendingExtract = {};
+  showScreen('path_c');
+}
+
+// ─── REVIEW ───────────────────────────────────────────────────────────────────
+
+function renderReview() {
+  var g = countGaps();
+  var badge = '';
+  if (g.p0) badge = '<span class="badge badge-p0">'+g.p0+' P0 gaps</span>';
+  else badge = '<span class="badge badge-ok">All P0 fields filled</span>';
+  if (g.p1) badge += ' <span class="badge badge-p1" style="margin-left:4px">'+g.p1+' P1</span>';
+  document.getElementById('review-gaps-badge').innerHTML = badge;
+
+  var html = '';
+  SECTIONS.forEach(function(sec){
+    var fields = FIELDS.filter(function(f){ return f.section === sec.id; });
+    html += '<div class="rev-section" id="rev-sec-'+sec.id+'">';
+    html += '<div class="rev-sec-hdr">';
+    html += '<span style="font-size:11px;color:var(--muted)">' + sec.num + '</span>';
+    html += '<span class="rev-sec-title">' + sec.label + '</span>';
+    var st = sectionStatus(sec.id);
+    html += '<span style="font-size:11px;color:var(--muted)">'+st.totalOk+'/'+st.total+'</span>';
+    html += '</div>';
+    fields.forEach(function(f){
+      var ans = state.answers[f.id];
+      var dv = displayVal(f.id);
+      html += '<div class="rev-field">';
+      html += '<span class="rev-label"><span class="badge badge-'+f.priority.toLowerCase()+'">'+f.priority+'</span> '+esc(f.label)+'</span>';
+      if (ans) {
+        var provCls = ans.source === 'stated' ? 'prov-stated' : (ans.source === 'extracted' ? 'prov-extracted' : '');
+        html += '<span class="rev-val">'+esc(dv)+'<span class="prov-pill '+provCls+'">'+ans.source+'</span></span>';
+      } else {
+        html += '<span class="rev-val empty">Not filled</span>';
+      }
+      html += '<span class="rev-edit" onclick="editField(\''+f.id+'\')">Edit</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+
+  document.getElementById('review-body').innerHTML = html;
+}
+
+function continueFilling() {
+  state.focused = null;
+  showScreen('path_c');
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+
+function renderExport() {
+  var g = countGaps();
+  var gridHtml = '<div class="gap-card"><div class="gap-n p0c">'+g.p0+'</div><div class="gap-lbl">P0 Gaps</div></div>';
+  gridHtml += '<div class="gap-card"><div class="gap-n p1c">'+g.p1+'</div><div class="gap-lbl">P1 Gaps</div></div>';
+  gridHtml += '<div class="gap-card"><div class="gap-n p2c">'+g.p2+'</div><div class="gap-lbl">P2 Gaps</div></div>';
+  document.getElementById('gap-summary-grid').innerHTML = gridHtml;
+
+  var md = generateMD();
+  var json = generateJSON();
+  document.getElementById('md-preview').textContent = md.slice(0, 1200) + (md.length > 1200 ? '\n…' : '');
+  document.getElementById('json-preview').textContent = json.slice(0, 1200) + (json.length > 1200 ? '\n…' : '');
+  window._mdContent = md;
+  window._jsonContent = json;
+}
+
+function downloadMD() {
+  var md = window._mdContent || generateMD();
+  var name = (displayVal('trade_name') || 'tenant').replace(/\W+/g,'_').toLowerCase();
+  dl(name + '-master-spec.md', md, 'text/markdown');
+}
+
+function downloadJSON() {
+  var json = window._jsonContent || generateJSON();
+  var name = (displayVal('trade_name') || 'tenant').replace(/\W+/g,'_').toLowerCase();
+  dl(name + '-master-spec.json', json, 'application/json');
+}
+
+function dl(filename, content, type) {
+  var blob = new Blob([content], {type: type});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+
+function copyToClipboard(which) {
+  var content = which === 'md' ? (window._mdContent || generateMD()) : (window._jsonContent || generateJSON());
+  navigator.clipboard.writeText(content).then(function(){
+    showToast('Copied to clipboard.');
+  }).catch(function(){
+    showToast('Copy failed — use the download button instead.');
+  });
+}
+
+// ─── MISC ────────────────────────────────────────────────────────────────────
+
+function goBack() {
+  showScreen('welcome');
+}
+
+function resetAll() {
+  if (!confirm('Start over? All answers will be cleared.')) return;
+  state.answers = {};
+  state.skipped = {};
+  state.history = [];
+  state.focused = null;
+  state.path = null;
+  state.pendingExtract = {};
+  state.sessionId = genSessionId();
+  qaVal = null;
+  document.getElementById('hdr-session').textContent = state.sessionId;
+  showScreen('welcome');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('hdr-session').textContent = state.sessionId;
+renderSidebar();
+</script>

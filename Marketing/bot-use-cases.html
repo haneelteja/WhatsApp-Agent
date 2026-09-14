@@ -1,0 +1,1441 @@
+
+<title>Alphabot — Bot Use Cases by Industry</title>
+<style>
+/* ── Tokens ─────────────────────────────────── */
+:root {
+  --bg:      #F7F5F2;
+  --surface: #FFFFFF;
+  --card:    #FDFCFA;
+  --border:  #E0DAD3;
+  --text:    #1C1814;
+  --muted:   #7A6E65;
+  --subtle:  #A89E96;
+
+  --sup:      #0369A1;
+  --sup-l:    rgba(3,105,161,.08);
+  --sup-b:    rgba(3,105,161,.22);
+
+  --sal:      #5B21B6;
+  --sal-l:    rgba(91,33,182,.08);
+  --sal-b:    rgba(91,33,182,.22);
+
+  --lif:      #9A3412;
+  --lif-l:    rgba(154,52,18,.08);
+  --lif-b:    rgba(154,52,18,.22);
+
+  --app:      #9D174D;
+  --app-l:    rgba(157,23,77,.08);
+  --app-b:    rgba(157,23,77,.22);
+
+  --wa-bubble: #DCF8C6;
+  --wa-bg:     #ECE5DD;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:      #13100D;
+    --surface: #1C1814;
+    --card:    #211D19;
+    --border:  #2E2820;
+    --text:    #EDE8E2;
+    --muted:   #8C8078;
+    --subtle:  #5E554D;
+    --wa-bubble: #054F2E;
+    --wa-bg:     #1A1210;
+  }
+}
+:root[data-theme="light"] {
+  --bg:#F7F5F2;--surface:#FFFFFF;--card:#FDFCFA;--border:#E0DAD3;
+  --text:#1C1814;--muted:#7A6E65;--subtle:#A89E96;
+  --wa-bubble:#DCF8C6;--wa-bg:#ECE5DD;
+}
+:root[data-theme="dark"] {
+  --bg:#13100D;--surface:#1C1814;--card:#211D19;--border:#2E2820;
+  --text:#EDE8E2;--muted:#8C8078;--subtle:#5E554D;
+  --wa-bubble:#054F2E;--wa-bg:#1A1210;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+  font-size:14px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── Page shell ───────────────────────────── */
+.shell{max-width:1100px;margin:0 auto;padding:0 20px 64px}
+
+/* ── Hero ─────────────────────────────────── */
+.hero{
+  padding:48px 0 36px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:32px;
+}
+.hero-eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:16px;
+}
+.hero-eyebrow .dot{width:6px;height:6px;border-radius:50%;background:#22C55E;animation:blink 2.4s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.hero h1{
+  font-family:Georgia,'Times New Roman',serif;
+  font-size:clamp(28px,4vw,42px);
+  font-weight:700;
+  line-height:1.15;
+  letter-spacing:-.3px;
+  color:var(--text);
+  max-width:620px;
+  text-wrap:balance;
+  margin-bottom:14px;
+}
+.hero p{font-size:15px;color:var(--muted);max-width:560px;line-height:1.65}
+
+/* ── Tab bar ──────────────────────────────── */
+.tabs{display:flex;gap:4px;margin-bottom:28px;border-bottom:2px solid var(--border);padding-bottom:0}
+.tab{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 20px 13px;
+  font-size:13px;font-weight:700;
+  color:var(--muted);
+  cursor:pointer;
+  border:none;background:none;
+  border-bottom:3px solid transparent;
+  margin-bottom:-2px;
+  transition:color .15s,border-color .15s;
+  white-space:nowrap;
+}
+.tab:hover{color:var(--text)}
+.tab.active.sup{color:var(--sup);border-color:var(--sup)}
+.tab.active.sal{color:var(--sal);border-color:var(--sal)}
+.tab.active.lif{color:var(--lif);border-color:var(--lif)}
+.tab.active.app{color:var(--app);border-color:var(--app)}
+.tab-icon{font-size:17px;line-height:1}
+.tab-count{
+  font-size:10px;font-weight:800;padding:2px 6px;border-radius:10px;
+  background:var(--border);color:var(--muted);
+}
+.tab.active.sup .tab-count{background:var(--sup-l);color:var(--sup)}
+.tab.active.sal .tab-count{background:var(--sal-l);color:var(--sal)}
+.tab.active.lif .tab-count{background:var(--lif-l);color:var(--lif)}
+.tab.active.app .tab-count{background:var(--app-l);color:var(--app)}
+
+/* ── Overview tab ─────────────────────────── */
+.tab.ov{color:var(--muted)}
+.tab.active.ov{color:#0F766E;border-color:#0F766E}
+.tab.active.ov .tab-count{background:rgba(15,118,110,.1);color:#0F766E}
+
+/* ── Comparison cards ─────────────────────── */
+.cmp-intro{font-size:14px;color:var(--muted);max-width:640px;margin-bottom:28px;line-height:1.65}
+.cmp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:36px}
+.cmp-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.cmp-card-head{padding:16px 18px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.cmp-card-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.cmp-card-icon.sup{background:var(--sup-l)}
+.cmp-card-icon.sal{background:var(--sal-l)}
+.cmp-card-icon.lif{background:var(--lif-l)}
+.cmp-card-icon.app{background:var(--app-l)}
+.cmp-card-name{font-family:Georgia,'Times New Roman',serif;font-size:15px;font-weight:700}
+.cmp-card-name.sup{color:var(--sup)}
+.cmp-card-name.sal{color:var(--sal)}
+.cmp-card-name.lif{color:var(--lif)}
+.cmp-card-name.app{color:var(--app)}
+.cmp-card-tagline{font-size:11px;color:var(--muted);margin-top:1px}
+.cmp-rows{padding:14px 18px}
+.cmp-row{display:flex;gap:10px;margin-bottom:12px;font-size:12px;line-height:1.5}
+.cmp-row:last-child{margin-bottom:0}
+.cmp-row-label{font-weight:700;color:var(--muted);min-width:92px;flex-shrink:0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding-top:1px}
+.cmp-row-val{color:var(--text)}
+.cmp-verdict{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11.5px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
+.cmp-verdict-tag{padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800}
+.cmp-verdict-tag.sup{background:var(--sup-l);color:var(--sup)}
+.cmp-verdict-tag.sal{background:var(--sal-l);color:var(--sal)}
+.cmp-verdict-tag.lif{background:var(--lif-l);color:var(--lif)}
+.cmp-verdict-tag.app{background:var(--app-l);color:var(--app)}
+
+/* ── Scenario section ────────────────────── */
+.scenario-block{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:28px}
+.scenario-block h3{font-family:Georgia,'Times New Roman',serif;font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px}
+.scenario-block .sub{font-size:12.5px;color:var(--muted);margin-bottom:20px;line-height:1.5}
+.scenario-trigger{background:var(--surface2,var(--card));border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:20px;font-size:12.5px;display:flex;align-items:flex-start;gap:10px}
+.scenario-trigger .label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--subtle);margin-bottom:3px}
+.scenario-trigger .msg{color:var(--text);font-weight:600}
+.scenario-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+.scenario-col{}
+.scenario-col-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.scenario-col-icon{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.scenario-col-icon.sup{background:var(--sup-l)}
+.scenario-col-icon.sal{background:var(--sal-l)}
+.scenario-col-name{font-size:12px;font-weight:800}
+.scenario-col-name.sup{color:var(--sup)}
+.scenario-col-name.sal{color:var(--sal)}
+.scenario-wa{background:var(--wa-bg);border-radius:8px;padding:10px}
+.scenario-wa .wa-row{display:flex;margin-bottom:5px}
+.scenario-wa .wa-row:last-child{margin-bottom:0}
+.scenario-wa .wa-row.bot{justify-content:flex-start}
+.scenario-wa .wa-bubble{max-width:92%;font-size:11.5px;line-height:1.5;padding:6px 10px;border-radius:8px 8px 8px 2px;background:var(--surface);border:1px solid var(--border);color:var(--text)}
+.scenario-outcome{display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:11.5px}
+.scenario-outcome-icon{font-size:13px;flex-shrink:0;margin-top:1px}
+.scenario-outcome-text{color:var(--muted);line-height:1.4}
+.scenario-outcome-text strong{color:var(--text)}
+.lifecycle-note{background:var(--lif-l);border:1px solid var(--lif-b);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start}
+.lifecycle-note-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.lifecycle-note-text{}
+.lifecycle-note-text .title{font-size:12.5px;font-weight:800;color:var(--lif);margin-bottom:4px}
+.lifecycle-note-text .desc{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px}
+.lifecycle-note-wa{background:var(--wa-bg);border-radius:8px;padding:8px 10px}
+.lifecycle-note-wa .wa-row.bot{display:flex;justify-content:flex-start}
+.lifecycle-note-wa .wa-bubble{max-width:92%;font-size:11px;line-height:1.45;padding:5px 9px;border-radius:8px 8px 8px 2px;background:var(--surface);border:1px solid var(--border);color:var(--text)}
+
+/* ── Quick ref table ─────────────────────── */
+.qr-block{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:8px}
+.qr-block h3{font-family:Georgia,'Times New Roman',serif;font-size:16px;font-weight:700;color:var(--text);padding:20px 22px 0}
+.qr-block .sub{font-size:12.5px;color:var(--muted);padding:4px 22px 16px;border-bottom:1px solid var(--border)}
+.qr-table{width:100%;border-collapse:collapse}
+.qr-table th{padding:10px 16px;text-align:left;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;background:var(--card);border-bottom:1px solid var(--border);color:var(--muted)}
+.qr-table th.sup{color:var(--sup)}
+.qr-table th.sal{color:var(--sal)}
+.qr-table th.lif{color:var(--lif)}
+.qr-table th.app{color:var(--app)}
+.qr-table td{padding:11px 16px;font-size:12.5px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top;line-height:1.45}
+.qr-table tr:last-child td{border-bottom:none}
+.qr-table td:first-child{font-weight:700;color:var(--muted);font-size:11.5px;white-space:nowrap}
+.qr-table tr:nth-child(even) td{background:rgba(0,0,0,.015)}
+@media(prefers-color-scheme:dark){.qr-table tr:nth-child(even) td{background:rgba(255,255,255,.025)}}
+:root[data-theme="dark"] .qr-table tr:nth-child(even) td{background:rgba(255,255,255,.025)}
+
+@media(max-width:700px){
+  .cmp-grid{grid-template-columns:1fr}
+  .scenario-cols{grid-template-columns:1fr}
+  .qr-table{display:block;overflow-x:auto}
+}
+
+/* ── Bot panel ────────────────────────────── */
+.panel{display:none}
+.panel.active{display:block}
+
+.panel-intro{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:18px 22px;
+  margin-bottom:24px;
+  display:flex;align-items:flex-start;gap:14px;
+}
+.panel-icon{
+  width:44px;height:44px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;flex-shrink:0;
+}
+.panel-icon.sup{background:var(--sup-l)}
+.panel-icon.sal{background:var(--sal-l)}
+.panel-icon.lif{background:var(--lif-l)}
+.panel-icon.app{background:var(--app-l)}
+.panel-intro-text h2{
+  font-family:Georgia,'Times New Roman',serif;
+  font-size:17px;font-weight:700;margin-bottom:3px;
+}
+.panel-intro-text h2.sup{color:var(--sup)}
+.panel-intro-text h2.sal{color:var(--sal)}
+.panel-intro-text h2.lif{color:var(--lif)}
+.panel-intro-text h2.app{color:var(--app)}
+.panel-intro-text p{font-size:13px;color:var(--muted);line-height:1.55}
+
+/* ── Sector grid ──────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
+
+/* ── Sector card ──────────────────────────── */
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+}
+.card-head{
+  padding:16px 18px 14px;
+  border-bottom:1px solid var(--border);
+}
+.card-num{
+  font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  margin-bottom:8px;
+}
+.card-num.sup{color:var(--sup)}
+.card-num.sal{color:var(--sal)}
+.card-num.lif{color:var(--lif)}
+.card-num.app{color:var(--app)}
+.card-title-row{display:flex;align-items:center;gap:10px}
+.card-emoji{font-size:26px;line-height:1}
+.card-title{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.2}
+.card-sub{font-size:11px;color:var(--subtle);margin-top:2px}
+
+/* ── Use cases ────────────────────────────── */
+.uc-list{padding:10px 0 4px}
+.uc{
+  padding:12px 18px;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+}
+.uc:last-child{border-bottom:none}
+.uc-header{display:flex;align-items:flex-start;gap:10px}
+.uc-badge{
+  width:20px;height:20px;border-radius:50%;
+  font-size:9px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;margin-top:1px;
+}
+.uc-badge.sup{background:var(--sup);color:#fff}
+.uc-badge.sal{background:var(--sal);color:#fff}
+.uc-badge.lif{background:var(--lif);color:#fff}
+.uc-badge.app{background:var(--app);color:#fff}
+.uc-title{font-size:12.5px;font-weight:700;color:var(--text);line-height:1.35;flex:1}
+.uc-chevron{
+  color:var(--subtle);font-size:11px;margin-top:1px;flex-shrink:0;
+  transition:transform .2s;display:inline-block;
+}
+.uc.open .uc-chevron{transform:rotate(90deg)}
+.uc-desc{
+  font-size:12px;color:var(--muted);line-height:1.55;
+  margin:7px 0 0 30px;
+  display:none;
+}
+.uc.open .uc-desc{display:block}
+
+/* WhatsApp preview */
+.wa-wrap{
+  margin:9px 0 2px 30px;
+  background:var(--wa-bg);
+  border-radius:8px;
+  padding:10px 10px 8px;
+  display:none;
+}
+.uc.open .wa-wrap{display:block}
+.wa-label{
+  font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  margin-bottom:6px;
+}
+.wa-label.sup{color:var(--sup)}
+.wa-label.sal{color:var(--sal)}
+.wa-label.lif{color:var(--lif)}
+.wa-label.app{color:var(--app)}
+.wa-row{display:flex;margin-bottom:5px}
+.wa-row:last-child{margin-bottom:0}
+.wa-row.user{justify-content:flex-end}
+.wa-row.bot{justify-content:flex-start}
+.wa-bubble{
+  max-width:88%;font-size:11px;line-height:1.45;
+  padding:5px 9px 4px;border-radius:8px;
+  color:var(--text);
+}
+.wa-row.user .wa-bubble{
+  background:var(--wa-bubble);border-radius:8px 8px 2px 8px;
+}
+.wa-row.bot .wa-bubble{
+  background:var(--surface);border-radius:8px 8px 8px 2px;
+  border:1px solid var(--border);
+}
+
+/* ── How it works bar ────────────────────── */
+.how{
+  margin-bottom:28px;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:12px;
+}
+.how-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:16px;
+  display:flex;gap:12px;align-items:flex-start;
+}
+.how-step{
+  width:28px;height:28px;border-radius:8px;
+  background:#16A34A;color:#fff;
+  font-size:12px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.how-card h4{font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:2px}
+.how-card p{font-size:11.5px;color:var(--muted);line-height:1.45}
+
+/* ── Footer ───────────────────────────────── */
+.footer{
+  border-top:1px solid var(--border);padding-top:24px;margin-top:8px;
+  text-align:center;font-size:11.5px;color:var(--subtle);line-height:1.7;
+}
+
+/* ── Responsive ───────────────────────────── */
+@media(max-width:600px){
+  .tabs{overflow-x:auto;padding-bottom:0;gap:0}
+  .tab{padding:10px 14px 12px;font-size:12px}
+  .tab-count{display:none}
+  .grid{grid-template-columns:1fr}
+  .hero h1{font-size:26px}
+  .panel-intro{flex-direction:column;gap:10px}
+  .cmp-grid{grid-template-columns:1fr}
+}
+</style>
+
+<div class="shell">
+
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-eyebrow"><span class="dot"></span> Alphabot &middot; Customer Use Case Guide</div>
+  <h1>How your business can use Alphabot on WhatsApp</h1>
+  <p>Four AI agents &mdash; each built for a specific job. Find your industry below and see exactly what each bot does for businesses like yours.</p>
+</div>
+
+<!-- How it works -->
+<div class="how">
+  <div class="how-card">
+    <div class="how-step">1</div>
+    <div>
+      <h4>Connect WhatsApp</h4>
+      <p>Link your existing WhatsApp Business number to Alphabot &mdash; no engineering needed.</p>
+    </div>
+  </div>
+  <div class="how-card">
+    <div class="how-step">2</div>
+    <div>
+      <h4>Load Your Knowledge</h4>
+      <p>Add FAQs, services, pricing, and policies. The bot learns your business voice.</p>
+    </div>
+  </div>
+  <div class="how-card">
+    <div class="how-step">3</div>
+    <div>
+      <h4>Go Live in 48 Hours</h4>
+      <p>Bots handle conversations automatically. Your team only sees escalations.</p>
+    </div>
+  </div>
+  <div class="how-card">
+    <div class="how-step">4</div>
+    <div>
+      <h4>Improve Over Time</h4>
+      <p>Monitor conversations in real time. Update your KB. The bot gets smarter.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab ov active" onclick="showPanel('ov')">
+    <span class="tab-icon">📖</span> Overview <span class="tab-count">Start here</span>
+  </button>
+  <button class="tab sup" onclick="showPanel('sup')">
+    <span class="tab-icon">🤝</span> Support Bot <span class="tab-count">5 sectors</span>
+  </button>
+  <button class="tab sal" onclick="showPanel('sal')">
+    <span class="tab-icon">🎯</span> Sales Bot <span class="tab-count">5 sectors</span>
+  </button>
+  <button class="tab lif" onclick="showPanel('lif')">
+    <span class="tab-icon">🔄</span> Lifecycle Bot <span class="tab-count">5 sectors</span>
+  </button>
+  <button class="tab app" onclick="showPanel('app')">
+    <span class="tab-icon">📅</span> Appointment Bot <span class="tab-count">4 sectors</span>
+  </button>
+</div>
+
+<!-- ══════════ OVERVIEW ══════════ -->
+<div class="panel ov active" id="panel-ov">
+
+  <p class="cmp-intro">Alphabot has four distinct AI agents. Each one has a different job, a different tone, and a different definition of success. Read this first &mdash; then click into each bot to see exactly how it works for your industry.</p>
+
+  <!-- Bot cards -->
+  <div class="cmp-grid">
+
+    <div class="cmp-card">
+      <div class="cmp-card-head">
+        <div class="cmp-card-icon sup">🤝</div>
+        <div>
+          <div class="cmp-card-name sup">Support Bot</div>
+          <div class="cmp-card-tagline">Answer questions. Resolve issues. Reduce load.</div>
+        </div>
+      </div>
+      <div class="cmp-rows">
+        <div class="cmp-row"><span class="cmp-row-label">Started by</span><span class="cmp-row-val">Customer sends a question or complaint</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Bot's job</span><span class="cmp-row-val">Answer from your Knowledge Base &mdash; then close the conversation</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Tone</span><span class="cmp-row-val">Neutral and helpful &mdash; like a knowledgeable staff member</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Asks more?</span><span class="cmp-row-val">Only to collect details for escalation &mdash; not to qualify</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Ends when</span><span class="cmp-row-val">Question answered or escalated to your team</span></div>
+        <div class="cmp-verdict"><span class="cmp-verdict-tag sup">Success =</span> Support load reduced</div>
+      </div>
+    </div>
+
+    <div class="cmp-card">
+      <div class="cmp-card-head">
+        <div class="cmp-card-icon sal">🎯</div>
+        <div>
+          <div class="cmp-card-name sal">Sales Bot</div>
+          <div class="cmp-card-tagline">Qualify leads. Recommend. Convert.</div>
+        </div>
+      </div>
+      <div class="cmp-rows">
+        <div class="cmp-row"><span class="cmp-row-label">Started by</span><span class="cmp-row-val">Customer expresses interest in buying or enquires about a product</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Bot's job</span><span class="cmp-row-val">Qualify their need → recommend the right option → push to a decision</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Tone</span><span class="cmp-row-val">Consultative and persuasive &mdash; like a trained salesperson</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Asks more?</span><span class="cmp-row-val">Yes &mdash; budget, preference, timeline, intent. Every reply opens the next question</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Ends when</span><span class="cmp-row-val">Customer books, buys, or fills a form</span></div>
+        <div class="cmp-verdict"><span class="cmp-verdict-tag sal">Success =</span> Lead converted</div>
+      </div>
+    </div>
+
+    <div class="cmp-card">
+      <div class="cmp-card-head">
+        <div class="cmp-card-icon lif">🔄</div>
+        <div>
+          <div class="cmp-card-name lif">Lifecycle Bot</div>
+          <div class="cmp-card-tagline">Re-engage. Remind. Retain.</div>
+        </div>
+      </div>
+      <div class="cmp-rows">
+        <div class="cmp-row"><span class="cmp-row-label">Started by</span><span class="cmp-row-val"><strong>Your system</strong> &mdash; time-based or event-based trigger. Customer does not initiate</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Bot's job</span><span class="cmp-row-val">Reach out proactively to re-engage, remind, reward, or retain existing customers</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Tone</span><span class="cmp-row-val">Personal and timely &mdash; like a loyalty programme nudge from someone who knows you</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Asks more?</span><span class="cmp-row-val">Only if the customer replies to the outbound message</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Ends when</span><span class="cmp-row-val">Outbound message delivered &mdash; continues if customer responds</span></div>
+        <div class="cmp-verdict"><span class="cmp-verdict-tag lif">Success =</span> Customer comes back</div>
+      </div>
+    </div>
+
+    <div class="cmp-card">
+      <div class="cmp-card-head">
+        <div class="cmp-card-icon app">📅</div>
+        <div>
+          <div class="cmp-card-name app">Appointment Bot</div>
+          <div class="cmp-card-tagline">Book slots. Cut no-shows. Fill the calendar.</div>
+        </div>
+      </div>
+      <div class="cmp-rows">
+        <div class="cmp-row"><span class="cmp-row-label">Started by</span><span class="cmp-row-val">Customer asks to book, reschedule, or check availability</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Bot's job</span><span class="cmp-row-val">Take the booking → confirm it → send reminders → recover no-shows</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Tone</span><span class="cmp-row-val">Efficient and friendly &mdash; like a front-desk receptionist who never misses a call</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Asks more?</span><span class="cmp-row-val">Only what's needed to complete the booking: service, date, time, name</span></div>
+        <div class="cmp-row"><span class="cmp-row-label">Ends when</span><span class="cmp-row-val">Booking confirmed + reminder sequence started</span></div>
+        <div class="cmp-verdict"><span class="cmp-verdict-tag app">Success =</span> Slot filled, no-show prevented</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Same scenario comparison -->
+  <div class="scenario-block">
+    <h3>Same product knowledge. Three different responses.</h3>
+    <p class="sub">Here is how Support Bot and Sales Bot respond to the exact same customer message &mdash; and why Lifecycle Bot never waits for the customer to message at all.</p>
+
+    <div class="scenario-trigger">
+      <div>
+        <div class="label">Customer sends</div>
+        <div class="msg">"I'm looking for a face serum. What do you have?"</div>
+      </div>
+    </div>
+
+    <div class="scenario-cols">
+      <div class="scenario-col">
+        <div class="scenario-col-head">
+          <div class="scenario-col-icon sup">🤝</div>
+          <span class="scenario-col-name sup">Support Bot responds</span>
+        </div>
+        <div class="scenario-wa">
+          <div class="wa-row bot"><div class="wa-bubble">🤝 We have three serums &mdash; Vitamin C (₹649, oily skin), Hyaluronic (₹799, dry skin), and Retinol (₹999, anti-ageing). Want links to all three? 🌿</div></div>
+        </div>
+        <div class="scenario-outcome">
+          <span class="scenario-outcome-icon">✅</span>
+          <span class="scenario-outcome-text"><strong>Answered the question. Done.</strong> Bot's job is complete. No follow-up push, no qualification. Customer has what they asked for.</span>
+        </div>
+      </div>
+      <div class="scenario-col">
+        <div class="scenario-col-head">
+          <div class="scenario-col-icon sal">🎯</div>
+          <span class="scenario-col-name sal">Sales Bot responds</span>
+        </div>
+        <div class="scenario-wa">
+          <div class="wa-row bot"><div class="wa-bubble">🎯 Great! Quick question &mdash; is your skin oily, dry, or combination? And is your main concern brightening, hydration, or anti-ageing? I'll find the best one for you + share an exclusive offer. ✨</div></div>
+        </div>
+        <div class="scenario-outcome">
+          <span class="scenario-outcome-icon">🔁</span>
+          <span class="scenario-outcome-text"><strong>Turned the question into a sales conversation.</strong> Bot didn't answer yet &mdash; it qualified first. Now working toward a purchase, not just an answer.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="lifecycle-note">
+      <div class="lifecycle-note-icon">🔄</div>
+      <div class="lifecycle-note-text">
+        <div class="title">Lifecycle Bot doesn't wait for the customer to message</div>
+        <div class="desc">It reaches out first &mdash; triggered by your system when a customer hasn't reordered in 28 days, hasn't opened their course in a week, or has an EMI due in 3 days.</div>
+        <div class="lifecycle-note-wa">
+          <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Priya! It's been 28 days since your Vitamin C Serum order. Almost done? Restock now and get 10% off as a loyalty reward &mdash; valid until Sunday. [Reorder link] 🌟</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick reference table -->
+  <div class="qr-block">
+    <h3>Quick reference</h3>
+    <p class="sub">Use this to decide which bot to set up first for your business.</p>
+    <div style="overflow-x:auto">
+    <table class="qr-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th class="sup">🤝 Support Bot</th>
+          <th class="sal">🎯 Sales Bot</th>
+          <th class="lif">🔄 Lifecycle Bot</th>
+          <th class="app">📅 Appointment Bot</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Who starts the chat</td>
+          <td>Customer</td>
+          <td>Customer</td>
+          <td><strong>Bot</strong> (outbound)</td>
+          <td>Customer</td>
+        </tr>
+        <tr>
+          <td>Customer's intent</td>
+          <td>Get help or information</td>
+          <td>Explore buying something</td>
+          <td>Didn't initiate &mdash; bot reached out</td>
+          <td>Book, reschedule, or check slots</td>
+        </tr>
+        <tr>
+          <td>Bot's intent</td>
+          <td>Resolve and close</td>
+          <td>Qualify and convert</td>
+          <td>Re-engage and retain</td>
+          <td>Confirm booking + prevent no-show</td>
+        </tr>
+        <tr>
+          <td>Asks follow-up questions?</td>
+          <td>Only to escalate</td>
+          <td>Yes &mdash; to qualify and pitch</td>
+          <td>Only if customer replies</td>
+          <td>Only to complete the booking</td>
+        </tr>
+        <tr>
+          <td>Target audience</td>
+          <td>Anyone with a query or complaint</td>
+          <td>New leads and prospects</td>
+          <td>Existing customers</td>
+          <td>Anyone who wants to book a slot</td>
+        </tr>
+        <tr>
+          <td>Business metric it moves</td>
+          <td>Support cost ↓, CSAT ↑</td>
+          <td>Lead conversion ↑</td>
+          <td>Repeat revenue ↑, churn ↓</td>
+          <td>Bookings ↑, no-shows ↓</td>
+        </tr>
+        <tr>
+          <td>Best for</td>
+          <td>D2C, BFSI, Healthcare, Retail</td>
+          <td>Real estate, insurance, autos, travel</td>
+          <td>D2C, edtech, NBFC, salon</td>
+          <td>Restaurant, salon, fitness, clinics</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+</div><!-- end panel-ov -->
+
+<!-- ══════════ SUPPORT BOT ══════════ -->
+<div class="panel sup" id="panel-sup">
+  <div class="panel-intro">
+    <div class="panel-icon sup">🤝</div>
+    <div class="panel-intro-text">
+      <h2 class="sup">Support Bot &mdash; Handle customer queries 24/7</h2>
+      <p>Answers inbound questions from your Knowledge Base around the clock. Escalates to your team only when it genuinely needs a human decision. Reduces support load by 60&ndash;80% on day one.</p>
+    </div>
+  </div>
+  <div class="grid">
+
+    <!-- Healthcare -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sup">Sector 01</div>
+        <div class="card-title-row">
+          <span class="card-emoji">🏥</span>
+          <div>
+            <div class="card-title">Healthcare &amp; Clinics</div>
+            <div class="card-sub">Hospitals &middot; Diagnostic Centres &middot; Specialist Clinics</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">1</span><span class="uc-title">Appointment Queries &amp; Availability</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot answers static timing and availability from your KB &mdash; "Dr. Sharma is available Mon/Wed/Fri", "OPD closes at 8 PM". For booking, it collects the patient's name, preferred date, and phone number, then your front desk team confirms the appointment.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Is Dr. Mehta available on Sunday?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Dr. Mehta sees patients Sundays 10 AM&ndash;1 PM at our Koramangala branch. To confirm a slot, may I have your name and phone number? Our team will call you to book. 📅</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">2</span><span class="uc-title">Test Prep &amp; Report FAQs</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"Do I need to fast before a sugar test?" "How long does my blood report take?" &mdash; answered instantly without staff involvement.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Do I need to fast before a thyroid test?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Yes &mdash; fast 8&ndash;10 hours before TSH/T3/T4. Water is fine. Report ready within 6 hours of sample collection.</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">3</span><span class="uc-title">Post-Discharge &amp; Follow-up Care</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot answers general post-procedure care questions from your KB &mdash; not the patient's personal records. For anything patient-specific, it collects the patient's name and concern and escalates to your nursing or front-desk team.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I had surgery yesterday. When can I start walking?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Generally, light walking is advised after 24 hours for most procedures. May I have your name and registered number so our nursing team can give you the right advice? 🔄</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D2C -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sup">Sector 02</div>
+        <div class="card-title-row">
+          <span class="card-emoji">🛍️</span>
+          <div>
+            <div class="card-title">D2C &amp; E-Commerce</div>
+            <div class="card-sub">Online Brands &middot; Beauty &middot; Nutrition &middot; Home &amp; Fashion</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">1</span><span class="uc-title">Order Enquiry &amp; Support Escalation</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot cannot look up live order data. Instead: it immediately shares your self-service tracking link (from KB), asks for the order number and issue, and passes everything structured to your support team.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Where is my order? Placed 3 days ago.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Track your order here: [tracking-link] 🔍 If that doesn't show an update, please share your order number and registered email &mdash; I'll flag it to our support team. 📦</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">2</span><span class="uc-title">Product Questions &amp; Recommendations</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"Does this work for oily skin?" "SPF 30 vs 50?" &mdash; bot answers from your product KB and recommends the right item for each customer.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I have sensitive skin. Which moisturiser?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Try our Aloe Calm Moisturiser &mdash; fragrance-free, dermatologist tested. ₹349 for 100ml. Want the product link?</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">3</span><span class="uc-title">Returns, Refunds &amp; Complaints</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot explains your return policy from KB then collects the order number, issue description, and photo, and passes a complete brief to your returns team so they can act fast.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I received a damaged product. I want a refund.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 I'm sorry! Our return window is 7 days from delivery. Could you share your order number and a photo of the damage? I'll pass everything to our returns team within 24 hours. 🙏</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Real Estate -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sup">Sector 03</div>
+        <div class="card-title-row">
+          <span class="card-emoji">🏢</span>
+          <div>
+            <div class="card-title">Real Estate</div>
+            <div class="card-sub">Developers &middot; Brokers &middot; Property Portals</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">1</span><span class="uc-title">Project &amp; Property Information</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"What configurations are available?" "Is it RERA registered?" &mdash; instant answers so your sales team handles only serious buyers.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Price of a 2BHK in Sky Towers?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Sky Towers 2BHK from ₹68L (865 sq ft). RERA registered. Possession Dec 2026. Floor plan or site visit? 🏗️</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">2</span><span class="uc-title">Payment Plan &amp; Home Loan Queries</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"Do you have construction-linked plans?" "Can I get a home loan?" &mdash; bot explains financial options, reducing load on your sales team.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Do you offer any subvention scheme?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Yes &mdash; 10:80:10 plan. 10% now, bank pays 80% at possession, 10% on handover. EMI starts only after possession. Finance team call?</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">3</span><span class="uc-title">Site Visit Logistics</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"Is the sample flat open Sunday?" "How do I get there?" &mdash; bot answers from KB. For visit confirmation, it collects the visitor's name, preferred day, and phone number.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Is the site office open this Sunday?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Yes, open Sunday 10 AM&ndash;5 PM. Here's the address + Maps link: [link] 📍 May I have your name and number so our team can confirm your visit time?</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Education -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sup">Sector 04</div>
+        <div class="card-title-row">
+          <span class="card-emoji">📚</span>
+          <div>
+            <div class="card-title">Education &amp; Edtech</div>
+            <div class="card-sub">Coaching &middot; Online Courses &middot; Test Prep &middot; Skill Training</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">1</span><span class="uc-title">Course &amp; Batch Enquiries</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"When does the next Python batch start?" "How many hours per week?" &mdash; answered automatically at any hour, even before enrolment.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">What's the fee for the NEET crash course?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 NEET 2025 Crash Course: ₹18,000 for 3 months &mdash; live classes, recordings, 5 full mock tests. Next batch Nov 1st. Brochure?</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">2</span><span class="uc-title">Technical &amp; Access Support</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"I can't access my video lecture" "My login isn't working" &mdash; bot resolves common tech issues before escalating to your team.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">My login isn't working on the app.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Try clearing browser cache or reinstalling the app. Still stuck? Share your registered email and I'll escalate to tech support. 🔧</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">3</span><span class="uc-title">Exam Schedule &amp; Mock Test Queries</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"When is the next mock test?" "What's the exam pattern?" &mdash; reduces repetitive queries to faculty and admin teams dramatically.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">When is the next JEE mock test?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Next JEE mock: Saturday Oct 19th at 9 AM. You'll receive the test link by Friday evening. For your score or rank, log in to the student portal: [link] 📊</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BFSI -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sup">Sector 05</div>
+        <div class="card-title-row">
+          <span class="card-emoji">💰</span>
+          <div>
+            <div class="card-title">BFSI &mdash; Finance &amp; Insurance</div>
+            <div class="card-sub">NBFCs &middot; Insurance &middot; Mutual Fund Distributors</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">1</span><span class="uc-title">Loan Process &amp; Status Enquiry</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot explains the general processing timeline and document checklist from KB, then collects the customer's application ID and phone number and passes it to your team for a specific update.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I applied for a ₹5L loan last week. What's the status?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Personal loan verification typically takes 3&ndash;5 working days. Could you share your application ID and registered phone number? I'll pass it to our team for a specific update. 📋</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">2</span><span class="uc-title">EMI &amp; Payment Queries</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot answers general payment process questions from KB. For account-specific issues like failed debits, it collects the customer's account number and issue, then escalates to your team.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">My EMI got deducted twice this month.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 That sounds like a duplicate debit &mdash; covered under our refund policy. Could you share your account number and registered phone? I'll pass this to our accounts team. 🔄</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sup">3</span><span class="uc-title">Insurance Claim FAQs</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"What documents for a health claim?" "Is my hospital on the network list?" &mdash; answers 24/7, even at 11 PM when a claim is urgent.</div>
+          <div class="wa-wrap"><div class="wa-label sup">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I'm at the hospital. Is Manipal covered under my policy?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🤖 Yes, all Manipal branches are network hospitals under your Star Health policy. Show your e-card at the TPA desk. Send it to you now? 🏥</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div><!-- end panel-sup -->
+
+
+<!-- ══════════ SALES BOT ══════════ -->
+<div class="panel sal" id="panel-sal">
+  <div class="panel-intro">
+    <div class="panel-icon sal">🎯</div>
+    <div class="panel-intro-text">
+      <h2 class="sal">Sales Bot &mdash; Convert leads into paying customers</h2>
+      <p>Qualifies incoming leads, answers buying questions, showcases your products or services, and moves prospects toward a decision &mdash; automatically and at any hour. Your best salesperson who never sleeps.</p>
+    </div>
+  </div>
+  <div class="grid">
+
+    <!-- D2C Sales -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sal">Sector 01</div>
+        <div class="card-title-row"><span class="card-emoji">🛒</span>
+          <div><div class="card-title">D2C &amp; E-Commerce</div><div class="card-sub">Online Brands &middot; Beauty &middot; Nutrition &middot; Home &amp; Lifestyle</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">1</span><span class="uc-title">Personalised Product Recommendation</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Customer says "Looking for a protein powder." Bot asks goal, diet, budget &mdash; recommends the right SKU, shares the product link, and nudges toward purchase.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Looking for a protein powder under ₹2,000.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Are you vegetarian? Goal: muscle gain or weight loss?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">Veg, muscle gain.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 MuscleMax Whey Chocolate 1kg &mdash; ₹1,799, 24g protein/scoop. Link + 10% off code FIRST10 ✅</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">2</span><span class="uc-title">Offer &amp; Combo Upselling</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">When a customer shows interest in one product, bot suggests value combos, limited-time offers, and bundle deals &mdash; increasing average order value automatically.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I want to buy the face serum.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Vitamin C Serum ₹649. Add Sunscreen SPF 50 (₹399) and get both for ₹899 &mdash; saving ₹149. Combo? 🌟</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">3</span><span class="uc-title">Abandoned Cart Recovery</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">When a customer drops off mid-conversation, the Sales Bot re-engages within 30 minutes with a nudge, social proof, or a small incentive.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 You were looking at our Hair Growth Kit earlier. Still interested? 200+ orders this week. I can hold it 2 hours with ₹50 off &mdash; say YES to confirm! ⏰</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Real Estate Sales -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sal">Sector 02</div>
+        <div class="card-title-row"><span class="card-emoji">🏘️</span>
+          <div><div class="card-title">Real Estate</div><div class="card-sub">Developers &middot; Channel Partners &middot; Luxury Projects</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">1</span><span class="uc-title">Lead Qualification from Portals</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Leads from 99acres/MagicBricks arrive on WhatsApp. Bot immediately qualifies: buy or rent? budget? timeline? Only serious buyers reach your sales team.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Interested in properties in Whitefield</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Buy or rent? Budget &mdash; under ₹50L, ₹50&ndash;80L, or above ₹80L?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">Buy, around ₹70L</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 3 projects in your range with immediate possession. Share details + floor plans for all 3? 🏠</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">2</span><span class="uc-title">Site Visit Scheduling</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot converts enquiry to a confirmed site visit &mdash; captures date, time, number of people, and sends reminders &mdash; without a single call from your team.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Can I visit the project this weekend?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Saturday: 11 AM, 2 PM, 4 PM &nbsp;|&nbsp; Sunday: 10 AM, 1 PM. Which works? Confirmation + Maps link sent. 📍</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">3</span><span class="uc-title">Competitive Objection Handling</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"Why your project over Prestige?" Bot answers with your USPs &mdash; location, amenities, price advantage, construction quality &mdash; keeping the prospect engaged.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Is this better than the Prestige project nearby?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 ₹12L lower for same config, ready possession vs. 18-month wait, pool in our clubhouse &mdash; theirs doesn't have one. Side-by-side comparison? 📊</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insurance Sales -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sal">Sector 03</div>
+        <div class="card-title-row"><span class="card-emoji">🛡️</span>
+          <div><div class="card-title">Insurance &amp; Financial Products</div><div class="card-sub">Health &middot; Life Insurance &middot; Mutual Funds &middot; Loans</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">1</span><span class="uc-title">Need Assessment &amp; Profile Building</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot asks age, family size, existing coverage, and income &mdash; then recommends the right plan from your portfolio, like a trained advisor available 24/7.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I need health insurance for my family of 4.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Ages? Any existing medical conditions?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">Me 38, wife 35, kids 10 &amp; 7. No conditions.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 ₹10L family floater: ₹18,000&ndash;22,000/yr. Compare 3 plans? 📋</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">2</span><span class="uc-title">Premium Calculation &amp; Plan Comparison</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot calculates and shows 2&ndash;3 options with coverage, premium, and key differences &mdash; saving your agents hours of repeated phone explanations every day.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">What would ₹1 crore life cover cost at age 35?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Non-smoker, 35 yrs: ₹1Cr term for 30 yrs = ₹11,000&ndash;14,000/yr. Compare HDFC, ICICI &amp; LIC? 📊</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">3</span><span class="uc-title">Document Collection &amp; Application</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Once a customer is ready, bot guides them through required documents, collects them on WhatsApp, and hands off to your team with a complete pre-filled brief.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I'm ready to buy the health plan. What next?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Please upload your PAN, Aadhaar, and passport photo here. Our advisor will complete the process with you today. 📎</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Automobile -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sal">Sector 04</div>
+        <div class="card-title-row"><span class="card-emoji">🚗</span>
+          <div><div class="card-title">Automobile Showrooms</div><div class="card-sub">Car Dealerships &middot; Two-Wheelers &middot; EV Brands</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">1</span><span class="uc-title">On-Road Price &amp; Variant Enquiry</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"On-road price of Swift VXi in Hyderabad?" Bot answers with ex-showroom, RTO, insurance, and total &mdash; saving your team dozens of repeated calls daily.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">On-road price of Nexon EV Max in Pune?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Nexon EV Max Pune: Ex-sh ₹19.09L + RTO ₹1.9L + Ins ₹55K = ~₹21.5L. FAME subsidy ₹1.5L applies. Exact quote? 🚗⚡</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">2</span><span class="uc-title">Test Drive Booking</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot converts "I'm interested" to a confirmed test drive slot &mdash; capturing name, model, preferred date &mdash; without a single call from your sales team.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Can I book a test drive for the Creta Saturday?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Saturday slots: 10 AM, 12 PM, 3 PM. Which works? I'll confirm + send showroom address. 🕐</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">3</span><span class="uc-title">Finance &amp; EMI Calculation</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot calculates EMI based on down payment, tenure, and model &mdash; and offers to connect with your finance desk, turning a casual enquiry into a hot lead.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">EMI for Brezza if I pay ₹2L down?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Brezza ZXi ~₹13.96L on-road, ₹2L down, 8.5% for 5 yrs: EMI ~₹24,300/month. Zero-down option available. Finance call? 📞</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Travel -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num sal">Sector 05</div>
+        <div class="card-title-row"><span class="card-emoji">✈️</span>
+          <div><div class="card-title">Travel &amp; Hospitality</div><div class="card-sub">Tour Operators &middot; Hotels &middot; Resorts &middot; Event Venues</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">1</span><span class="uc-title">Holiday Package Discovery</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"5-day trip to Rajasthan for 2." Bot asks budget, dates, interests &mdash; then presents 2&ndash;3 curated packages with inclusions, price, and a booking link.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Goa trip, 2 adults, 4 nights, November.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Budget per couple: economy ₹22K &middot; comfort ₹35K &middot; premium ₹55K. All include stay + breakfasts + transfers. 🌊</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">2</span><span class="uc-title">Room Availability &amp; Instant Quote</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">"Rooms Oct 15&ndash;18?" Bot checks availability, quotes rates for different categories, and prompts to book &mdash; all on WhatsApp, no website needed.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Room available 20&ndash;23 Dec?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Available! 3 nights: Deluxe ₹4,200/night &middot; Pool View ₹5,800/night. Breakfast included. Block a room? 🏨</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge sal">3</span><span class="uc-title">Upselling Add-ons &amp; Experiences</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Once a customer books, bot offers add-ons &mdash; airport transfers, sightseeing, anniversary setups, spa treatments &mdash; increasing revenue per booking automatically.</div>
+          <div class="wa-wrap"><div class="wa-label sal">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🎯 Your Coorg stay is confirmed! 🎉 Add coffee plantation tour (₹1,200/couple) or candlelit dinner by the pool (₹2,400)? Most guests love the tour! 🌿</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div><!-- end panel-sal -->
+
+
+<!-- ══════════ LIFECYCLE BOT ══════════ -->
+<div class="panel lif" id="panel-lif">
+  <div class="panel-intro">
+    <div class="panel-icon lif">🔄</div>
+    <div class="panel-intro-text">
+      <h2 class="lif">Lifecycle Bot &mdash; Retain &amp; re-engage your customers</h2>
+      <p>Proactively reaches out to your existing customers &mdash; to re-engage, remind, reward, and retain them. Turns one-time buyers into loyal customers who come back again and again. Works entirely in the background.</p>
+    </div>
+  </div>
+  <div class="grid">
+
+    <!-- D2C Lifecycle -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num lif">Sector 01</div>
+        <div class="card-title-row"><span class="card-emoji">🛍️</span>
+          <div><div class="card-title">D2C &amp; Retail</div><div class="card-sub">Online Brands &middot; Fashion &middot; Beauty &middot; FMCG &middot; Supplements</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">1</span><span class="uc-title">Replenishment Reminders</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot tracks purchase dates and sends personalised "time to reorder" messages for consumable products &mdash; face wash, protein, vitamins &mdash; increasing repeat purchase rate automatically.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Priya! 28 days since your Vitamin C Serum. Almost done? Restock now and get 10% off as a loyalty reward &mdash; until Sunday only! [Reorder link] 🌟</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">2</span><span class="uc-title">Win-Back Campaign</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot identifies customers inactive 60+ days and sends a personalised win-back offer &mdash; typically recovering 15&ndash;25% of dormant customers who would otherwise never return.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 We miss you, Rohit! 😊 Here's an exclusive comeback: 20% off + free shipping. Code: MISSYOU20 &mdash; valid 48 hours only! ⏰</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">3</span><span class="uc-title">Festive &amp; Birthday Campaigns</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot sends Diwali, Dussehra, or birthday offers to your customer list &mdash; personalised by name and past purchase &mdash; converting celebrations into revenue spikes without manual work.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Happy Diwali, Ananya! 🪔 Early access to our Diwali Sale &mdash; 30% off sitewide before we go public tomorrow. Shop: [link]. Ends midnight! 🎉</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Healthcare Lifecycle -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num lif">Sector 02</div>
+        <div class="card-title-row"><span class="card-emoji">🏥</span>
+          <div><div class="card-title">Healthcare &amp; Clinics</div><div class="card-sub">Hospitals &middot; Diagnostic Labs &middot; Dental &middot; Eye Clinics</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">1</span><span class="uc-title">Annual Health Check-Up Reminder</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot tracks patient last visit dates and sends annual check-up reminders &mdash; recovering patients who would otherwise forget and generating consistent revenue from your existing base.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Rajesh, almost a year since your last check-up. Annual preventive package (Full Body + Thyroid + ECG) ₹999 &mdash; book by Oct 31 and get a free Vitamin D test! [Book Now] 🩺</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">2</span><span class="uc-title">Follow-Up Appointment Reminders</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot automatically reminds patients told "come back in 3 months" &mdash; recovering appointments that would otherwise be forgotten and reducing revenue leakage.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Sunita, Dr. Nair recommended a follow-up 3 months after your last visit &mdash; that's Oct 15th. Book a slot? Mon 10 AM, Wed 3 PM, Fri 11 AM. 📅</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">3</span><span class="uc-title">Seasonal Health Campaigns</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot sends monsoon/flu season alerts to your patient database with relevant packages &mdash; dengue tests in July, flu shots in October &mdash; driving inbound volume when most needed.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 🌧️ Dengue cases rising in Hyderabad. Get Dengue NS1 + CBC panel for ₹299 (regular ₹499) at all branches this week. Book: [link]</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Education Lifecycle -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num lif">Sector 03</div>
+        <div class="card-title-row"><span class="card-emoji">🎓</span>
+          <div><div class="card-title">Education &amp; Edtech</div><div class="card-sub">Online Courses &middot; Coaching Institutes &middot; Skill Platforms</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">1</span><span class="uc-title">Course Completion Nudges</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot tracks student progress and nudges those who stalled &mdash; "You're 60% done, your certificate is waiting" &mdash; recovering drop-offs and improving completion rates.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Karan! 65% through Python Programming &mdash; just 3 modules left! 🎯 Your certificate is almost ready. Continue from Module 7: [link]</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">2</span><span class="uc-title">Re-Enrollment Campaigns</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot sends early-bird offers to previous batch students when a new batch opens &mdash; with personalised discounts &mdash; converting alumni into repeat revenue.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Meera! Advanced Data Science starts Nov 1st. As a previous student: ₹5,000 off the ₹28,000 fee. Only 12 seats left. Enroll by Oct 20: [link] 📊</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">3</span><span class="uc-title">Free Webinar Invites</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot invites cold students and past customers to free webinars &mdash; warming them up and pulling them back into the funnel without aggressive direct selling.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Aditya! Free 1-hour live: "Land Your First Data Job in 90 Days" &mdash; Saturday 5 PM. 500 registered. Save your spot: [link] 🎤</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NBFC Lifecycle -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num lif">Sector 04</div>
+        <div class="card-title-row"><span class="card-emoji">🏦</span>
+          <div><div class="card-title">Banking, NBFC &amp; Fintech</div><div class="card-sub">NBFCs &middot; Microfinance &middot; Digital Lending</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">1</span><span class="uc-title">EMI Payment Reminders</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot sends timely EMI reminders 3 days before and on the due date &mdash; with a direct UPI payment link &mdash; reducing default rates and collection team workload significantly.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Suresh, your EMI of ₹8,750 is due Oct 5th (3 days). Pay now to avoid late fees: [UPI Pay link] 💳 Already paid? Please ignore &mdash; thank you!</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">2</span><span class="uc-title">Top-Up Loan Offers</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot identifies borrowers with 6+ months clean repayment and proactively offers top-up loans &mdash; converting your best customers into higher-value relationships automatically.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Congratulations, Deepa! 🎉 Your repayment record qualifies you for a pre-approved ₹2L top-up at 10.9% p.a. No new documents. Reply YES to know more. ✅</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">3</span><span class="uc-title">Insurance &amp; Investment Cross-Sell</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot cross-sells complementary products &mdash; loan protection insurance, FDs, SIPs &mdash; to existing customers at the right moment, opening new revenue streams.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Vijay, Loan Shield Insurance: ₹299/month covers your ₹5L loan if something unexpected happens. 68% of our borrowers choose it. Details? 🛡️</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Salon Lifecycle -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num lif">Sector 05</div>
+        <div class="card-title-row"><span class="card-emoji">💆</span>
+          <div><div class="card-title">Salon, Spa &amp; Wellness</div><div class="card-sub">Salons &middot; Spas &middot; Gyms &middot; Yoga Studios &middot; Clinics</div></div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">1</span><span class="uc-title">Appointment Re-Booking Reminder</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot tracks last appointment and reminds customers it's time to come back &mdash; converting one-time visitors into regulars automatically.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Neha! 5 weeks since your last haircut at Style Studio. 💇‍♀️ Ready for a refresh? Book this weekend and we'll add a free head massage. [Book Now] ✨</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">2</span><span class="uc-title">New Service Launch to Loyal Clients</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">When the salon adds a new service, bot announces it to loyal customers first with a launch discount &mdash; filling slots before going public and making customers feel valued.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Hi Shruti! We just launched the Korean Glass Skin Facial. As a loyal client: first slot + ₹500 off. Only 8 slots this week: [Book here] 🌟</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge lif">3</span><span class="uc-title">Referral Programme Activation</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot asks happy customers to refer friends &mdash; reward for both &mdash; turning your existing clients into a word-of-mouth growth engine that delivers new bookings at zero cost.</div>
+          <div class="wa-wrap"><div class="wa-label lif">Sample message sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">🔄 Loved your visit, Pooja? 😊 Refer a friend &mdash; you BOTH get ₹300 off your next service when they book. Share this link: [refer link] 💝</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div><!-- end panel-lif -->
+
+
+<!-- ══════════ APPOINTMENT BOT ══════════ -->
+<div class="panel app" id="panel-app">
+  <div class="panel-intro">
+    <div class="panel-icon app">📅</div>
+    <div class="panel-intro-text">
+      <h2 class="app">Appointment Bot &mdash; Book slots, cut no-shows, fill the calendar</h2>
+      <p>Takes bookings on WhatsApp 24/7, sends instant confirmations, and runs a 3-message reminder sequence before every appointment. Cuts no-show rates by 20&ndash;30% and frees your front desk from the phone entirely.</p>
+    </div>
+  </div>
+  <div class="grid">
+
+    <!-- Restaurant -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num app">Sector 01</div>
+        <div class="card-title-row">
+          <span class="card-emoji">🍽️</span>
+          <div>
+            <div class="card-title">Restaurant &amp; F&amp;B</div>
+            <div class="card-sub">Restaurants &middot; Cafés &middot; Bars &middot; Fine Dining &middot; Cloud Kitchens</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">1</span><span class="uc-title">Table Reservation &amp; Group Bookings</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot takes table reservations 24/7 &mdash; collects date, time, party size, and any special requests &mdash; then sends an instant confirmation. No missed calls, no front-desk time spent on bookings.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Table for 4 on Saturday evening?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Saturday slots: 7 PM, 7:30 PM, 8 PM. Which works? Name for the reservation?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">7:30 PM, Arjun.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Confirmed! Table for 4 at 7:30 PM Saturday under Arjun. 📍 [Maps link]. Reminder sent the day before. See you Saturday! 🍽️</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">2</span><span class="uc-title">No-Show Reminders &amp; Slot Recovery</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot sends a reminder the evening before and the morning of every reservation. For non-responses, it follows up one more time. Cancellations trigger an immediate re-offer to the waitlist &mdash; so no slot goes to waste.</div>
+          <div class="wa-wrap"><div class="wa-label app">Reminder sent by bot (morning of)</div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Hi Arjun! Reminder: your table for 4 is booked tonight at 7:30 PM at The Urban Table. Reply CANCEL if plans change &mdash; we can offer your slot to others. See you tonight! 🙌</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">3</span><span class="uc-title">Event &amp; Special Occasion Bookings</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Birthday dinners, anniversaries, corporate lunches &mdash; bot collects event type, guest count, dietary requirements, and special requests, and passes a structured brief to your team before the customer arrives.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">We want to book for a birthday dinner, 8 people.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Happy to arrange that! Preferred date and time? Any dietary requirements or a cake arrangement needed? I'll prepare your table and brief our team. 🎂</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Salon -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num app">Sector 02</div>
+        <div class="card-title-row">
+          <span class="card-emoji">💇</span>
+          <div>
+            <div class="card-title">Salon &amp; Beauty Studio</div>
+            <div class="card-sub">Hair Salons &middot; Beauty Parlours &middot; Nail Studios &middot; Spas</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">1</span><span class="uc-title">Service Booking &amp; Stylist Selection</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Customer says "I want a haircut + colour." Bot shows available slots, asks for stylist preference if applicable, confirms the appointment, and sends a reminder 24 hours before. Every booking is logged without a single phone call.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I want a haircut and highlights. When are you free?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Available: Sat 11 AM, Sat 2 PM, Sun 10 AM. With which stylist — Priya or any available?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">Sat 11 AM, Priya please.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Booked! Haircut + Highlights with Priya, Saturday 11 AM. Reminder tomorrow. See you then! ✨</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">2</span><span class="uc-title">No-Show Reminders (3-message sequence)</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot sends: (1) confirmation immediately on booking, (2) a reminder 24 hours before, (3) a morning-of reminder. If the customer doesn't confirm the morning-of, one follow-up message goes out. Reduces no-shows by 20&ndash;30%.</div>
+          <div class="wa-wrap"><div class="wa-label app">Morning-of reminder (sent by bot)</div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Good morning! You have a haircut + highlights with Priya at 11 AM today at Glow Studio. We're saving your chair &mdash; see you soon! If you need to reschedule, reply here. 💇</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">3</span><span class="uc-title">Rescheduling &amp; Cancellation Handling</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Customer replies "Can I shift to Sunday?" Bot shows available slots, moves the booking, sends a new confirmation, and updates the reminder sequence &mdash; without tying up your receptionist.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Can I reschedule my Saturday appointment to Sunday?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Sunday slots with Priya: 10 AM, 1 PM, 3 PM. Which works?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">1 PM please.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Done! Moved to Sunday 1 PM with Priya. New reminder set. See you Sunday! 🌟</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fitness -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num app">Sector 03</div>
+        <div class="card-title-row">
+          <span class="card-emoji">🏋️</span>
+          <div>
+            <div class="card-title">Fitness &amp; Wellness Studio</div>
+            <div class="card-sub">Gyms &middot; Yoga Studios &middot; CrossFit &middot; Personal Training &middot; Physiotherapy</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">1</span><span class="uc-title">Class &amp; Session Booking</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Member says "I want to join Saturday yoga." Bot confirms the slot, adds them to the class roster, and sends a reminder before the class. Full class? Bot adds them to the waitlist and notifies them if a slot opens.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">Can I join the 7 AM yoga class tomorrow?</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 2 spots left in tomorrow's 7 AM yoga with Coach Shreya. Confirmed for you! Reminder tonight at 9 PM. 🧘</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">2</span><span class="uc-title">Personal Training Session Scheduling</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot handles all PT booking back-and-forth &mdash; finds mutual availability between trainer and member, confirms the slot, sends reminders. Trainers see their schedule without checking WhatsApp manually.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I want a PT session with Rajan this week.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Rajan is available: Wed 6 AM, Thu 7 AM, Sat 8 AM. Which works for you?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">Thursday 7 AM.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Booked! PT with Rajan, Thursday 7 AM. Reminder Wednesday evening. 💪</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">3</span><span class="uc-title">Trial Class &amp; New Member Onboarding</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">New lead says "I want to try a class." Bot books a trial slot, sends pre-visit instructions (what to bring, how to find the studio), and follows up after the trial to prompt membership sign-up.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I'd like to try a Zumba class. First time here.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Welcome! Zumba trials: Saturday 9 AM or Sunday 10 AM. Wear comfortable shoes, bring a water bottle. Which works? First trial is free! 🎉</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Healthcare Appointments -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-num app">Sector 04</div>
+        <div class="card-title-row">
+          <span class="card-emoji">🩺</span>
+          <div>
+            <div class="card-title">Healthcare &amp; Clinics</div>
+            <div class="card-sub">Hospitals &middot; Dental &middot; Eye Clinics &middot; Physiotherapy &middot; Diagnostics</div>
+          </div>
+        </div>
+      </div>
+      <div class="uc-list">
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">1</span><span class="uc-title">Doctor Appointment Booking</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot takes OPD and specialist appointments 24/7 &mdash; asks for department or doctor preference, collects date and contact info, and confirms. Patients don't need to call during clinic hours; they book whenever it's convenient.</div>
+          <div class="wa-wrap"><div class="wa-label app">Sample conversation</div>
+            <div class="wa-row user"><div class="wa-bubble">I need to see an orthopaedic doctor.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Dr. Patel (Ortho) has slots: Mon 10 AM, Tue 3 PM, Thu 11 AM. Your preference?</div></div>
+            <div class="wa-row user"><div class="wa-bubble">Monday 10 AM.</div></div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Confirmed! Dr. Patel, Monday 10 AM. Please bring your X-rays if available. Reminder Sunday evening. 🏥</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">2</span><span class="uc-title">Pre-Appointment Reminders &amp; Instructions</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">Bot sends a reminder 24 hours before every appointment, including any preparation instructions (fasting, documents to bring). Dramatically reduces no-show rates and the clinic's follow-up call workload.</div>
+          <div class="wa-wrap"><div class="wa-label app">Reminder sent by bot</div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Hi Meena, your appointment with Dr. Patel is tomorrow at 10 AM. Please bring your previous X-rays or MRI reports if available. The clinic is at [address]. See you tomorrow! 🩺</div></div>
+          </div>
+        </div>
+        <div class="uc" onclick="toggleUC(this)">
+          <div class="uc-header"><span class="uc-badge app">3</span><span class="uc-title">Follow-Up Appointment Booking</span><span class="uc-chevron">&#8250;</span></div>
+          <div class="uc-desc">After a visit, bot proactively messages the patient to book the follow-up the doctor recommended &mdash; "come back in 2 weeks" becomes an actual confirmed booking, not a good intention that gets forgotten.</div>
+          <div class="wa-wrap"><div class="wa-label app">Message sent after consultation</div>
+            <div class="wa-row bot"><div class="wa-bubble">📅 Hi Meena, Dr. Patel recommended a follow-up in 2 weeks to review your X-rays. Book now? Available: Mon 11 AM, Wed 10 AM, Fri 3 PM. 📅</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div><!-- end panel-app -->
+
+<!-- Footer -->
+<div class="footer">
+  <p style="font-weight:700;color:var(--text);margin-bottom:4px">Alphabot &mdash; WhatsApp AI Agents for Indian Businesses</p>
+  <p>Support Bot &nbsp;&middot;&nbsp; Sales Bot &nbsp;&middot;&nbsp; Lifecycle Bot &nbsp;&middot;&nbsp; Appointment Bot</p>
+  <p style="margin-top:8px">Each bot responds from your own Knowledge Base &mdash; your products, your pricing, your tone of voice.</p>
+  <p style="margin-top:4px;font-size:11px">Conversation examples are illustrative. Actual responses are generated from your configured Knowledge Base. &copy; 2026 Alphabot.</p>
+</div>
+
+</div><!-- .shell -->
+
+<script>
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('panel-' + id).classList.add('active');
+  document.querySelectorAll('.tab.' + id).forEach(function(t) { t.classList.add('active'); });
+}
+document.documentElement.style.setProperty('--surface2', getComputedStyle(document.documentElement).getPropertyValue('--card'));
+function toggleUC(el) {
+  var isOpen = el.classList.contains('open');
+  el.parentElement.querySelectorAll('.uc').forEach(function(u) { u.classList.remove('open'); });
+  if (!isOpen) el.classList.add('open');
+}
+</script>
