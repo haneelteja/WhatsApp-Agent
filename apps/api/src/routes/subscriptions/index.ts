@@ -17,8 +17,9 @@ async function sendEmail(to: string, subject: string, html: string) {
 }
 
 const PLANS: Record<string, { label: string; amountRupees: number; products: string[] }> = {
-  growth:       { label: 'Growth',       amountRupees: 2499, products: ['support_bot'] },
-  professional: { label: 'Professional', amountRupees: 4999, products: ['support_bot', 'sales_bot', 'lifecycle_bot'] },
+  starter: { label: 'Starter', amountRupees: 8000,  products: ['support_bot'] },
+  growth:  { label: 'Growth',  amountRupees: 15000, products: ['support_bot', 'sales_bot'] },
+  scale:   { label: 'Scale',   amountRupees: 25000, products: ['support_bot', 'sales_bot', 'appointment_bot', 'lifecycle_bot'] },
 };
 
 const WEB_BASE = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
@@ -178,7 +179,7 @@ export async function subscriptionRoutes(fastify: FastifyInstance): Promise<void
           if (invite) {
             const inviteUrl   = `${WEB_BASE}/invite/${invite.token}`;
             const planLabels: Record<string, string> = {
-              growth: 'Growth', professional: 'Professional',
+              starter: 'Starter', growth: 'Growth', scale: 'Scale',
             };
 
             const html = `

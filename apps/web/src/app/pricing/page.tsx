@@ -2,64 +2,64 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Bot, Check, X, ArrowRight, MessageSquare, Zap, LifeBuoy, Loader2 } from 'lucide-react';
+import { Bot, Check, X, ArrowRight, MessageSquare, Zap, LifeBuoy, Calendar, Loader2 } from 'lucide-react';
 import { initiateSubscriptionAction } from '@/app/actions/subscriptions';
 
 const PLANS = [
   {
     key:      'starter',
     name:     'Starter',
-    price:    null,
-    priceLabel: 'Free',
-    desc:     'Perfect for small teams getting started with WhatsApp AI.',
-    cta:      'Contact us',
-    ctaHref:  'mailto:nalluruhaneel@gmail.com?subject=Alphabot Starter Plan',
+    price:    8000,
+    priceLabel: '₹8,000',
+    desc:     'One Support Bot for teams getting started with WhatsApp AI.',
+    cta:      'Get started',
+    ctaHref:  'https://wa.me/919642917777?text=Hi%2C+I%27d+like+to+subscribe+to+the+Alphabot+Starter+Plan',
     highlight: false,
     features: [
       'Support Bot (1 WhatsApp number)',
-      'Up to 500 conversations/mo',
-      'Knowledge base (50 entries)',
+      'Up to 1,000 conversations/mo',
+      'Knowledge base (200 entries)',
       'Basic analytics',
       'Email support',
     ],
-    missing: ['Sales Bot', 'Lifecycle Bot', 'CRM integrations', 'Priority support'],
+    missing: ['Sales Bot', 'Appointment Bot', 'Lifecycle Bot', 'Priority support'],
   },
   {
     key:       'growth',
     name:      'Growth',
-    price:     2499,
-    priceLabel: '₹2,499',
-    desc:      'For growing businesses that need sales and support automation.',
+    price:     15000,
+    priceLabel: '₹15,000',
+    desc:      'Support and Sales bots for businesses scaling their pipeline.',
     cta:       'Get started',
     ctaHref:   null,
     highlight:  true,
     features: [
       'Support Bot + Sales Bot',
-      'Up to 5,000 conversations/mo',
-      'Unlimited knowledge base',
+      'Up to 3,000 conversations/mo',
+      'Knowledge base (500 entries)',
       'Lead pipeline & CRM sync',
       'Broadcast campaigns',
       'Advanced analytics',
       'Priority email support',
     ],
-    missing: ['Lifecycle Bot', 'Order & invoice automation'],
+    missing: ['Appointment Bot', 'Lifecycle Bot'],
   },
   {
-    key:       'professional',
-    name:      'Professional',
-    price:     4999,
-    priceLabel: '₹4,999',
-    desc:      'Full platform access for businesses with complex workflows.',
+    key:       'scale',
+    name:      'Scale',
+    price:     25000,
+    priceLabel: '₹25,000',
+    desc:      'All 4 bots. Unlimited conversations. Full platform access.',
     cta:       'Get started',
     ctaHref:   null,
     highlight:  false,
     features: [
-      'Support Bot + Sales Bot + Lifecycle Bot',
-      'Unlimited conversations',
+      'All 4 bots (Support + Sales + Appointment + Lifecycle)',
+      'Up to 10,000 conversations/mo',
+      'Unlimited knowledge base',
+      'Appointment booking & reminders',
       'Order & invoice automation',
       'Payment collection via WhatsApp',
-      'Return & replacement flows',
-      'Voice AI (Exotel)',
       'All CRM integrations',
       'Dedicated onboarding',
     ],
@@ -192,13 +192,14 @@ export default function PricingPage() {
           Pick a plan.<br />Your AI is live in minutes.
         </h1>
         <p className="text-gray-500 text-lg mt-4 max-w-xl mx-auto leading-relaxed">
-          No setup fees. No contracts. Pay monthly and cancel anytime.
+          No contracts. Pay monthly and cancel anytime.
         </p>
 
         {/* Bot icons */}
-        <div className="flex items-center justify-center gap-6 mt-8 text-sm text-gray-400">
+        <div className="flex items-center justify-center gap-6 mt-8 text-sm text-gray-400 flex-wrap">
           <span className="flex items-center gap-1.5"><LifeBuoy size={14} className="text-sky-400" /> Support Bot</span>
           <span className="flex items-center gap-1.5"><MessageSquare size={14} className="text-violet-400" /> Sales Bot</span>
+          <span className="flex items-center gap-1.5"><Calendar size={14} className="text-pink-400" /> Appointment Bot</span>
           <span className="flex items-center gap-1.5"><Zap size={14} className="text-orange-400" /> Lifecycle Bot</span>
         </div>
       </div>

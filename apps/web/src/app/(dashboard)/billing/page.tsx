@@ -13,12 +13,12 @@ const PLAN_META = {
     badgeBg: 'bg-slate-100',
     badgeText: 'text-slate-700',
     bots: 1,
-    conversations: '500',
+    conversations: '1,000',
     features: [
-      '1 active bot',
-      '500 conversations / month',
+      '1 active bot (Support)',
+      '1,000 conversations / month',
       'Standard guardrails',
-      'Knowledge base',
+      'Knowledge base (200 entries)',
       'Auto follow-ups',
       'Email support',
     ],
@@ -31,12 +31,12 @@ const PLAN_META = {
     badgeBg: 'bg-violet-100',
     badgeText: 'text-violet-700',
     bots: 2,
-    conversations: '2,000',
+    conversations: '3,000',
     features: [
-      '2 active bots',
-      '2,000 conversations / month',
+      '2 active bots (Support + Sales)',
+      '3,000 conversations / month',
       'Advanced guardrails',
-      'Knowledge base',
+      'Knowledge base (500 entries)',
       'Customer sentiment',
       'Auto follow-ups',
       'Analytics',
@@ -50,14 +50,14 @@ const PLAN_META = {
     border: 'border-emerald-200',
     badgeBg: 'bg-emerald-100',
     badgeText: 'text-emerald-700',
-    bots: 3,
-    conversations: 'Unlimited',
+    bots: 4,
+    conversations: '10,000',
     features: [
-      'All 3 bots',
-      'Unlimited conversations',
+      'All 4 bots (Support + Sales + Appointment + Lifecycle)',
+      '10,000 conversations / month',
       'Full guardrails suite',
-      'Knowledge base',
-      'Customer sentiment',
+      'Unlimited knowledge base',
+      'Appointment booking & reminders',
       'Auto follow-ups',
       'Advanced analytics',
       'Dedicated support',
@@ -81,9 +81,10 @@ function formatTokens(n: number): string {
 }
 
 const BOT_META: Record<string, { name: string; color: string; bg: string; border: string }> = {
-  support_bot:   { name: 'Support Bot',   color: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200'    },
-  sales_bot:     { name: 'Sales Bot',     color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
-  lifecycle_bot: { name: 'Lifecycle Bot', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
+  support_bot:     { name: 'Support Bot',     color: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-200'    },
+  sales_bot:       { name: 'Sales Bot',       color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
+  appointment_bot: { name: 'Appointment Bot', color: 'text-pink-600',   bg: 'bg-pink-50',   border: 'border-pink-200'   },
+  lifecycle_bot:   { name: 'Lifecycle Bot',   color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
 };
 
 export default async function BillingPage({
@@ -147,7 +148,7 @@ export default async function BillingPage({
 
   const now = Date.now();
 
-  const PLAN_LIMIT_NUM: Record<PlanKey, number> = { starter: 500, growth: 2000, scale: Infinity };
+  const PLAN_LIMIT_NUM: Record<PlanKey, number> = { starter: 1000, growth: 3000, scale: 10000 };
   const planLimitNum  = PLAN_LIMIT_NUM[plan];
   const usagePercent  = isFinite(planLimitNum) ? Math.round(((convThisMonth ?? 0) / planLimitNum) * 100) : 0;
   const isOverLimit   = isFinite(planLimitNum) && (convThisMonth ?? 0) >= planLimitNum;

@@ -27,13 +27,15 @@ const PAY_BASE  = ENV === 'prod' ? 'https://pay.easebuzz.in/'       : 'https://t
 const DASH_BASE = ENV === 'prod' ? 'https://dashboard.easebuzz.in/' : 'https://testdashboard.easebuzz.in/';
 
 const PLAN_AMOUNTS: Record<string, string> = {
-  growth: '2499.00',
-  scale:  '4999.00',
+  starter: '8000.00',
+  growth:  '15000.00',
+  scale:   '25000.00',
 };
 
 const PLAN_LABELS: Record<string, string> = {
-  growth: 'Alphabot Growth Plan',
-  scale:  'Alphabot Scale Plan',
+  starter: 'Alphabot Starter Plan',
+  growth:  'Alphabot Growth Plan',
+  scale:   'Alphabot Scale Plan',
 };
 
 function sha512hex(str: string): string {

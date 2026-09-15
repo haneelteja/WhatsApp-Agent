@@ -41,8 +41,9 @@ function htmlRedirect(url: string): Response {
 }
 
 const PLAN_AMOUNTS: Record<string, string> = {
-  growth: '2499.00',
-  scale:  '4999.00',
+  starter: '8000.00',
+  growth:  '15000.00',
+  scale:   '25000.00',
 };
 
 // Easebuzz POSTs here after payment (surl/furl callback).
@@ -107,19 +108,22 @@ export async function POST(req: NextRequest) {
       return htmlRedirect(failure);
     }
 
-    const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
+    const planExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const planExpiresAtDate = planExpiresAt.toISOString().slice(0, 10);
+    const planExpiresAtISO  = planExpiresAt.toISOString();
 
     const admin = getSupabaseAdminClient();
     await Promise.all([
       admin.from('tenants').update({
-        plan:                targetPlan,
-        status:              'active',
-        subscription_status: 'active',
+        plan:                   targetPlan,
+        status:                 'active',
+        subscription_status:    'active',
+        plan_expires_at:        planExpiresAtISO,
+        renewal_7d_reminded_at: null,
+        renewal_3d_reminded_at: null,
       }).eq('id', tenantId),
       admin.from('subscriptions')
-        .update({ tier: targetPlan, next_billing_date: planExpiresAt })
+        .update({ tier: targetPlan, next_billing_date: planExpiresAtDate })
         .eq('tenant_id', tenantId),
     ]);
 

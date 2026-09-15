@@ -25,7 +25,7 @@ const PLANS = [
   {
     key:      'growth',
     name:     'Growth',
-    price:    '₹2,499',
+    price:    '₹15,000',
     period:   '/month',
     color:    'text-violet-700',
     bg:       'bg-violet-50',
@@ -33,10 +33,10 @@ const PLANS = [
     buttonBg: 'bg-violet-600 hover:bg-violet-700',
     icon:     <Star size={16} className="text-violet-500" />,
     features: [
-      '2 active bots',
-      '2,000 conversations / month',
+      '2 active bots (Support + Sales)',
+      '3,000 conversations / month',
       'Advanced guardrails',
-      'Knowledge base',
+      'Knowledge base (500 entries)',
       'Customer sentiment',
       'Auto follow-ups',
       'Analytics',
@@ -46,7 +46,7 @@ const PLANS = [
   {
     key:      'scale',
     name:     'Scale',
-    price:    '₹4,999',
+    price:    '₹25,000',
     period:   '/month',
     color:    'text-emerald-700',
     bg:       'bg-emerald-50',
@@ -54,11 +54,11 @@ const PLANS = [
     buttonBg: 'bg-emerald-600 hover:bg-emerald-700',
     icon:     <Zap size={16} className="text-emerald-500" />,
     features: [
-      'All 3 bots',
-      'Unlimited conversations',
+      'All 4 bots (Support + Sales + Appointment + Lifecycle)',
+      '10,000 conversations / month',
       'Full guardrails suite',
-      'Knowledge base',
-      'Customer sentiment',
+      'Unlimited knowledge base',
+      'Appointment booking & reminders',
       'Auto follow-ups',
       'Advanced analytics',
       'Dedicated support',
@@ -116,8 +116,8 @@ export default function UpgradePlanSection({
 
   const DOWNGRADE_PLAN_LABELS: Record<string, string> = { starter: 'Starter (Free)', growth: 'Growth', scale: 'Scale' };
   const DOWNGRADE_WARNINGS: Record<string, string[]> = {
-    growth:  ['Unlimited conversations → 2,000 / month', 'Lifecycle Bot will be deactivated if active'],
-    starter: ['Conversations limited to 500 / month', 'Only 1 active bot allowed — extras will be deactivated'],
+    growth:  ['10,000 conversations → 3,000 / month', 'Appointment Bot and Lifecycle Bot will be deactivated'],
+    starter: ['Conversations limited to 1,000 / month', 'Only Support Bot allowed — Sales, Appointment, Lifecycle deactivated'],
   };
 
   function handleDowngradeConfirm() {
