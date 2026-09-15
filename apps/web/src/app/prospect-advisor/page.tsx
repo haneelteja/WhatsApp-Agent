@@ -689,7 +689,9 @@ export default function ProspectAdvisorPage() {
             {/* CTAs */}
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
               <a
-                href="mailto:nalluruhaneel@gmail.com?subject=Demo Request — Alphabot"
+                href="https://wa.me/919666526666?text=Hi%2C%20I%27d%20like%20to%20book%20a%20demo%20for%20Alphabot"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors text-sm"
               >
                 Book a free demo <ArrowRight size={15} />
