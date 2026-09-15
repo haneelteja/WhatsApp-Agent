@@ -525,7 +525,7 @@ export default function ProspectAdvisorPage() {
               </div>
 
               <div>
-                <FieldLabel required>What's your primary goal with WhatsApp automation?</FieldLabel>
+                <FieldLabel required>What&apos;s your primary goal with WhatsApp automation?</FieldLabel>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {GOALS.map(g => {
                     const Icon = g.icon;
