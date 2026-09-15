@@ -15,7 +15,7 @@ function logKBHits(tenantId: string, query: string, productType: ProductSlug, re
       product_type: productType,
       score:        null,
     }))
-  ).then(() => {}).catch(() => {});
+  ).then(() => {}, () => {});
 }
 
 const KB_CACHE_TTL = 300; // 5 minutes — KB content changes infrequently

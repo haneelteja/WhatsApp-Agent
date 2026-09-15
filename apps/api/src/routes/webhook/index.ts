@@ -782,7 +782,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         tenant_id:    tenantId,
         query:        incoming.text.slice(0, 500),
         product_type: productType,
-      }).then(() => {}).catch(() => {});
+      }).then(() => {}, () => {});
     }
 
     const contactMemory = formatContactMemory(contactData.memory_json as unknown as Record<string, unknown> | null);
