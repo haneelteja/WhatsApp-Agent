@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `You are Alphabot's AI sales advisor. Analyse a business's profile and generate a precise, personalised bot recommendation with ROI estimates and use cases.
+const SYSTEM_PROMPT = `You are Alphabot's AI sales advisor. Analyse a business's profile and generate a precise, deeply personalised bot recommendation with ROI estimates and rich use cases.
 
 Alphabot is a WhatsApp AI Agent Suite with 4 bots:
 1. Support Bot (₹4,999/mo) — 24/7 automated query handling using a knowledge base. Best for: any business with high inbound support volume, after-hours coverage, FAQ automation.
@@ -18,6 +18,9 @@ ROI estimation guidelines:
 - Lead conversion improvement with bot: 20–40% vs manual
 - No-show reduction with automated reminders: 40–60%
 - After-hours query capture: 30–40% of total daily volume
+- Salon appointment: ₹500–2,000 per slot; fitness class: ₹300–800 per session
+- D2C average order value: ₹800–3,000; cart recovery rate: 15–25%
+- Real estate lead: ₹50,000–2,00,000 lifetime value; qualification saves 3–4hr/lead
 
 Return ONLY a valid JSON object (no markdown, no code fences, no explanation outside the JSON):
 {
@@ -30,19 +33,28 @@ Return ONLY a valid JSON object (no markdown, no code fences, no explanation out
   "roi_payback_period": "<number> weeks",
   "roi_narrative": "1-2 sentences with specific numbers derived from their daily message volume and industry",
   "use_cases": [
-    {"title": "string", "description": "string (1 sentence)", "impact": "string (quantified impact, e.g. saves 3hr/day)"}
+    {
+      "title": "string — specific to their industry (e.g. 'Automated Table Reservations' not 'Booking Automation')",
+      "description": "2-3 sentences describing EXACTLY how the WhatsApp bot handles this scenario: what the customer sends, what the bot does step by step, what happens without staff involvement",
+      "impact": "primary quantified outcome with specific numbers (e.g. 'Reduces no-shows by 40–60%; recovers ₹1,200–1,500 per prevented no-show')",
+      "metric_a": "short metric label + value (e.g. '2–3 hrs/day saved')",
+      "metric_b": "second short metric label + value (e.g. '100% after-hours capture')"
+    }
   ],
-  "business_impact": "2-3 sentences on how this transforms their specific operation — reference their industry and scale",
+  "business_impact": "2-3 sentences on how this transforms their specific operation — reference their industry, team size, and daily volume",
   "secondary_bot": "support|sales|lifecycle|appointments",
   "secondary_name": "string",
   "secondary_reason": "1 sentence why they'd also benefit from this second bot within 60-90 days"
 }
 
 Rules:
-- Provide exactly 4 use_cases
+- Provide exactly 5 use_cases
+- Every use_case title must be industry-specific (name the actual activity: 'Party Booking Flow', 'Stylist Slot Confirmation', 'Trial Class Enquiry', not generic labels)
+- description must describe the actual WhatsApp conversation sequence — mention what the customer says and what the bot does at each step
+- impact must include at least two specific numbers (time saved, revenue recovered, or percentage improvement)
+- metric_a and metric_b must each be under 30 characters
 - Make every field specific to the actual inputs — reference industry, pain points, daily volume, company size
-- Never be generic; if they're a salon, mention appointment slots, stylists, no-shows by name
-- roi_monthly_savings must be a realistic integer (e.g. 24000 not 24000.5)
+- roi_monthly_savings must be a realistic integer
 - recommended_bot and secondary_bot must not be the same value`;
 
 export async function POST(req: NextRequest) {
@@ -82,7 +94,7 @@ Generate the recommendation JSON now.`;
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1500,
+        max_tokens: 2000,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }),

@@ -28,6 +28,8 @@ interface UseCase {
   title: string;
   description: string;
   impact: string;
+  metric_a?: string;
+  metric_b?: string;
 }
 
 interface Analysis {
@@ -648,22 +650,14 @@ export default function ProspectAdvisorPage() {
 
             {/* Use cases */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-4">
-              <h2 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+              <h2 className="font-semibold text-slate-800 mb-1 flex items-center gap-2">
                 <ChevronRight size={16} className="text-emerald-500" />
-                How it works for {lead.industry}
+                Key Use Cases for {lead.industry}
               </h2>
+              <p className="text-xs text-slate-400 mb-4">How the bot handles your specific workflows — step by step</p>
               <div className="space-y-3">
                 {analysis.use_cases.map((uc, i) => (
-                  <div key={i} className="flex gap-3 p-3 rounded-xl bg-slate-50">
-                    <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                      {i + 1}
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800">{uc.title}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">{uc.description}</div>
-                      <div className="text-xs text-emerald-600 font-medium mt-1">{uc.impact}</div>
-                    </div>
-                  </div>
+                  <UseCaseCard key={i} uc={uc} index={i} />
                 ))}
               </div>
             </div>
@@ -789,6 +783,65 @@ export default function ProspectAdvisorPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+const UC_ICONS = [Calendar, Clock, CheckCircle, RefreshCw, TrendingUp];
+const UC_COLORS = [
+  { bg: 'bg-sky-50',    border: 'border-sky-100',    icon: 'text-sky-500',    num: 'bg-sky-100 text-sky-700',    pill: 'bg-sky-50 text-sky-700 border-sky-200' },
+  { bg: 'bg-violet-50', border: 'border-violet-100', icon: 'text-violet-500', num: 'bg-violet-100 text-violet-700', pill: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { bg: 'bg-emerald-50',border: 'border-emerald-100',icon: 'text-emerald-500',num: 'bg-emerald-100 text-emerald-700', pill: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { bg: 'bg-orange-50', border: 'border-orange-100', icon: 'text-orange-500', num: 'bg-orange-100 text-orange-700', pill: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { bg: 'bg-pink-50',   border: 'border-pink-100',   icon: 'text-pink-500',   num: 'bg-pink-100 text-pink-700',   pill: 'bg-pink-50 text-pink-700 border-pink-200' },
+];
+
+function UseCaseCard({ uc, index }: { uc: UseCase; index: number }) {
+  const color = UC_COLORS[index % UC_COLORS.length];
+  const Icon = UC_ICONS[index % UC_ICONS.length];
+  return (
+    <div className={clsx('rounded-2xl border p-4', color.bg, color.border)}>
+      {/* Header */}
+      <div className="flex items-start gap-3 mb-3">
+        <div className={clsx('w-8 h-8 rounded-xl flex items-center justify-center shrink-0', color.num)}>
+          <Icon size={15} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={clsx('text-xs font-bold px-2 py-0.5 rounded-full border', color.pill)}>
+              #{index + 1}
+            </span>
+            <h3 className="text-sm font-bold text-slate-800">{uc.title}</h3>
+          </div>
+        </div>
+      </div>
+
+      {/* Description */}
+      <p className="text-xs text-slate-600 leading-relaxed mb-3 pl-11">{uc.description}</p>
+
+      {/* Impact + metrics */}
+      <div className="pl-11 space-y-2">
+        <div className="flex items-start gap-1.5">
+          <CheckCircle size={12} className="text-emerald-500 mt-0.5 shrink-0" />
+          <p className="text-xs font-semibold text-slate-700 leading-relaxed">{uc.impact}</p>
+        </div>
+        {(uc.metric_a || uc.metric_b) && (
+          <div className="flex flex-wrap gap-2 mt-1">
+            {uc.metric_a && (
+              <span className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-600 text-xs font-medium px-2.5 py-1 rounded-lg">
+                <TrendingUp size={10} className="text-emerald-500" />
+                {uc.metric_a}
+              </span>
+            )}
+            {uc.metric_b && (
+              <span className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-600 text-xs font-medium px-2.5 py-1 rounded-lg">
+                <Star size={10} className="text-amber-400" />
+                {uc.metric_b}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
