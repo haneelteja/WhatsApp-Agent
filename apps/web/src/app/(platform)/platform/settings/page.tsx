@@ -1,4 +1,4 @@
-import { Globe } from 'lucide-react';
+import { Globe, Sparkles, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { ShieldCheck } from 'lucide-react';
 
@@ -33,6 +33,46 @@ export default async function PlatformSettingsPage() {
         <div className="px-5 py-4 space-y-2">
           <InfoRow label="API URL"     value={process.env['NEXT_PUBLIC_API_URL'] ?? '—'} mono />
           <InfoRow label="Reply Model" value={process.env['OPENROUTER_REPLY_MODEL'] ?? 'claude-sonnet-4-6 (default)'} mono />
+        </div>
+      </div>
+
+      {/* Prospect Advisor */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-50">
+          <div className="flex items-center gap-2.5">
+            <Sparkles size={16} className="text-emerald-500" />
+            <h3 className="text-sm font-semibold text-gray-700">Prospect Advisor</h3>
+          </div>
+          <Link
+            href="/prospect-advisor"
+            target="_blank"
+            className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+          >
+            Open page <ExternalLink size={11} />
+          </Link>
+        </div>
+        <div className="px-5 py-4 space-y-2">
+          <InfoRow
+            label="Lead notify email"
+            value={process.env['PROSPECT_ADVISOR_EMAIL'] ?? 'pega2023test@gmail.com (default)'}
+            mono
+          />
+          <InfoRow
+            label="Analysis model"
+            value={process.env['PROSPECT_ADVISOR_MODEL'] ?? process.env['ANTHROPIC_MODEL'] ?? 'claude-haiku-4-5-20251001 (default)'}
+            mono
+          />
+          <InfoRow
+            label="Page URL"
+            value={`${process.env['NEXT_PUBLIC_APP_URL'] ?? ''}/prospect-advisor`}
+            mono
+          />
+        </div>
+        <div className="px-5 pb-4">
+          <p className="text-xs text-gray-400">
+            Configure via environment variables: <code className="bg-slate-50 px-1 rounded">PROSPECT_ADVISOR_EMAIL</code> and{' '}
+            <code className="bg-slate-50 px-1 rounded">PROSPECT_ADVISOR_MODEL</code>.
+          </p>
         </div>
       </div>
     </div>
