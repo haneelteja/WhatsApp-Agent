@@ -1,5 +1,4 @@
 import type { FastifyBaseLogger } from 'fastify';
-import type { WhatsAppProvider } from '@alphabot/shared';
 import { getServerClient } from '@alphabot/database';
 import { WhatsAppGateway } from '../whatsapp/gateway.js';
 import { chatCompletion } from '../../lib/anthropic.js';
@@ -220,8 +219,10 @@ export async function resolveMultiBotRouting(params: {
       cacheSet(stateKey(tenantId, phone), 'routed', ROUTING_TTL),
       cacheSet(botKey(tenantId, phone), matchedBot, ROUTING_TTL),
     ]);
-    log.info({ tenantId, phone, bot: matchedBot }, '[Routing] menu selection → routed');
-    return { handled: false, productType: matchedBot };
+    log.info({ tenantId, phone, bot: matchedBot }, '[Routing] menu selection → routed, next message forwarded to bot');
+    // Return handled:true — don't forward the menu selection digit ("1"/"2") to the bot.
+    // The customer's NEXT natural message will hit the 'routed' branch and go straight to the bot.
+    return { handled: true };
   }
 
   // ── null / awaiting_intent state ─────────────────────────────────────────

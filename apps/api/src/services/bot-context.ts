@@ -34,6 +34,8 @@ export async function getBotContext(
   tenantId: string,
   productSlug: string,
   provider: string,
+  /** For multi-bot routing: when product_slug lookup fails, try lookup by phone_number_id */
+  phoneNumberIdFallback?: string,
 ): Promise<BotContext> {
   const key = `bot_ctx:${tenantId}:${productSlug}:${provider}`;
 
@@ -66,7 +68,7 @@ export async function getBotContext(
 
   // Fallback: query whatsapp_numbers directly (RPC failed or returned null whatsapp_number)
   console.warn(`[BotContext] Falling back to direct query for ${tenantId}/${productSlug}/${provider}`);
-  const { data: wn, error: wnErr } = await db
+  const { data: wnBySlug, error: wnErr } = await db
     .from('whatsapp_numbers')
     .select('config_json, provider')
     .eq('tenant_id', tenantId)
@@ -75,7 +77,25 @@ export async function getBotContext(
     .eq('active', true)
     .single();
 
-  if (wnErr || !wn) {
+  let resolvedWn: { config_json: Record<string, string>; provider: string } | null =
+    wnErr || !wnBySlug ? null : (wnBySlug as { config_json: Record<string, string>; provider: string });
+
+  // For multi-bot routing: the whatsapp_numbers row has e.g. product_slug='support_bot'
+  // but the routed bot may be 'sales_bot'. Fall back to lookup by phone_number_id.
+  if (!resolvedWn && phoneNumberIdFallback) {
+    const { data: wnByPhone } = await db
+      .from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .filter('config_json->>phone_number_id', 'eq', phoneNumberIdFallback)
+      .maybeSingle();
+    if (wnByPhone) {
+      resolvedWn = wnByPhone as { config_json: Record<string, string>; provider: string };
+    }
+  }
+
+  if (!resolvedWn) {
     return EMPTY_CONTEXT;
   }
 
@@ -96,7 +116,7 @@ export async function getBotContext(
   ]);
 
   const ctx: BotContext = {
-    whatsapp_number:     wn as { config_json: Record<string, string>; provider: string },
+    whatsapp_number:     resolvedWn,
     tenant:              (tenantRes.data as { plan: string; status: string } | null) ?? null,
     bot_config:          (botConfigRes.data as BotContext['bot_config']) ?? null,
     platform_guardrails: (platformGRes.data as { value: PlatformGuardrails } | null)?.value ?? null,

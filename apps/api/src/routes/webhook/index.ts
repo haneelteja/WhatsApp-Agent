@@ -326,6 +326,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     tenantId: string,
     productType: ProductType,
     request: FastifyRequest,
+    /** For multi-bot routing: the phone_number_id from the payload, used as fallback in getBotContext */
+    phoneNumberIdHint?: string,
   ): Promise<void> {
     try {
 
@@ -339,12 +341,12 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       body?.object === 'whatsapp_business_account' ? 'meta_cloud' : 'twilio';
 
     // Single RPC call replaces 7 parallel Supabase queries (cache-backed, 60 s TTL)
-    let botCtx = await getBotContext(tenantId, productType, inferredProvider);
+    let botCtx = await getBotContext(tenantId, productType, inferredProvider, phoneNumberIdHint);
 
     // If provider inference was wrong (e.g. body shape didn't match), try the other provider
     if (!botCtx.whatsapp_number) {
       const fallbackProvider = inferredProvider === 'meta_cloud' ? 'twilio' : 'meta_cloud';
-      botCtx = await getBotContext(tenantId, productType, fallbackProvider);
+      botCtx = await getBotContext(tenantId, productType, fallbackProvider, phoneNumberIdHint);
     }
 
     const wn = botCtx.whatsapp_number;
@@ -423,6 +425,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       }
     }
 
+    // For phone contacts: omit name when Meta doesn't send one, so we don't overwrite
+    // the name captured by the routing layer (e.g., "Ravi" from the greeting flow).
+    const phoneContactFields: Record<string, unknown> = { tenant_id: tenantId, phone: phoneValue };
+    if (incoming.contactName) phoneContactFields.name = incoming.contactName;
+
     const contactUpsertResult = isBsuid
       ? await db
           .from('contacts')
@@ -435,7 +442,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       : await db
           .from('contacts')
           .upsert(
-            { tenant_id: tenantId, phone: phoneValue, name: incoming.contactName ?? null },
+            phoneContactFields,
             { onConflict: 'tenant_id,phone', ignoreDuplicates: false }
           )
           .select()
@@ -1545,7 +1552,7 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
       const incoming = gateway.parseIncoming(body);
       if (!incoming) {
         // Delivery receipts or unsupported — fall through to legacy handler for receipt processing
-        await handleWebhookPost(tenantId, (wnRow.product_slug ?? 'support_bot') as ProductType, request);
+        await handleWebhookPost(tenantId, (wnRow.product_slug ?? 'support_bot') as ProductType, request, phoneNumberId);
         return;
       }
 
@@ -1563,8 +1570,10 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
 
       if (routingResult.handled) return; // routing consumed the message
 
-      // Routing complete — forward to the chosen bot
-      await handleWebhookPost(tenantId, routingResult.productType as ProductType, request);
+      // Routing complete — forward to the chosen bot, passing phoneNumberId so
+      // getBotContext can find the whatsapp_numbers row by phone_number_id when
+      // the routed productType (e.g. 'sales_bot') differs from the row's product_slug.
+      await handleWebhookPost(tenantId, routingResult.productType as ProductType, request, phoneNumberId);
       return;
     }
 
