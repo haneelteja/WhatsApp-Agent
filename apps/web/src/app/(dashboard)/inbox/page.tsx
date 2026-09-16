@@ -20,17 +20,22 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 const PRODUCT_COLORS: Record<string, string> = {
-  support_bot:   'bg-sky-50 text-sky-600',
-  sales_bot:     'bg-violet-50 text-violet-600',
-  lifecycle_bot: 'bg-orange-50 text-orange-600',
+  support_bot:     'bg-sky-50 text-sky-600',
+  sales_bot:       'bg-violet-50 text-violet-600',
+  lifecycle_bot:   'bg-orange-50 text-orange-600',
+  appointment_bot: 'bg-pink-50 text-pink-600',
 };
 const PRODUCT_LABEL: Record<string, string> = {
-  support_bot: 'Support', sales_bot: 'Sales', lifecycle_bot: 'Lifecycle',
+  support_bot:     'Support',
+  sales_bot:       'Sales',
+  lifecycle_bot:   'Lifecycle',
+  appointment_bot: 'Appt',
 };
 const BOT_AVATAR: Record<string, { label: string; bg: string }> = {
-  support_bot:   { label: 'SUP', bg: 'bg-sky-500'    },
-  sales_bot:     { label: 'SLS', bg: 'bg-violet-500' },
-  lifecycle_bot: { label: 'LFE', bg: 'bg-orange-500' },
+  support_bot:     { label: 'SUP', bg: 'bg-sky-500'    },
+  sales_bot:       { label: 'SLS', bg: 'bg-violet-500' },
+  lifecycle_bot:   { label: 'LFE', bg: 'bg-orange-500' },
+  appointment_bot: { label: 'APT', bg: 'bg-pink-500'   },
 };
 const AVATAR_COLORS = [
   'bg-emerald-100 text-emerald-700',
