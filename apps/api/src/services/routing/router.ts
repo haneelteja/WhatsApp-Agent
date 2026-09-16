@@ -130,17 +130,18 @@ export async function resolveMultiBotRouting(params: {
   const plan         = (tenant?.plan ?? 'starter') as string;
   const availableBots = PLAN_BOTS[plan] ?? PLAN_BOTS['starter']!;
 
-  // Switch keyword: reset session, show menu
+  // Switch keyword: show menu and put session into awaiting_menu so the
+  // customer's next reply ("1", "2") is handled by the menu picker, not intent classifier.
   if (text && SWITCH_KEYWORDS.some(kw => text.toLowerCase() === kw)) {
+    const menuText = buildMenuText(availableBots, menuLabels, menuIntro);
     await Promise.all([
-      cacheDel(stateKey(tenantId, phone)),
+      gateway.sendMessage(config.phone_number_id, config.access_token, {
+        type: 'text', to: phone, text: menuText,
+      }),
+      cacheSet(stateKey(tenantId, phone), 'awaiting_menu', ROUTING_TTL),
       cacheDel(botKey(tenantId, phone)),
     ]);
-    const menuText = buildMenuText(availableBots, menuLabels, menuIntro);
-    await gateway.sendMessage(config.phone_number_id, config.access_token, {
-      type: 'text', to: phone, text: menuText,
-    });
-    log.info({ tenantId, phone }, '[Routing] switch keyword — showing menu');
+    log.info({ tenantId, phone }, '[Routing] switch keyword — showing menu → awaiting_menu');
     return { handled: true };
   }
 
