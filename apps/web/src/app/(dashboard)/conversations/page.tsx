@@ -22,9 +22,10 @@ import type { ContactSentiment } from '@alphabot/shared';
 // ── Shared constants ──────────────────────────────────────────────────────────
 
 const PRODUCT_LABELS: Record<string, { label: string; color: string }> = {
-  support_bot:   { label: 'Support',   color: 'bg-sky-50 text-sky-600' },
-  sales_bot:     { label: 'Sales',     color: 'bg-violet-50 text-violet-600' },
-  lifecycle_bot: { label: 'Lifecycle', color: 'bg-orange-50 text-orange-600' },
+  support_bot:     { label: 'Support',   color: 'bg-sky-50 text-sky-600' },
+  sales_bot:       { label: 'Sales',     color: 'bg-violet-50 text-violet-600' },
+  lifecycle_bot:   { label: 'Lifecycle', color: 'bg-orange-50 text-orange-600' },
+  appointment_bot: { label: 'Appt',      color: 'bg-pink-50 text-pink-600' },
 };
 
 const AVATAR_COLORS = [
