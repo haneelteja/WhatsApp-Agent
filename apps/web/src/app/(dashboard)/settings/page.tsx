@@ -179,8 +179,10 @@ export default async function SettingsPage({
                 label:           (n['label'] ?? null) as string | null,
                 product_slug:    (n['product_slug'] ?? null) as string | null,
                 phone_number_id: ((n['config_json'] as Record<string, string>)?.['phone_number_id'] ?? null),
+                routing_mode:    (n['routing_mode'] ?? 'single') as 'single' | 'multi',
+                routing_config:  (n['routing_config'] ?? undefined) as Record<string, unknown> | undefined,
               }))}
-              activeBots={activeBots.map(p => p['product_type'] as 'support_bot' | 'sales_bot' | 'lifecycle_bot')}
+              activeBots={activeBots.map(p => p['product_type'] as string)}
               webhookBase={`${apiBase}/api/webhook/${tenant?.['id'] ?? ''}`}
             />
           </DashboardCollapsibleSection>

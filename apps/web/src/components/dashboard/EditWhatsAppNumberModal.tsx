@@ -1,42 +1,62 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
-import { updateWhatsAppNumberAction } from '@/app/actions/whatsapp-numbers';
+import { X, ChevronDown, ChevronUp, ToggleLeft, ToggleRight } from 'lucide-react';
+import { updateWhatsAppNumberAction, updateRoutingConfigAction } from '@/app/actions/whatsapp-numbers';
 
-type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
+type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot' | 'appointment_bot';
 
 const BOT_OPTIONS: { value: ProductType; label: string }[] = [
-  { value: 'support_bot',   label: 'Support Bot' },
-  { value: 'sales_bot',     label: 'Sales Bot' },
-  { value: 'lifecycle_bot', label: 'Lifecycle Bot' },
+  { value: 'support_bot',     label: 'Support Bot' },
+  { value: 'sales_bot',       label: 'Sales Bot' },
+  { value: 'appointment_bot', label: 'Appointment Bot' },
+  { value: 'lifecycle_bot',   label: 'Lifecycle Bot' },
 ];
 
+const DEFAULT_MENU_LABELS: Record<string, string> = {
+  support_bot:     'Customer Support',
+  sales_bot:       'Products & Sales',
+  appointment_bot: 'Book an Appointment',
+  lifecycle_bot:   'My Orders & Account',
+};
+
+interface RoutingConfig {
+  greeting?:             string;
+  general_question?:     string;
+  menu_intro?:           string;
+  confidence_threshold?: number;
+  menu_labels?:          Partial<Record<string, string>>;
+}
+
 interface EditableNumber {
-  id: string;
-  phone_number: string;
-  provider: string;
-  label: string | null;
-  product_slug: string | null;
+  id:             string;
+  phone_number:   string;
+  provider:       string;
+  label:          string | null;
+  product_slug:   string | null;
   phone_number_id: string | null;
+  routing_mode?:   'single' | 'multi';
+  routing_config?: RoutingConfig;
 }
 
 interface Props {
-  number: EditableNumber;
-  activeBots: ProductType[];
-  onClose: () => void;
+  number:     EditableNumber;
+  activeBots: string[];
+  onClose:    () => void;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="text-xs font-medium text-slate-600 mb-1.5 block">{label}</label>
+      <label className="text-xs font-medium text-slate-600 mb-1 block">{label}</label>
       {children}
+      {hint && <p className="text-[11px] text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }
 
 const inputCls = 'w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent placeholder:text-slate-400';
+const smallInputCls = 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent placeholder:text-slate-400';
 
 export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) {
   const [label, setLabel]           = useState(number.label ?? '');
@@ -47,6 +67,23 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState('');
 
+  // Routing config state
+  const [routingMode, setRoutingMode] = useState<'single' | 'multi'>(
+    number.routing_mode ?? 'single',
+  );
+  const [showRouting, setShowRouting] = useState(routingMode === 'multi');
+  const rc = number.routing_config ?? {};
+  const [greeting, setGreeting]     = useState(rc.greeting ?? '');
+  const [generalQ, setGeneralQ]     = useState(rc.general_question ?? '');
+  const [menuIntro, setMenuIntro]   = useState(rc.menu_intro ?? '');
+  const [threshold, setThreshold]   = useState<string>(
+    rc.confidence_threshold !== undefined ? String(rc.confidence_threshold) : '0.75',
+  );
+  const [menuLabels, setMenuLabels] = useState<Record<string, string>>(
+    rc.menu_labels ? { ...DEFAULT_MENU_LABELS, ...(rc.menu_labels as Record<string, string>) }
+                   : { ...DEFAULT_MENU_LABELS },
+  );
+
   const isTwilio = number.provider === 'twilio';
 
   async function handleSubmit(e: React.FormEvent) {
@@ -54,18 +91,17 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
     setSaving(true);
     setError('');
 
-    // For Twilio, combine credentials: "AccountSid:AuthToken|ContentSid"
+    // Twilio credential handling
     let finalToken: string | undefined = accessToken || undefined;
     if (isTwilio && finalToken && contentSid.trim()) {
       finalToken = `${finalToken}|${contentSid.trim()}`;
     } else if (isTwilio && !finalToken && contentSid.trim()) {
-      // ContentSid only — need to append to existing token, but we can't read it.
-      // User must re-enter the full token when changing ContentSid.
       setError('Please re-enter Account SID:Auth Token when updating Content SID');
       setSaving(false);
       return;
     }
 
+    // Save core number settings
     const result = await updateWhatsAppNumberAction(number.id, {
       label:         label || undefined,
       product_slug:  bot   || undefined,
@@ -73,10 +109,30 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
       accessToken:   finalToken,
     });
 
-    setSaving(false);
-
     if ('error' in result) {
       setError(result.error);
+      setSaving(false);
+      return;
+    }
+
+    // Save routing config
+    const thresholdNum = parseFloat(threshold);
+    const routingResult = await updateRoutingConfigAction(number.id, {
+      routing_mode:   routingMode,
+      routing_config: {
+        greeting:             greeting.trim() || undefined,
+        general_question:     generalQ.trim() || undefined,
+        menu_intro:           menuIntro.trim() || undefined,
+        confidence_threshold: isNaN(thresholdNum) ? 0.75 : Math.min(1, Math.max(0, thresholdNum)),
+        menu_labels:          Object.fromEntries(
+          activeBots.map(b => [b, menuLabels[b] ?? DEFAULT_MENU_LABELS[b] ?? b]),
+        ),
+      },
+    });
+
+    setSaving(false);
+    if ('error' in routingResult) {
+      setError(routingResult.error);
       return;
     }
 
@@ -84,8 +140,8 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 border border-green-100">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-4 p-6 space-y-4 border border-green-100">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Edit WhatsApp Number</h2>
@@ -102,6 +158,7 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
+          {/* Core fields */}
           <Field label="Label">
             <input
               value={label}
@@ -161,6 +218,126 @@ export function EditWhatsAppNumberModal({ number, activeBots, onClose }: Props) 
               </p>
             </Field>
           )}
+
+          {/* ── Multi-bot Routing ─────────────────────────────────────── */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowRouting(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-slate-700">Multi-bot Routing</span>
+                {routingMode === 'multi' && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                )}
+              </div>
+              {showRouting ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+            </button>
+
+            {showRouting && (
+              <div className="p-4 space-y-4 bg-white">
+                {/* Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-slate-700">Enable multi-bot routing</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Route conversations to different bots based on customer intent</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRoutingMode(m => m === 'single' ? 'multi' : 'single')}
+                    className="shrink-0"
+                    aria-label="Toggle routing mode"
+                  >
+                    {routingMode === 'multi'
+                      ? <ToggleRight size={28} className="text-emerald-600" />
+                      : <ToggleLeft  size={28} className="text-slate-300" />}
+                  </button>
+                </div>
+
+                {routingMode === 'multi' && (
+                  <div className="space-y-3 pt-1 border-t border-slate-100">
+                    <Field
+                      label="Greeting message"
+                      hint="Sent to first-time contacts before asking for their name"
+                    >
+                      <textarea
+                        value={greeting}
+                        onChange={e => setGreeting(e.target.value)}
+                        placeholder="Hello! Welcome. I'm your virtual assistant."
+                        rows={2}
+                        className={smallInputCls + ' resize-none'}
+                      />
+                    </Field>
+
+                    <Field
+                      label="General question"
+                      hint="Sent after saving the contact's name to prompt their intent"
+                    >
+                      <input
+                        value={generalQ}
+                        onChange={e => setGeneralQ(e.target.value)}
+                        placeholder="How can I help you today?"
+                        className={smallInputCls}
+                      />
+                    </Field>
+
+                    <Field
+                      label="Menu intro"
+                      hint="Shown when intent is unclear and customer must pick from a menu"
+                    >
+                      <input
+                        value={menuIntro}
+                        onChange={e => setMenuIntro(e.target.value)}
+                        placeholder="Please choose how I can help you:"
+                        className={smallInputCls}
+                      />
+                    </Field>
+
+                    <Field
+                      label="Confidence threshold (0.0 – 1.0)"
+                      hint="Intent must exceed this score to auto-route; below it shows the menu"
+                    >
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="1"
+                        value={threshold}
+                        onChange={e => setThreshold(e.target.value)}
+                        className={smallInputCls}
+                      />
+                    </Field>
+
+                    {/* Per-bot menu labels */}
+                    <div>
+                      <p className="text-xs font-medium text-slate-600 mb-2">Menu labels per bot</p>
+                      <div className="space-y-2">
+                        {activeBots.map(b => (
+                          <div key={b} className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-500 w-32 shrink-0">
+                              {BOT_OPTIONS.find(o => o.value === b)?.label ?? b}
+                            </span>
+                            <input
+                              value={menuLabels[b] ?? DEFAULT_MENU_LABELS[b] ?? b}
+                              onChange={e => setMenuLabels(prev => ({ ...prev, [b]: e.target.value }))}
+                              placeholder={DEFAULT_MENU_LABELS[b] ?? b}
+                              className={smallInputCls + ' text-xs'}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        Customers type a number (1, 2…) or these labels to select a bot
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
 

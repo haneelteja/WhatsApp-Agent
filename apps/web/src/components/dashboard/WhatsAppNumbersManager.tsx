@@ -6,20 +6,22 @@ import { Plus, Pencil } from 'lucide-react';
 import { AddWhatsAppNumberModal } from './AddWhatsAppNumberModal';
 import { EditWhatsAppNumberModal } from './EditWhatsAppNumberModal';
 
-type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot';
+type ProductType = 'support_bot' | 'sales_bot' | 'lifecycle_bot' | 'appointment_bot';
 
 interface WhatsAppNumber {
-  id: string;
-  phone_number: string;
-  provider: string;
-  label: string | null;
-  product_slug: string | null;
+  id:              string;
+  phone_number:    string;
+  provider:        string;
+  label:           string | null;
+  product_slug:    string | null;
   phone_number_id: string | null;
+  routing_mode?:   'single' | 'multi';
+  routing_config?: Record<string, unknown>;
 }
 
 interface Props {
-  numbers: WhatsAppNumber[];
-  activeBots: ProductType[];
+  numbers:    WhatsAppNumber[];
+  activeBots: string[];
   webhookBase: string;
 }
 
@@ -66,16 +68,23 @@ export function WhatsAppNumbersManager({ numbers, activeBots, webhookBase }: Pro
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-xs text-gray-400 capitalize">{num.provider.replace(/_/g, ' ')}</span>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                    num.product_slug
-                      ? num.product_slug === 'support_bot'   ? 'bg-sky-50 text-sky-600'
-                      : num.product_slug === 'sales_bot'     ? 'bg-violet-50 text-violet-600'
-                      : num.product_slug === 'lifecycle_bot' ? 'bg-orange-50 text-orange-600'
-                      : 'bg-slate-100 text-slate-500'
-                      : 'bg-amber-50 text-amber-600'
-                  }`}>
-                    {botLabel(num.product_slug)}
-                  </span>
+                  {num.routing_mode === 'multi' ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700">
+                      Multi-bot
+                    </span>
+                  ) : (
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                      num.product_slug
+                        ? num.product_slug === 'support_bot'     ? 'bg-sky-50 text-sky-600'
+                        : num.product_slug === 'sales_bot'       ? 'bg-violet-50 text-violet-600'
+                        : num.product_slug === 'lifecycle_bot'   ? 'bg-orange-50 text-orange-600'
+                        : num.product_slug === 'appointment_bot' ? 'bg-pink-50 text-pink-600'
+                        : 'bg-slate-100 text-slate-500'
+                        : 'bg-amber-50 text-amber-600'
+                    }`}>
+                      {botLabel(num.product_slug)}
+                    </span>
+                  )}
                   <button
                     type="button"
                     aria-label={`Edit ${num.phone_number}`}

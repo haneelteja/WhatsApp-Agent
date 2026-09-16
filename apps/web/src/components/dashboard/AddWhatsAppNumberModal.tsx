@@ -83,7 +83,7 @@ function Field({ label, required, tooltip, children }: {
 const inputCls = 'w-full rounded-xl border border-green-200 bg-green-50/50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent placeholder:text-slate-400';
 
 interface Props {
-  activeBots: ProductType[];
+  activeBots: string[];
   onClose: () => void;
   webhookBase: string;
 }
@@ -92,7 +92,7 @@ export function AddWhatsAppNumberModal({ activeBots, onClose, webhookBase }: Pro
   const [provider, setProvider]     = useState<'meta_cloud' | 'twilio' | 'interakt' | 'wati' | 'gupshup'>('meta_cloud');
   const [phone, setPhone]           = useState('');
   const [label, setLabel]           = useState('');
-  const [bot, setBot]               = useState<ProductType>(activeBots[0] ?? 'support_bot');
+  const [bot, setBot]               = useState<string>(activeBots[0] ?? 'support_bot');
   const [phoneNumberId, setPhoneId] = useState('');
   const [accessToken, setToken]     = useState('');
   const [saving, setSaving]         = useState(false);
@@ -109,7 +109,7 @@ export function AddWhatsAppNumberModal({ activeBots, onClose, webhookBase }: Pro
       provider,
       phoneNumber: phone,
       label,
-      productSlug: bot,
+      productSlug: bot as ProductType,
       phoneNumberId: provider === 'meta_cloud' ? phoneNumberId : undefined,
       accessToken,
     });

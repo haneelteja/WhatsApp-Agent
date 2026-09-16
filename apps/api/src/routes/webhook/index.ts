@@ -13,6 +13,8 @@ import { getBotContext } from '../../services/bot-context.js';
 import { calcLeadScore, generateLeadSummary } from '../../lib/lead-scoring.js';
 import { formatContactMemory } from '../../services/contact/memory.js';
 import { cacheGet, cacheSet } from '../../lib/redis.js';
+import { resolveMultiBotRouting } from '../../services/routing/router.js';
+import type { RoutingConfig } from '../../services/routing/router.js';
 import { detectSentimentText } from '../../services/sentiment/detector.js';
 import { isWithinBusinessHours } from '../../lib/business-hours.js';
 import { dispatchCall } from '../../services/voice/call-manager.js';
@@ -1523,7 +1525,7 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
     const db = getServerClient();
     const { data: wnRow } = await db
       .from('whatsapp_numbers')
-      .select('product_slug')
+      .select('product_slug, routing_mode, routing_config, config_json, provider')
       .eq('tenant_id', tenantId)
       .eq('active', true)
       .filter('config_json->>phone_number_id', 'eq', phoneNumberId)
@@ -1531,6 +1533,38 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
 
     if (!wnRow) {
       fastify.log.warn({ tenantId, phoneNumberId }, '[Webhook] no active bot mapped to this phone_number_id');
+      return;
+    }
+
+    // ── Multi-bot routing layer ───────────────────────────────────────────
+    if (wnRow.routing_mode === 'multi') {
+      const gateway  = new WhatsAppGateway(wnRow.provider as WhatsAppProvider);
+      const wnConfig = wnRow.config_json as { phone_number_id: string; access_token: string };
+
+      // Parse incoming message to extract the sender's phone number
+      const incoming = gateway.parseIncoming(body);
+      if (!incoming) {
+        // Delivery receipts or unsupported — fall through to legacy handler for receipt processing
+        await handleWebhookPost(tenantId, (wnRow.product_slug ?? 'support_bot') as ProductType, request);
+        return;
+      }
+
+      const senderPhone = incoming.from.startsWith('+') ? incoming.from : `+${incoming.from}`;
+
+      const routingResult = await resolveMultiBotRouting({
+        tenantId,
+        phone:         senderPhone,
+        incomingText:  incoming.text ?? null,
+        gateway,
+        config:        wnConfig,
+        routingConfig: (wnRow.routing_config ?? {}) as RoutingConfig,
+        log:           fastify.log,
+      });
+
+      if (routingResult.handled) return; // routing consumed the message
+
+      // Routing complete — forward to the chosen bot
+      await handleWebhookPost(tenantId, routingResult.productType as ProductType, request);
       return;
     }
 

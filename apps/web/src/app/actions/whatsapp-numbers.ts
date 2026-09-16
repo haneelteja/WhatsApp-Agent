@@ -61,6 +61,39 @@ export async function updateWhatsAppNumberAction(
   return { ok: true };
 }
 
+export interface RoutingConfigInput {
+  routing_mode:   'single' | 'multi';
+  routing_config: {
+    greeting?:             string;
+    general_question?:     string;
+    menu_intro?:           string;
+    confidence_threshold?: number;
+    menu_labels?: Partial<Record<string, string>>;
+  };
+}
+
+export async function updateRoutingConfigAction(
+  numberId: string,
+  input:    RoutingConfigInput,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const admin = getSupabaseAdminClient();
+  const { error } = await admin
+    .from('whatsapp_numbers')
+    .update({
+      routing_mode:   input.routing_mode,
+      routing_config: input.routing_config,
+    })
+    .eq('id', numberId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  return { ok: true };
+}
+
 /** Platform-only: tenantId is passed explicitly from the platform console. */
 export async function upsertWhatsAppNumberAction(
   tenantId:    string,
