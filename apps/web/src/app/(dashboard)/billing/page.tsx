@@ -282,7 +282,7 @@ export default async function BillingPage({
           </div>
           <p className="text-2xl font-bold text-slate-800 tabular-nums">{convThisMonth ?? 0}</p>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            This month · limit: {meta.conversations === 'Unlimited' ? '∞' : meta.conversations}
+            This month · limit: {meta.conversations}
           </p>
           {isFinite(planLimitNum) && (
             <div className="mt-2">
