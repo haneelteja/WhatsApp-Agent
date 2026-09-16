@@ -5,12 +5,14 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import {
   getInboxConversationsAction,
   getInboxMessagesAction,
+  getWhatsAppNumbersForInboxAction,
   type InboxConversation,
   type InboxMessage,
+  type InboxWhatsAppNumber,
 } from '@/app/actions/inbox';
 import {
   Inbox, UserCheck, RefreshCw, CheckCircle2, Send, Bot, AlertCircle,
-  MessageSquare, Loader2, ChevronRight,
+  MessageSquare, Loader2, ChevronRight, Phone,
 } from 'lucide-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -155,17 +157,19 @@ function MsgBubble({ msg, productType }: { msg: InboxMessage; productType: strin
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function InboxPage() {
-  const [convs,       setConvs]       = useState<InboxConversation[]>([]);
-  const [tenantId,    setTenantId]    = useState('');
-  const [selected,    setSelected]    = useState<InboxConversation | null>(null);
-  const [messages,    setMessages]    = useState<InboxMessage[]>([]);
-  const [loadingMsgs, setLoadingMsgs] = useState(false);
-  const [sending,     setSending]     = useState(false);
-  const [actioning,   setActioning]   = useState(false);
-  const [sendError,   setSendError]   = useState<string | null>(null);
-  const [draft,       setDraft]       = useState('');
-  const [unreadIds,   setUnreadIds]   = useState<Set<string>>(new Set());
-  const [loading,     setLoading]     = useState(true);
+  const [convs,          setConvs]          = useState<InboxConversation[]>([]);
+  const [tenantId,       setTenantId]       = useState('');
+  const [selected,       setSelected]       = useState<InboxConversation | null>(null);
+  const [messages,       setMessages]       = useState<InboxMessage[]>([]);
+  const [loadingMsgs,    setLoadingMsgs]    = useState(false);
+  const [sending,        setSending]        = useState(false);
+  const [actioning,      setActioning]      = useState(false);
+  const [sendError,      setSendError]      = useState<string | null>(null);
+  const [draft,          setDraft]          = useState('');
+  const [unreadIds,      setUnreadIds]      = useState<Set<string>>(new Set());
+  const [loading,        setLoading]        = useState(true);
+  const [numbers,        setNumbers]        = useState<InboxWhatsAppNumber[]>([]);
+  const [selectedNumber, setSelectedNumber] = useState<string>(''); // '' = All numbers
 
   const bottomRef    = useRef<HTMLDivElement>(null);
   const selectedRef  = useRef<InboxConversation | null>(null);
@@ -189,15 +193,33 @@ export default function InboxPage() {
 
   // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
-    getInboxConversationsAction().then(result => {
-      if (!result) return;
-      setConvs(result.conversations);
-      setTenantId(result.tenantId);
+    void Promise.all([
+      getInboxConversationsAction(),
+      getWhatsAppNumbersForInboxAction(),
+    ]).then(([result, nums]) => {
+      if (result) {
+        setConvs(result.conversations);
+        setTenantId(result.tenantId);
+      }
+      setNumbers(nums);
       setLoading(false);
     });
   }, []);
 
+  // ── Re-fetch when number filter changes ───────────────────────────────────
+  const handleNumberChange = useCallback(async (numberId: string) => {
+    setSelectedNumber(numberId);
+    setSelected(null);
+    setLoading(true);
+    const result = await getInboxConversationsAction(numberId || undefined);
+    if (result) setConvs(result.conversations);
+    setLoading(false);
+  }, []);
+
   // ── Realtime: conversation list updates ───────────────────────────────────
+  const selectedNumberRef = useRef(selectedNumber);
+  selectedNumberRef.current = selectedNumber;
+
   useEffect(() => {
     if (!tenantId) return;
     const sb = supabaseRef.current;
@@ -207,12 +229,20 @@ export default function InboxPage() {
         event: '*', schema: 'public', table: 'conversations',
         filter: `tenant_id=eq.${tenantId}`,
       }, payload => {
-        const row = payload.new as { id: string; status: string; product_type: string; updated_at: string; assigned_agent_id: string | null };
+        const row = payload.new as {
+          id: string; status: string; product_type: string;
+          updated_at: string; assigned_agent_id: string | null;
+          whatsapp_number_id: string | null;
+        };
 
         if (payload.eventType === 'DELETE') {
           setConvs(prev => prev.filter(c => c.id !== (payload.old as { id: string }).id));
           return;
         }
+
+        // Client-side filter: if a number is selected, ignore events from other numbers
+        const activeFilter = selectedNumberRef.current;
+        if (activeFilter && row.whatsapp_number_id && row.whatsapp_number_id !== activeFilter) return;
 
         const isActive = ['escalated', 'bot_paused'].includes(row.status);
 
@@ -224,7 +254,12 @@ export default function InboxPage() {
               .map(c => c.id === row.id ? { ...c, status: row.status, updated_at: row.updated_at, assigned_agent_id: row.assigned_agent_id } : c)
               .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
           }
-          return [{ id: row.id, status: row.status, product_type: row.product_type, updated_at: row.updated_at, assigned_agent_id: row.assigned_agent_id, contact_name: null, contact_phone: null }, ...prev];
+          return [{
+            id: row.id, status: row.status, product_type: row.product_type,
+            updated_at: row.updated_at, assigned_agent_id: row.assigned_agent_id,
+            whatsapp_number_id: row.whatsapp_number_id ?? null,
+            contact_name: null, contact_phone: null,
+          }, ...prev];
         });
 
         // Update selected conv status live
@@ -342,6 +377,24 @@ export default function InboxPage() {
             {loading ? 'Loading…' : `${escalatedCount} escalated · ${agentCount} with agent`}
           </p>
         </div>
+        {numbers.length > 1 && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Phone size={12} className="text-gray-400" />
+            <select
+              aria-label="Filter by WhatsApp number"
+              value={selectedNumber}
+              onChange={e => void handleNumberChange(e.target.value)}
+              className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+            >
+              <option value="">All numbers</option>
+              {numbers.map(n => (
+                <option key={n.id} value={n.id}>
+                  {n.label ? `${n.label} (${n.phone_number})` : n.phone_number}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Body */}

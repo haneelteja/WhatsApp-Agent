@@ -328,6 +328,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     request: FastifyRequest,
     /** For multi-bot routing: the phone_number_id from the payload, used as fallback in getBotContext */
     phoneNumberIdHint?: string,
+    /** UUID of the whatsapp_numbers row — stamped on conversations for per-number inbox filtering */
+    whatsappNumberId?: string,
   ): Promise<void> {
     try {
 
@@ -505,8 +507,8 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       }
     }
 
-    // ── Upsert conversation (one open conversation per contact per product) ─
-    const { data: existingConvo, error: convoLookupError } = await db
+    // ── Upsert conversation (one open conversation per contact per product per number) ─
+    let convoQuery = db
       .from('conversations')
       .select()
       .eq('tenant_id', tenantId)
@@ -514,8 +516,10 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       .eq('product_type', productType)
       .in('status', ['open', 'escalated', 'bot_paused'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
+    if (whatsappNumberId) convoQuery = convoQuery.eq('whatsapp_number_id', whatsappNumberId);
+
+    const { data: existingConvo, error: convoLookupError } = await convoQuery.single();
 
     fastify.log.info({ existingConvo: existingConvo ? (existingConvo as Conversation).id : null, convoLookupError }, '[Webhook] conversation lookup');
 
@@ -525,10 +529,11 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       const { data: newConvo, error: newConvoError } = await db
         .from('conversations')
         .insert({
-          tenant_id: tenantId,
-          contact_id: (contact as Contact).id,
-          product_type: productType,
-          status: 'open',
+          tenant_id:           tenantId,
+          contact_id:          (contact as Contact).id,
+          product_type:        productType,
+          status:              'open',
+          whatsapp_number_id:  whatsappNumberId ?? null,
         })
         .select()
         .single();
@@ -1532,7 +1537,7 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
     const db = getServerClient();
     const { data: wnRow } = await db
       .from('whatsapp_numbers')
-      .select('product_slug, routing_mode, routing_config, config_json, provider')
+      .select('id, product_slug, routing_mode, routing_config, config_json, provider')
       .eq('tenant_id', tenantId)
       .eq('active', true)
       .filter('config_json->>phone_number_id', 'eq', phoneNumberId)
@@ -1552,7 +1557,7 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
       const incoming = gateway.parseIncoming(body);
       if (!incoming) {
         // Delivery receipts or unsupported — fall through to legacy handler for receipt processing
-        await handleWebhookPost(tenantId, (wnRow.product_slug ?? 'support_bot') as ProductType, request, phoneNumberId);
+        await handleWebhookPost(tenantId, (wnRow.product_slug ?? 'support_bot') as ProductType, request, phoneNumberId, wnRow.id as string);
         return;
       }
 
@@ -1570,13 +1575,12 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
 
       if (routingResult.handled) return; // routing consumed the message
 
-      // Routing complete — forward to the chosen bot, passing phoneNumberId so
-      // getBotContext can find the whatsapp_numbers row by phone_number_id when
-      // the routed productType (e.g. 'sales_bot') differs from the row's product_slug.
-      await handleWebhookPost(tenantId, routingResult.productType as ProductType, request, phoneNumberId);
+      // Routing complete — forward to the chosen bot, passing both phoneNumberId (for
+      // getBotContext fallback) and wnRow.id (for conversation stamping).
+      await handleWebhookPost(tenantId, routingResult.productType as ProductType, request, phoneNumberId, wnRow.id as string);
       return;
     }
 
-    await handleWebhookPost(tenantId, wnRow.product_slug as ProductType, request);
+    await handleWebhookPost(tenantId, wnRow.product_slug as ProductType, request, undefined, wnRow.id as string);
   });
 }

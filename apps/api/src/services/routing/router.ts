@@ -15,12 +15,25 @@ export interface RoutingConfig {
   menu_labels?:          Partial<Record<string, string>>;
 }
 
-// Cumulative plan hierarchy — higher tier unlocks all below it
-const PLAN_BOTS: Record<string, string[]> = {
-  starter:  ['support_bot'],
-  growth:   ['support_bot', 'sales_bot'],
-  scale:    ['support_bot', 'appointment_bot', 'sales_bot', 'lifecycle_bot'],
-};
+// Slab hierarchy: activating a higher-tier bot implicitly includes all lower tiers.
+// lifecycle_bot → [support_bot, sales_bot, lifecycle_bot]
+// sales_bot     → [support_bot, sales_bot]
+// support_bot   → [support_bot]
+const BOT_TIER_ORDER = ['support_bot', 'sales_bot', 'lifecycle_bot'];
+// appointment_bot is a lateral add-on — included if activated, independent of tier level.
+const BOT_ADDONS = ['appointment_bot'];
+
+function resolveSlabBots(activated: Set<string>): string[] {
+  let highestIdx = -1;
+  BOT_TIER_ORDER.forEach((b, i) => { if (activated.has(b)) highestIdx = i; });
+  const bots: string[] = highestIdx >= 0
+    ? BOT_TIER_ORDER.slice(0, highestIdx + 1)
+    : ['support_bot']; // safety fallback — nothing activated yet
+  for (const addon of BOT_ADDONS) {
+    if (activated.has(addon)) bots.push(addon);
+  }
+  return bots;
+}
 
 const DEFAULT_MENU_LABELS: Record<string, string> = {
   support_bot:     'Customer Support',
@@ -119,20 +132,17 @@ export async function resolveMultiBotRouting(params: {
     ) as Record<string, string>),
   };
 
-  // Determine available bots: intersection of plan entitlements and actually-activated products.
-  // Using PLAN_BOTS alone would show bots the platform hasn't configured yet (no bot_config).
+  // Slab hierarchy: available bots are determined purely by which bots the platform has
+  // activated for this tenant — no dependency on billing plan.
   const db = getServerClient();
-  const [{ data: tenant }, { data: products }] = await Promise.all([
-    db.from('tenants').select('plan').eq('id', tenantId).single(),
-    db.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
-  ]);
+  const { data: products } = await db
+    .from('tenant_products')
+    .select('product_type')
+    .eq('tenant_id', tenantId)
+    .eq('active', true);
 
-  const plan      = (tenant?.plan ?? 'starter') as string;
-  const planBots  = PLAN_BOTS[plan] ?? PLAN_BOTS['starter']!;
-  const activated = new Set((products ?? []).map(p => p.product_type as string));
-  const filtered  = planBots.filter(b => activated.has(b));
-  // Fallback: if no intersection (misconfiguration), default to support_bot so routing never breaks.
-  const availableBots = filtered.length > 0 ? filtered : ['support_bot'];
+  const activated    = new Set((products ?? []).map(p => p.product_type as string));
+  const availableBots = resolveSlabBots(activated);
 
   // Switch keyword: show menu and put session into awaiting_menu so the
   // customer's next reply ("1", "2") is handled by the menu picker, not intent classifier.
