@@ -1565,12 +1565,13 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
 
       const routingResult = await resolveMultiBotRouting({
         tenantId,
-        phone:         senderPhone,
-        incomingText:  incoming.text ?? null,
+        phone:             senderPhone,
+        incomingText:      incoming.text ?? null,
+        interactiveReplyId: incoming.interactiveReplyId ?? null,
         gateway,
-        config:        wnConfig,
-        routingConfig: (wnRow.routing_config ?? {}) as RoutingConfig,
-        log:           fastify.log,
+        config:            wnConfig,
+        routingConfig:     (wnRow.routing_config ?? {}) as RoutingConfig,
+        log:               fastify.log,
       });
 
       if (routingResult.handled) return; // routing consumed the message

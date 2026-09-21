@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { getServerClient } from '@alphabot/database';
 import { WhatsAppGateway } from '../whatsapp/gateway.js';
+import type { OutgoingMessage } from '@alphabot/shared';
 import { chatCompletion } from '../../lib/anthropic.js';
 import { cacheGet, cacheSet, cacheDel } from '../../lib/redis.js';
 
@@ -98,33 +99,64 @@ Confidence guide: 1.0 = perfectly clear intent, 0.75 = reasonably clear, 0.5 = a
   }
 }
 
-function buildMenuText(
+const BUTTON_TITLE_MAX  = 20;
+const LIST_TITLE_MAX    = 24;
+const INTERACTIVE_MAX   = 3; // WhatsApp reply-button limit
+
+function buildMenuMessage(
+  to: string,
   availableBots: string[],
   menuLabels: Record<string, string>,
   intro: string,
-): string {
-  const items = availableBots.map((b, i) =>
-    `${i + 1}. ${menuLabels[b] ?? DEFAULT_MENU_LABELS[b] ?? b}`,
-  );
-  return `${intro}\n\n${items.join('\n')}`;
+): OutgoingMessage {
+  if (availableBots.length <= INTERACTIVE_MAX) {
+    return {
+      type: 'interactive',
+      interactiveType: 'button',
+      to,
+      body: intro,
+      buttons: availableBots.map(b => ({
+        type: 'reply' as const,
+        reply: {
+          id: b,
+          title: (menuLabels[b] ?? DEFAULT_MENU_LABELS[b] ?? b).slice(0, BUTTON_TITLE_MAX),
+        },
+      })),
+    };
+  }
+  return {
+    type: 'interactive',
+    interactiveType: 'list',
+    to,
+    body: intro,
+    listButtonLabel: 'Choose an option',
+    listSections: [{
+      title: 'How can we help?',
+      rows: availableBots.map(b => ({
+        id: b,
+        title: (menuLabels[b] ?? DEFAULT_MENU_LABELS[b] ?? b).slice(0, LIST_TITLE_MAX),
+      })),
+    }],
+  };
 }
 
 export async function resolveMultiBotRouting(params: {
-  tenantId:      string;
-  phone:         string;           // E.164 format, e.g. "+919..."
-  incomingText:  string | null;
-  gateway:       WhatsAppGateway;
-  config:        { phone_number_id: string; access_token: string };
-  routingConfig: RoutingConfig;
-  log:           FastifyBaseLogger;
+  tenantId:          string;
+  phone:             string;           // E.164 format, e.g. "+919..."
+  incomingText:      string | null;
+  interactiveReplyId?: string | null;  // bot slug when user tapped a button
+  gateway:           WhatsAppGateway;
+  config:            { phone_number_id: string; access_token: string };
+  routingConfig:     RoutingConfig;
+  log:               FastifyBaseLogger;
 }): Promise<RoutingResult> {
-  const { tenantId, phone, incomingText, gateway, config, routingConfig, log } = params;
+  const { tenantId, phone, incomingText, interactiveReplyId, gateway, config, routingConfig, log } = params;
 
   const text               = incomingText?.trim() ?? '';
   const threshold          = routingConfig.confidence_threshold ?? 0.75;
-  const greeting           = routingConfig.greeting       ?? "Hello! Welcome. I'm your virtual assistant.";
+  const greeting           = routingConfig.greeting        ?? "Hello! Welcome. I'm your virtual assistant.";
   const generalQ           = routingConfig.general_question ?? 'How can I help you today?';
-  const menuIntro          = routingConfig.menu_intro     ?? 'Please choose how I can help you:';
+  const menuIntroTemplate  = routingConfig.menu_intro      ?? 'Hi {name}! Please choose how I can help you:';
   const menuLabels: Record<string, string> = {
     ...DEFAULT_MENU_LABELS,
     ...(Object.fromEntries(
@@ -135,23 +167,25 @@ export async function resolveMultiBotRouting(params: {
   // Slab hierarchy: available bots are determined purely by which bots the platform has
   // activated for this tenant — no dependency on billing plan.
   const db = getServerClient();
-  const { data: products } = await db
-    .from('tenant_products')
-    .select('product_type')
-    .eq('tenant_id', tenantId)
-    .eq('active', true);
+  const phoneNorm = phone.startsWith('+') ? phone : `+${phone}`;
 
-  const activated    = new Set((products ?? []).map(p => p.product_type as string));
+  const [productsResult, contactResult] = await Promise.all([
+    db.from('tenant_products').select('product_type').eq('tenant_id', tenantId).eq('active', true),
+    db.from('contacts').select('name').eq('tenant_id', tenantId).eq('phone', phoneNorm).maybeSingle(),
+  ]);
+
+  const activated     = new Set((productsResult.data ?? []).map(p => p.product_type as string));
   const availableBots = resolveSlabBots(activated);
+  const contactName   = (contactResult.data?.name ?? '').trim();
+
+  const menuIntro = menuIntroTemplate.replace('{name}', contactName || 'there');
 
   // Switch keyword: show menu and put session into awaiting_menu so the
   // customer's next reply ("1", "2") is handled by the menu picker, not intent classifier.
   if (text && SWITCH_KEYWORDS.some(kw => text.toLowerCase() === kw)) {
-    const menuText = buildMenuText(availableBots, menuLabels, menuIntro);
     await Promise.all([
-      gateway.sendMessage(config.phone_number_id, config.access_token, {
-        type: 'text', to: phone, text: menuText,
-      }),
+      gateway.sendMessage(config.phone_number_id, config.access_token,
+        buildMenuMessage(phone, availableBots, menuLabels, menuIntro)),
       cacheSet(stateKey(tenantId, phone), 'awaiting_menu', ROUTING_TTL),
       cacheDel(botKey(tenantId, phone)),
     ]);
@@ -170,16 +204,6 @@ export async function resolveMultiBotRouting(params: {
     log.info({ tenantId, phone, bot: storedBot }, '[Routing] already routed');
     return { handled: false, productType: storedBot };
   }
-
-  // Look up contact name
-  const phoneNorm = phone.startsWith('+') ? phone : `+${phone}`;
-  const { data: contact } = await db
-    .from('contacts')
-    .select('name')
-    .eq('tenant_id', tenantId)
-    .eq('phone', phoneNorm)
-    .maybeSingle();
-  const contactName = (contact?.name ?? '').trim();
 
   // ── awaiting_name: customer sent their name ──────────────────────────────
   if (state === 'awaiting_name') {
@@ -207,26 +231,31 @@ export async function resolveMultiBotRouting(params: {
 
   // ── awaiting_menu: customer picks from menu ──────────────────────────────
   if (state === 'awaiting_menu') {
-    const numPick = parseInt(text, 10);
     let matchedBot: string | null = null;
 
-    if (!isNaN(numPick) && numPick >= 1 && numPick <= availableBots.length) {
-      matchedBot = availableBots[numPick - 1] ?? null;
-    } else {
-      for (const b of availableBots) {
-        const lbl = (menuLabels[b] ?? DEFAULT_MENU_LABELS[b] ?? b).toLowerCase();
-        if (text.toLowerCase().includes(lbl.split(' ')[0]!)) {
-          matchedBot = b;
-          break;
+    // Interactive button/list tap gives us the bot slug directly
+    if (interactiveReplyId && availableBots.includes(interactiveReplyId)) {
+      matchedBot = interactiveReplyId;
+    }
+
+    if (!matchedBot) {
+      const numPick = parseInt(text, 10);
+      if (!isNaN(numPick) && numPick >= 1 && numPick <= availableBots.length) {
+        matchedBot = availableBots[numPick - 1] ?? null;
+      } else {
+        for (const b of availableBots) {
+          const lbl = (menuLabels[b] ?? DEFAULT_MENU_LABELS[b] ?? b).toLowerCase();
+          if (text.toLowerCase().includes(lbl.split(' ')[0]!)) {
+            matchedBot = b;
+            break;
+          }
         }
       }
     }
 
     if (!matchedBot) {
-      const menuText = buildMenuText(availableBots, menuLabels, 'Please reply with a number:');
-      await gateway.sendMessage(config.phone_number_id, config.access_token, {
-        type: 'text', to: phone, text: menuText,
-      });
+      await gateway.sendMessage(config.phone_number_id, config.access_token,
+        buildMenuMessage(phone, availableBots, menuLabels, 'Please choose an option:'));
       return { handled: true };
     }
 
@@ -288,13 +317,11 @@ export async function resolveMultiBotRouting(params: {
   }
 
   // Low confidence — show menu
-  const name     = contactName || 'there';
-  const menuText = buildMenuText(availableBots, menuLabels, menuIntro);
-  await gateway.sendMessage(config.phone_number_id, config.access_token, {
-    type: 'text', to: phone,
-    text: `Hi ${name}! ${menuText}`,
-  });
-  await cacheSet(stateKey(tenantId, phone), 'awaiting_menu', ROUTING_TTL);
+  await Promise.all([
+    gateway.sendMessage(config.phone_number_id, config.access_token,
+      buildMenuMessage(phone, availableBots, menuLabels, menuIntro)),
+    cacheSet(stateKey(tenantId, phone), 'awaiting_menu', ROUTING_TTL),
+  ]);
   log.info({ tenantId, phone }, '[Routing] low confidence → awaiting_menu');
   return { handled: true };
 }
