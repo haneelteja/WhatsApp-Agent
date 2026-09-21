@@ -957,6 +957,18 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
       }
     }
 
+    // ── Inject inline OPTIONS instruction (always on) ────────────────────────
+    systemPrompt += `\n\n---\nINTERACTIVE OPTIONS
+When you ask the customer to pick from a short list (2–5 items), append [OPTIONS: choice1 | choice2 | choice3] on the very last line of your response. Use | as the separator. The customer will see tappable buttons or a list — they will NOT see the tag.
+Rules:
+- Use it when the whole point of the message is to collect one of these choices (branch, time slot, party size, cuisine type, etc.)
+- Max 5 options. Keep each option under 20 characters.
+- Do NOT use [OPTIONS:] and [BUTTONS:] in the same reply.
+- Do not use it for rhetorical questions or when free-text is expected.
+Example — asking for branch:
+Which branch works best for you?
+[OPTIONS: Banjara Hills Rd 4 | Hitex | Gachibowli | Kompally | Banjara Hills Rd 12]`;
+
     // ── Resolve LLM config — 6-level hierarchy (most specific wins) ─────
     // 1. llm_configs Client Bot      (validated API key + model)
     // 2. llm_configs Client Generic  (validated API key + model)
@@ -1065,7 +1077,14 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
     // Interactive buttons — extract [BUTTONS:template_name] marker
     const buttonsMatch       = rawContent.match(/\[BUTTONS:([^\]]+)\]/);
     const buttonTemplateName = buttonsMatch?.[1]?.trim().toLowerCase() ?? null;
-    fastify.log.info({ buttonTemplateName, signals: newSignals, rawSnippet: rawContent.slice(-120) }, '[Webhook] AI response markers');
+
+    // Inline options list — [OPTIONS: opt1 | opt2 | ...] (≤3 → buttons, 4-5 → list)
+    const optionsMatch  = rawContent.match(/\[OPTIONS:\s*([^\]]+)\]/);
+    const inlineOptions = optionsMatch
+      ? optionsMatch[1]!.split('|').map(s => s.trim()).filter(Boolean).slice(0, 5)
+      : null;
+
+    fastify.log.info({ buttonTemplateName, inlineOptions, signals: newSignals, rawSnippet: rawContent.slice(-120) }, '[Webhook] AI response markers');
 
     // Strip all control markers before sending to customer
     const cleanContent = rawContent
@@ -1076,6 +1095,7 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
       .replace(/\[STAGE:\w+\]/g, '')
       .replace(/\[ENTITY:[^\]]+\]/g, '')
       .replace(/\[BUTTONS:[^\]]+\]/g, '')
+      .replace(/\[OPTIONS:[^\]]+\]/g, '')
       .trimEnd();
 
     // Persist stage/entity updates non-blocking (after lock, before reply send)
@@ -1282,10 +1302,37 @@ General rule: append [BUTTONS:name] when the customer faces a clear multiple-cho
     const CAPTION_MAX = 1024;
     let sendResult;
 
-    // Priority: interactive buttons > KB attachment > plain text.
-    // Buttons take highest priority because they represent an explicit AI decision.
-    // KB attachment is skipped when buttons fire — the two are mutually exclusive.
-    if (buttonTemplateName && buttonTemplates.length > 0) {
+    // Priority: inline options > saved button template > KB attachment > plain text.
+    if (inlineOptions && inlineOptions.length >= 2) {
+      // ≤3 items → reply buttons; 4-5 items → list
+      if (inlineOptions.length <= 3) {
+        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'interactive',
+          interactiveType: 'button',
+          to: incoming.from,
+          body: replyText,
+          buttons: inlineOptions.map((opt, i) => ({
+            type: 'reply' as const,
+            reply: { id: `opt_${i}`, title: opt.slice(0, 20) },
+          })),
+        });
+      } else {
+        sendResult = await gateway.sendMessage(config.phone_number_id, config.access_token, {
+          type: 'interactive',
+          interactiveType: 'list',
+          to: incoming.from,
+          body: replyText,
+          listButtonLabel: 'Choose an option',
+          listSections: [{
+            title: 'Options',
+            rows: inlineOptions.map((opt, i) => ({
+              id: `opt_${i}`,
+              title: opt.slice(0, 24),
+            })),
+          }],
+        });
+      }
+    } else if (buttonTemplateName && buttonTemplates.length > 0) {
       const tmpl = buttonTemplates.find(t => t.name.toLowerCase() === buttonTemplateName);
       if (tmpl) {
         fastify.log.info({ buttonTemplateName, type: tmpl.type }, '[Webhook] sending interactive button template');
