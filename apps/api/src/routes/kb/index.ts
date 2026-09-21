@@ -488,7 +488,7 @@ Output format (strict, no other text):
 
       // Fetch all entries
       const { data: entries, error: entErr } = await db
-        .from('kb_entries')
+        .from('knowledge_base')
         .select('question, answer, category')
         .eq('collection_id', id)
         .order('created_at', { ascending: true });
@@ -580,7 +580,7 @@ Return ONLY valid JSON, no explanation, no markdown fences:
 
       // Delete existing entries
       const { error: delErr } = await db
-        .from('kb_entries')
+        .from('knowledge_base')
         .delete()
         .eq('collection_id', id);
       if (delErr) return reply.status(500).send({ error: delErr.message });
@@ -611,7 +611,7 @@ Return ONLY valid JSON, no explanation, no markdown fences:
       }));
 
       const { error: insErr } = await db
-        .from('kb_entries')
+        .from('knowledge_base')
         .insert(withEmbeddings);
       if (insErr) return reply.status(500).send({ error: insErr.message });
 
