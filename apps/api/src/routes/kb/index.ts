@@ -495,10 +495,6 @@ Output format (strict, no other text):
       if (entErr) return reply.status(500).send({ error: entErr.message });
       if (!entries?.length) return reply.status(400).send({ error: 'Collection has no entries to optimise' });
 
-      const entriesText = entries
-        .map((e, i) => `[${i + 1}]\nQ: ${e.question}\nA: ${e.answer}\nCategory: ${e.category || 'General'}`)
-        .join('\n\n');
-
       const systemPrompt = `You are a Knowledge Base optimiser for a WhatsApp AI customer support bot.
 You receive existing KB entries and rewrite them so a bot can better understand and answer customer questions.
 
@@ -514,34 +510,43 @@ CRITICAL: Do NOT invent new information. Only use facts from the original entrie
 Return ONLY valid JSON, no explanation, no markdown fences:
 {"entries":[{"question":"...","answer":"...","category":"..."}]}`;
 
-      try {
+      const BATCH_SIZE = 15;
+      type OptEntry = { question: string; answer: string; category: string };
+
+      const colName = col.name;
+      async function optimiseBatch(batch: NonNullable<typeof entries>): Promise<OptEntry[]> {
+        const entriesText = batch
+          .map((e, i) => `[${i + 1}]\nQ: ${e.question}\nA: ${e.answer}\nCategory: ${e.category || 'General'}`)
+          .join('\n\n');
         const { content } = await chatCompletion({
           model:      REPLY_MODEL,
           system:     systemPrompt,
-          messages:   [{ role: 'user', content: `Optimise these ${entries.length} KB entries for the collection "${col.name}":\n\n${entriesText}` }],
-          max_tokens: 8000,
+          messages:   [{ role: 'user', content: `Optimise these ${batch.length} KB entries for the collection "${colName}":\n\n${entriesText}` }],
+          max_tokens: 4000,
         });
-
         let raw = content.trim();
         const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (fenced) raw = fenced[1]!.trim();
-
-        let parsed: { entries: Array<{ question: string; answer: string; category: string }> };
+        let parsed: { entries: OptEntry[] };
         try {
           parsed = JSON.parse(raw) as typeof parsed;
         } catch {
           const objMatch = raw.match(/\{[\s\S]*\}/);
-          if (!objMatch) return reply.status(502).send({ error: 'Optimisation failed — please try again' });
+          if (!objMatch) throw new Error('unparseable response');
           parsed = JSON.parse(objMatch[0]) as typeof parsed;
         }
+        if (!Array.isArray(parsed?.entries)) throw new Error('unexpected response format');
+        return parsed.entries.filter(e => e.question?.trim() && e.answer?.trim());
+      }
 
-        if (!Array.isArray(parsed?.entries)) {
-          return reply.status(502).send({ error: 'Optimisation failed — unexpected response format' });
+      try {
+        const batches: (typeof entries)[] = [];
+        for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+          batches.push(entries.slice(i, i + BATCH_SIZE));
         }
 
-        const optimised = parsed.entries
-          .filter(e => e.question?.trim() && e.answer?.trim())
-          .slice(0, 200);
+        const results = await Promise.all(batches.map(b => optimiseBatch(b)));
+        const optimised = results.flat().slice(0, 200);
 
         return reply.send({ entries: optimised, originalCount: entries.length });
       } catch (err) {
