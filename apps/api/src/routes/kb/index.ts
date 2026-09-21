@@ -574,14 +574,17 @@ Return ONLY valid JSON, no explanation, no markdown fences:
         return reply.status(400).send({ error: 'entries array is required' });
       }
 
-      // Verify ownership
+      // Verify ownership and get product_type from collection bots
       const { data: col } = await db
         .from('kb_collections')
-        .select('id')
+        .select('id, kb_collection_bots(product_slug, priority)')
         .eq('id', id)
         .eq('tenant_id', tenantId)
         .single();
       if (!col) return reply.status(404).send({ error: 'Collection not found' });
+
+      const collectionBots = (col as unknown as { kb_collection_bots: Array<{ product_slug: string; priority: number }> }).kb_collection_bots ?? [];
+      const productType = collectionBots.sort((a, b) => a.priority - b.priority)[0]?.product_slug ?? 'support_bot';
 
       // Delete existing entries
       const { error: delErr } = await db
@@ -594,6 +597,7 @@ Return ONLY valid JSON, no explanation, no markdown fences:
       const toInsert = entries.map(e => ({
         tenant_id:     tenantId,
         collection_id: id,
+        product_type:  productType,
         question:      e.question.trim(),
         answer:        e.answer.trim(),
         category:      e.category?.trim() || 'General',
