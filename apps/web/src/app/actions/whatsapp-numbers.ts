@@ -94,6 +94,50 @@ export async function updateRoutingConfigAction(
   return { ok: true };
 }
 
+export interface BranchInput {
+  name:           string;
+  address:        string;
+  access:         string;
+  hours:          string;
+  phone:          string;
+  manager_name:   string;
+  manager_phone:  string;
+  latitude:       number;
+  longitude:      number;
+}
+
+/** Merge-update the branches array in routing_config without touching other fields (greeting, menu_intro, etc.) */
+export async function saveBranchesAction(
+  numberId: string,
+  branches: BranchInput[],
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const admin = getSupabaseAdminClient();
+
+  // Read current routing_config so we can merge branches in without overwriting other fields
+  const { data: row, error: fetchErr } = await admin
+    .from('whatsapp_numbers')
+    .select('routing_config')
+    .eq('id', numberId)
+    .single();
+  if (fetchErr) return { error: fetchErr.message };
+
+  const existing = (row?.routing_config ?? {}) as Record<string, unknown>;
+  const updated  = { ...existing, branches };
+
+  const { error } = await admin
+    .from('whatsapp_numbers')
+    .update({ routing_config: updated })
+    .eq('id', numberId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  return { ok: true };
+}
+
 /** Platform-only: tenantId is passed explicitly from the platform console. */
 export async function upsertWhatsAppNumberAction(
   tenantId:    string,

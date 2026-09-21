@@ -9,13 +9,15 @@ const ROUTING_TTL = 86_400; // 24 h in seconds
 const CLASSIFIER_MODEL = 'claude-haiku-4-5-20251001';
 
 export interface BranchLocation {
-  name:      string;
-  address?:  string;
-  latitude:  number;
-  longitude: number;
-  phone?:    string;
-  hours?:    string;
-  access?:   string;  // floor, parking, lift info — e.g. "2nd floor, lift access, mall parking"
+  name:           string;
+  address?:       string;
+  latitude:       number;
+  longitude:      number;
+  phone?:         string;
+  hours?:         string;
+  access?:        string;  // floor, parking, lift info — e.g. "2nd floor, lift access, mall parking"
+  manager_name?:  string;
+  manager_phone?: string;  // E.164 — WhatsApp number for lead/booking notifications
 }
 
 export interface RoutingConfig {

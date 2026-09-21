@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Building2, Phone, Bot, Link2, Bell, CreditCard, ChevronRight,
   Users, Mail, Clock, Trash2, Info, Cpu, MessageSquare, ShieldOff,
-  UserCircle2, Wrench, Tag,
+  UserCircle2, Wrench, Tag, MapPin,
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
@@ -27,6 +27,8 @@ import { getBotToolsAction } from '@/app/actions/bot-tools';
 import { DispositionCategoryManager } from '@/components/dashboard/DispositionCategoryManager';
 import { getDispositionCategoriesAction } from '@/app/actions/disposition';
 import { BotsTabContent } from '@/components/dashboard/BotsTabContent';
+import { BranchManagerEditor } from '@/components/dashboard/BranchManagerEditor';
+import type { BranchInput } from '@/app/actions/whatsapp-numbers';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -186,6 +188,35 @@ export default async function SettingsPage({
               webhookBase={`${apiBase}/api/webhook/${tenant?.['id'] ?? ''}`}
             />
           </DashboardCollapsibleSection>
+
+          {/* Branch Management — shown when any number has routing_config.branches */}
+          {(() => {
+            const branchNumbers = numbers!.filter(n => {
+              const cfg = n['routing_config'] as Record<string, unknown> | null;
+              return Array.isArray(cfg?.['branches']) && (cfg!['branches'] as unknown[]).length > 0;
+            });
+            // Also show if routing_mode is 'multi' so they can add branches
+            const multiNumbers = numbers!.filter(n => n['routing_mode'] === 'multi');
+            const relevant = [...new Map([...branchNumbers, ...multiNumbers].map(n => [n['id'], n])).values()];
+            if (!relevant.length) return null;
+            return relevant.map(n => {
+              const cfg = (n['routing_config'] ?? {}) as Record<string, unknown>;
+              const branches = (Array.isArray(cfg['branches']) ? cfg['branches'] : []) as BranchInput[];
+              return (
+                <DashboardCollapsibleSection
+                  key={n['id'] as string}
+                  icon={<MapPin size={16} />}
+                  title={`Branches — ${(n['label'] ?? n['phone_number'] ?? n['id']) as string}`}
+                  hint="Configure branch details: address, floor access, opening hours, and branch manager contact. The manager will receive a WhatsApp notification when a customer books via the bot."
+                >
+                  <BranchManagerEditor
+                    numberId={n['id'] as string}
+                    initialBranches={branches}
+                  />
+                </DashboardCollapsibleSection>
+              );
+            });
+          })()}
 
           {activeBots.length > 0 && (
             <DashboardCollapsibleSection icon={<Link2 size={16} />} title="Meta Cloud API & Webhook Setup" hint="Paste the Webhook URL and Verify Token into your Meta App Dashboard under WhatsApp → Configuration to activate message delivery.">

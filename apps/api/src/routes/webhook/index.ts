@@ -1534,9 +1534,10 @@ Which branch works best for you?
       );
     }
 
-    // ── Post-booking directions trigger ──────────────────────────────────────
-    // When the AI transitions to [STAGE:booked], fire a directions message using
-    // branch details from routing_config.branches (matched by convAiVars.branch).
+    // ── Post-booking: directions to customer + notification to branch manager ──
+    // When the AI transitions to [STAGE:booked], fires two messages:
+    // 1. Directions to the customer (branch address, access, hours)
+    // 2. Booking summary to the branch manager's WhatsApp (if manager_phone is set)
     if (stageMatch?.[1] === 'booked' && whatsappNumberId) {
       fireForget(
         (async () => {
@@ -1548,7 +1549,7 @@ Which branch works best for you?
           const branches = ((wnForDirs?.routing_config ?? {}) as RoutingConfig).branches;
           if (!branches?.length) return;
 
-          // Try to match branch captured by AI (ENTITY:branch=...) or first branch
+          // Merge any new entity captures from this turn
           const latestVars = entityMatches.length > 0
             ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
             : convAiVars;
@@ -1557,20 +1558,36 @@ Which branch works best for you?
             branchName && b.name.toLowerCase().includes(branchName.toLowerCase()),
           ) ?? branches[0]!;
 
-          const lines: string[] = [`Here's how to find us! 📍`];
-          if (branch.address) lines.push(`*${branch.name}*\n${branch.address}`);
-          else                 lines.push(`*${branch.name}*`);
-          if (branch.access)   lines.push(`🏢 ${branch.access}`);
-          if (branch.hours)    lines.push(`🕐 Open ${branch.hours}`);
-          if (branch.phone)    lines.push(`📞 ${branch.phone}`);
-          lines.push(`\nSee you soon! 🙏`);
+          // 1. Directions to customer
+          const dirLines: string[] = [`Here's how to find us! 📍`];
+          if (branch.address) dirLines.push(`*${branch.name}*\n${branch.address}`);
+          else                 dirLines.push(`*${branch.name}*`);
+          if (branch.access)   dirLines.push(`🏢 ${branch.access}`);
+          if (branch.hours)    dirLines.push(`🕐 Open ${branch.hours}`);
+          if (branch.phone)    dirLines.push(`📞 ${branch.phone}`);
+          dirLines.push(`\nSee you soon! 🙏`);
 
           await gateway.sendMessage(config.phone_number_id, config.access_token, {
-            type: 'text',
-            to:   incoming.from,
-            text: lines.join('\n'),
+            type: 'text', to: incoming.from, text: dirLines.join('\n'),
           });
           fastify.log.info({ tenantId, branch: branch.name }, '[Webhook] post-booking directions sent');
+
+          // 2. Notification to branch manager (if configured)
+          if (branch.manager_phone) {
+            const contactName = (contact as Contact).name ?? 'Guest';
+            const summaryParts = [`📋 *New Booking — ${branch.name}*`, `👤 ${contactName}`];
+            if (latestVars['date'])       summaryParts.push(`📅 ${latestVars['date']}`);
+            if (latestVars['time'])       summaryParts.push(`🕐 ${latestVars['time']}`);
+            if (latestVars['party_size']) summaryParts.push(`👥 ${latestVars['party_size']} guests`);
+            if (latestVars['occasion'])   summaryParts.push(`🎉 ${latestVars['occasion']}`);
+            if (latestVars['dietary'])    summaryParts.push(`🥗 Dietary: ${latestVars['dietary']}`);
+            summaryParts.push(`\n📱 Customer: ${phoneValue}`);
+
+            await gateway.sendMessage(config.phone_number_id, config.access_token, {
+              type: 'text', to: branch.manager_phone, text: summaryParts.join('\n'),
+            });
+            fastify.log.info({ tenantId, branch: branch.name, manager: branch.manager_phone }, '[Webhook] branch manager notified');
+          }
         })(),
         'post-booking-directions',
         fastify.log,
