@@ -462,7 +462,7 @@ export default function KnowledgeBasePage() {
     setOptEditDraft(null);
     setOptimisingStep('loading');
 
-    const res = await kbFetch(`/api/kb/collections/${col.id}/optimise`, { method: 'POST' });
+    const res = await kbFetch(`/api/kb/collections/${col.id}/optimise`, { method: 'POST', body: '{}' });
     const json = await res.json() as { entries?: Array<{ question: string; answer: string; category: string }>; originalCount?: number; error?: string };
     if (!res.ok) {
       setOptimiseError(json.error ?? 'Optimisation failed — please try again');
