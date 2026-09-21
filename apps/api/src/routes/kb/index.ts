@@ -255,14 +255,7 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
     if (!entries?.length) return reply.status(400).send({ error: 'entries array is required' });
     if (entries.length > 100) return reply.status(400).send({ error: 'Max 100 entries per bulk import' });
 
-    // Resolve product_type from collection bots (lowest priority)
-    const { data: colBots } = await db
-      .from('kb_collection_bots')
-      .select('product_slug, priority')
-      .eq('collection_id', collectionId)
-      .order('priority', { ascending: true })
-      .limit(1);
-    const productType = colBots?.[0]?.product_slug ?? 'support_bot';
+    const productType = 'support_bot';
 
     // Batch-generate embeddings
     const texts = entries.map(e => `${e.question}\n${e.answer}`);
@@ -583,17 +576,16 @@ Return ONLY valid JSON, no explanation, no markdown fences:
         return reply.status(400).send({ error: 'entries array is required' });
       }
 
-      // Verify ownership and get product_type from collection bots
+      // Verify ownership
       const { data: col } = await db
         .from('kb_collections')
-        .select('id, kb_collection_bots(product_slug, priority)')
+        .select('id')
         .eq('id', id)
         .eq('tenant_id', tenantId)
         .single();
       if (!col) return reply.status(404).send({ error: 'Collection not found' });
 
-      const collectionBots = (col as unknown as { kb_collection_bots: Array<{ product_slug: string; priority: number }> }).kb_collection_bots ?? [];
-      const productType = collectionBots.sort((a, b) => a.priority - b.priority)[0]?.product_slug ?? 'support_bot';
+      const productType = 'support_bot';
 
       // Delete existing entries
       const { error: delErr } = await db

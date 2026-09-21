@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ChevronLeft, Plus, Pencil, Trash2, Search, X,
-  Upload, ToggleLeft, ToggleRight, BookOpen,
+  Upload, BookOpen,
   FileText, ImageIcon, FileCode, File, AlertCircle, CheckCircle2, Loader2,
 } from 'lucide-react';
 import { kbFetch, kbUpload } from '@/lib/kb-client';
@@ -20,8 +20,6 @@ interface Collection {
   entry_count: number;
   embedding_model: string;
 }
-
-interface BotAssignment { product_slug: string; }
 
 interface Entry {
   id: string;
@@ -46,12 +44,6 @@ interface KBDoc {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const BOTS = [
-  { slug: 'support_bot',   label: 'Support Bot',   on: 'bg-sky-50 text-sky-700 border-sky-200',         off: 'bg-gray-50 text-gray-400 border-gray-200' },
-  { slug: 'sales_bot',     label: 'Sales Bot',     on: 'bg-violet-50 text-violet-700 border-violet-200', off: 'bg-gray-50 text-gray-400 border-gray-200' },
-  { slug: 'lifecycle_bot', label: 'Lifecycle Bot', on: 'bg-orange-50 text-orange-700 border-orange-200', off: 'bg-gray-50 text-gray-400 border-gray-200' },
-];
 
 const EMPTY_ENTRY = { question: '', answer: '', category: '', status: 'live' };
 const PAGE_SIZE = 20;
@@ -83,8 +75,6 @@ export default function CollectionDetailPage() {
 
   // Collection
   const [collection,   setCollection]   = useState<Collection | null>(null);
-  const [bots,         setBots]         = useState<string[]>([]);
-  const [togglingBot,  setTogglingBot]  = useState<string | null>(null);
 
   // Entries
   const [entries,    setEntries]    = useState<Entry[]>([]);
@@ -119,10 +109,8 @@ export default function CollectionDetailPage() {
   const loadCollection = useCallback(async () => {
     const res = await kbFetch(`/api/kb/collections/${collectionId}`);
     if (!res.ok) { router.push('/knowledge-base'); return; }
-    const json = await res.json() as { data: Collection & { kb_collection_bots: BotAssignment[] } };
-    const { kb_collection_bots, ...col } = json.data;
-    setCollection(col);
-    setBots((kb_collection_bots ?? []).map((b: BotAssignment) => b.product_slug));
+    const json = await res.json() as { data: Collection };
+    setCollection(json.data);
   }, [collectionId, router]);
 
   const loadEntries = useCallback(async () => {
@@ -172,24 +160,6 @@ export default function CollectionDetailPage() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
   }, [documents, loadDocuments, loadCollection, loadEntries]);
-
-  // ── Bot assignment ────────────────────────────────────────────────────────────
-
-  async function toggleBot(slug: string) {
-    if (togglingBot) return;
-    setTogglingBot(slug);
-    const assigned = bots.includes(slug);
-    if (assigned) {
-      await kbFetch(`/api/kb/collections/${collectionId}/bots/${slug}`, { method: 'DELETE' });
-      setBots(prev => prev.filter(b => b !== slug));
-    } else {
-      await kbFetch(`/api/kb/collections/${collectionId}/bots`, {
-        method: 'POST', body: JSON.stringify({ product_slug: slug }),
-      });
-      setBots(prev => [...prev, slug]);
-    }
-    setTogglingBot(null);
-  }
 
   async function toggleActive() {
     if (!collection) return;
@@ -356,26 +326,6 @@ export default function CollectionDetailPage() {
           </div>
         </div>
         {collection.description && <p className="text-sm text-gray-500">{collection.description}</p>}
-      </div>
-
-      {/* Bot assignment */}
-      <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Bot Assignments</p>
-        <div className="flex flex-wrap gap-2">
-          {BOTS.map(bot => {
-            const on = bots.includes(bot.slug);
-            const busy = togglingBot === bot.slug;
-            return (
-              <button key={bot.slug} type="button" onClick={() => void toggleBot(bot.slug)} disabled={busy}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm font-medium transition-all disabled:opacity-60 ${on ? bot.on : bot.off}`}>
-                {busy ? <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
-                       : on ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                {bot.label}
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-[11px] text-gray-400 mt-2">Active bots will search this collection when answering messages.</p>
       </div>
 
       {/* Tab switcher */}

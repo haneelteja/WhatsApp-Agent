@@ -86,17 +86,16 @@ async function _lookupKBFromDb(
     if (results.length > 0) return results;
   }
 
-  // 3. Final fallback: legacy product_type-scoped keyword search
+  // 3. Final fallback: tenant-wide keyword search across legacy (non-collection) entries
   // Strip PostgREST filter-injection characters before embedding in the .or() string.
-  // A raw comma would add extra filter predicates; parens alter grouping.
   const safeQ = query.replace(/[,()]/g, ' ');
 
   const { data, error } = await db
     .from('knowledge_base')
     .select('*')
     .eq('tenant_id', tenantId)
-    .eq('product_type', productSlug)
     .eq('status', 'live')
+    .is('collection_id', null)
     .or(`question.ilike.%${safeQ}%,answer.ilike.%${safeQ}%,category.ilike.%${safeQ}%`)
     .limit(limit);
 
