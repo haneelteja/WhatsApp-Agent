@@ -255,6 +255,15 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
     if (!entries?.length) return reply.status(400).send({ error: 'entries array is required' });
     if (entries.length > 100) return reply.status(400).send({ error: 'Max 100 entries per bulk import' });
 
+    // Resolve product_type from collection bots (lowest priority)
+    const { data: colBots } = await db
+      .from('kb_collection_bots')
+      .select('product_slug, priority')
+      .eq('collection_id', collectionId)
+      .order('priority', { ascending: true })
+      .limit(1);
+    const productType = colBots?.[0]?.product_slug ?? 'support_bot';
+
     // Batch-generate embeddings
     const texts = entries.map(e => `${e.question}\n${e.answer}`);
     let embeddings: (number[] | null)[] = new Array(entries.length).fill(null);
@@ -266,7 +275,7 @@ export async function kbRoutes(fastify: FastifyInstance): Promise<void> {
 
     const rows = entries.map((e, i) => ({
       tenant_id: tenantId,
-      product_type: 'support_bot',
+      product_type: productType,
       collection_id: collectionId,
       question: e.question.trim(),
       answer: e.answer.trim(),
