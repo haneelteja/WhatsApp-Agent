@@ -8,12 +8,22 @@ import { cacheGet, cacheSet, cacheDel } from '../../lib/redis.js';
 const ROUTING_TTL = 86_400; // 24 h in seconds
 const CLASSIFIER_MODEL = 'claude-haiku-4-5-20251001';
 
+export interface BranchLocation {
+  name:      string;
+  address?:  string;
+  latitude:  number;
+  longitude: number;
+  phone?:    string;
+  hours?:    string;
+}
+
 export interface RoutingConfig {
   greeting?:             string;
   general_question?:     string;
   menu_intro?:           string;
   confidence_threshold?: number;
   menu_labels?:          Partial<Record<string, string>>;
+  branches?:             BranchLocation[];
 }
 
 // Slab hierarchy: activating a higher-tier bot implicitly includes all lower tiers.

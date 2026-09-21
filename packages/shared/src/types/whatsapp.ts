@@ -22,7 +22,7 @@ export interface IncomingWhatsAppMessage {
   from: string;
   messageId: string;
   timestamp: number;
-  type: 'text' | 'image' | 'audio' | 'document' | 'video' | 'interactive' | 'unsupported';
+  type: 'text' | 'image' | 'audio' | 'document' | 'video' | 'interactive' | 'location' | 'unsupported';
   text?: string;
   mediaId?: string;
   mediaUrl?: string;
@@ -31,6 +31,8 @@ export interface IncomingWhatsAppMessage {
   /** Set when type = 'interactive' — the button/list row the user tapped */
   interactiveReplyId?: string;
   interactiveReplyTitle?: string;
+  /** Set when type = 'location' */
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
 }
 
 export interface OutgoingTextMessage {
@@ -70,11 +72,21 @@ export interface OutgoingMediaMessage {
   filename?: string;
 }
 
+export interface OutgoingLocationMessage {
+  type: 'location';
+  to: string;
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}
+
 export type OutgoingMessage =
   | OutgoingTextMessage
   | OutgoingTemplateMessage
   | OutgoingInteractiveMessage
-  | OutgoingMediaMessage;
+  | OutgoingMediaMessage
+  | OutgoingLocationMessage;
 
 export interface SendMessageResult {
   messageId: string;
@@ -142,6 +154,7 @@ export interface MetaMessage {
     button_reply?: { id: string; title: string };
     list_reply?:   { id: string; title: string; description?: string };
   };
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
 }
 
 export interface MetaStatus {

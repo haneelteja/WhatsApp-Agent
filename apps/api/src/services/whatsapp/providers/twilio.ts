@@ -79,6 +79,8 @@ export class TwilioProvider implements IWhatsAppProvider {
       body = message.body;
     } else if (message.type === 'template') {
       body = `[Template: ${message.templateName}]`;
+    } else if (message.type === 'location') {
+      body = `[Location${message.name ? ': ' + message.name : ''}]`;
     } else {
       body = `[${message.mediaType} message]`;
     }

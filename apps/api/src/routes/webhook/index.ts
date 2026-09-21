@@ -14,7 +14,7 @@ import { calcLeadScore, generateLeadSummary } from '../../lib/lead-scoring.js';
 import { formatContactMemory } from '../../services/contact/memory.js';
 import { cacheGet, cacheSet } from '../../lib/redis.js';
 import { resolveMultiBotRouting } from '../../services/routing/router.js';
-import type { RoutingConfig } from '../../services/routing/router.js';
+import type { BranchLocation, RoutingConfig } from '../../services/routing/router.js';
 import { detectSentimentText } from '../../services/sentiment/detector.js';
 import { isWithinBusinessHours } from '../../lib/business-hours.js';
 import { dispatchCall } from '../../services/voice/call-manager.js';
@@ -62,6 +62,16 @@ function detectLanguageHint(text: string): string | null {
   if (/[؀-ۿ]/.test(text)) return 'Arabic';
   if (/[一-鿿]/.test(text)) return 'Chinese';
   return null;
+}
+
+// ─── Haversine distance (km) between two GPS coordinates ─────────────────────
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // ─── Status ladder for delivery receipts ─────────────────────────────────────
@@ -399,6 +409,13 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     fastify.log.info({ incoming: incoming ? { type: incoming.type, from: incoming.from } : null }, '[Webhook] parsed incoming');
     if (!incoming || incoming.type === 'unsupported') return;
 
+    // Derive a text description for location messages so the AI sees something meaningful
+    const locationText = incoming.type === 'location' && incoming.location
+      ? `User shared their location${incoming.location.name ? ': ' + incoming.location.name : ''}` +
+        `${incoming.location.address ? ' (' + incoming.location.address + ')' : ''}` +
+        ` [lat: ${incoming.location.latitude.toFixed(5)}, lon: ${incoming.location.longitude.toFixed(5)}]`
+      : null;
+
     // Mark message as read (non-blocking)
     void gateway.markAsRead(config.phone_number_id, config.access_token, incoming.messageId);
 
@@ -557,7 +574,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
       await db.from('messages').insert({
         conversation_id: conversation.id,
         role: 'user',
-        content: incoming.text ?? `[${incoming.type} received]`,
+        content: locationText ?? incoming.text ?? `[${incoming.type} received]`,
         media_url: incoming.mediaUrl ?? null,
         media_type: (incoming.type !== 'text')
           ? incoming.type
@@ -571,7 +588,7 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     const { error: msgError } = await db.from('messages').insert({
       conversation_id: conversation.id,
       role: 'user',
-      content: incoming.text ?? `[${incoming.type} received]`,
+      content: locationText ?? incoming.text ?? `[${incoming.type} received]`,
       media_url: incoming.mediaUrl ?? null,
       media_type: (incoming.type !== 'text')
         ? (incoming.type as 'image' | 'audio' | 'video' | 'document')
@@ -1609,6 +1626,38 @@ Which branch works best for you?
       }
 
       const senderPhone = incoming.from.startsWith('+') ? incoming.from : `+${incoming.from}`;
+
+      // ── Location message: find nearest branch and offer as interactive choices ──
+      if (incoming.type === 'location' && incoming.location) {
+        const routingCfg = (wnRow.routing_config ?? {}) as RoutingConfig;
+        const branches = routingCfg.branches;
+        if (branches && branches.length > 0) {
+          const { latitude, longitude } = incoming.location;
+          const sorted = (branches as BranchLocation[])
+            .map(b => ({ ...b, distKm: haversineKm(latitude, longitude, b.latitude, b.longitude) }))
+            .sort((a, b) => a.distKm - b.distKm)
+            .slice(0, 3);
+
+          const bodyLines = sorted.map(b => `• ${b.name} — ${b.distKm.toFixed(1)} km`).join('\n');
+          const msgBody = `Based on your location, here are the nearest branches:\n${bodyLines}`;
+
+          await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+            type: 'interactive',
+            interactiveType: sorted.length <= 3 ? 'button' : 'list',
+            to: senderPhone,
+            body: msgBody,
+            buttons: sorted.length <= 3
+              ? sorted.map((b, i) => ({ type: 'reply' as const, reply: { id: `branch_${i}`, title: b.name.slice(0, 20) } }))
+              : undefined,
+            listSections: sorted.length > 3
+              ? [{ title: 'Nearby Branches', rows: sorted.map((b, i) => ({ id: `branch_${i}`, title: b.name.slice(0, 24), description: `${b.distKm.toFixed(1)} km away` })) }]
+              : undefined,
+          });
+          fastify.log.info({ tenantId, senderPhone, nearest: sorted[0]?.name }, '[Routing] location → nearest branch sent');
+          return;
+        }
+        // No branches configured — fall through to normal routing, treating as no-text message
+      }
 
       const routingResult = await resolveMultiBotRouting({
         tenantId,

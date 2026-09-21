@@ -6,6 +6,7 @@ import type {
   MetaStatus,
   MetaWebhookPayload,
   OutgoingInteractiveMessage,
+  OutgoingLocationMessage,
   OutgoingMediaMessage,
   OutgoingMessage,
   OutgoingTemplateMessage,
@@ -136,6 +137,9 @@ export class MetaCloudProvider implements IWhatsAppProvider {
         };
       }
     }
+    if (raw.type === 'location' && raw.location) {
+      return { ...base, type: 'location', location: raw.location };
+    }
 
     return { ...base, type: 'unsupported' };
   }
@@ -242,6 +246,8 @@ export class MetaCloudProvider implements IWhatsAppProvider {
         return this.buildInteractive(base, message);
       case 'media':
         return this.buildMedia(base, message);
+      case 'location':
+        return this.buildLocation(base, message);
     }
   }
 
@@ -299,6 +305,20 @@ export class MetaCloudProvider implements IWhatsAppProvider {
         link: m.mediaUrl,
         caption: m.caption,
         filename: m.filename,
+      },
+    };
+  }
+
+  private buildLocation(base: Record<string, unknown>, m: OutgoingLocationMessage) {
+    return {
+      ...base,
+      to: m.to,
+      type: 'location',
+      location: {
+        longitude: m.longitude,
+        latitude:  m.latitude,
+        name:      m.name,
+        address:   m.address,
       },
     };
   }
