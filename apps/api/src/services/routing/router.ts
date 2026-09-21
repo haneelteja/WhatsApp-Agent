@@ -255,7 +255,7 @@ export async function resolveMultiBotRouting(params: {
 
     if (!matchedBot) {
       await gateway.sendMessage(config.phone_number_id, config.access_token,
-        buildMenuMessage(phone, availableBots, menuLabels, 'Please choose an option:'));
+        buildMenuMessage(phone, availableBots, menuLabels, menuIntro));
       return { handled: true };
     }
 
