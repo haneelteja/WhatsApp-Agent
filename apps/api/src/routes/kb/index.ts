@@ -492,6 +492,7 @@ Output format (strict, no other text):
         .select('question, answer, category')
         .eq('collection_id', id)
         .order('created_at', { ascending: true });
+      fastify.log.info({ tenantId, collectionId: id, count: entries?.length ?? 0, dbErr: entErr?.message }, '[KB Optimise] entries fetched');
       if (entErr) return reply.status(500).send({ error: entErr.message });
       if (!entries?.length) return reply.status(400).send({ error: 'Collection has no entries to optimise' });
 
