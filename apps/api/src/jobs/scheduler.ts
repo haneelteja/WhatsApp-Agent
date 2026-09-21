@@ -13,6 +13,7 @@ import { resetAllDailyCounts } from '../lib/sender-capacity.js';
 import { classifyAndPersistOutcome } from '../lib/outcome-classifier.js';
 import { captureException } from '../lib/sentry.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
+import type { RoutingConfig } from '../services/routing/router.js';
 
 function alertJobFailure(jobName: string, err: unknown): void {
   console.error(`[Scheduler] ${jobName} failed:`, (err as Error).message);
@@ -572,6 +573,89 @@ async function processLifecycleSequences(): Promise<void> {
   }
 }
 
+async function processEnquiryFollowups(): Promise<void> {
+  const db = getServerClient();
+  const now = new Date().toISOString();
+
+  const { data: jobs } = await db
+    .from('enquiry_followup_jobs')
+    .select('id, tenant_id, conversation_id, contact_phone, whatsapp_number_id')
+    .lte('fire_at', now)
+    .is('fired_at', null)
+    .is('cancelled_at', null)
+    .limit(50);
+
+  if (!jobs?.length) return;
+
+  for (const job of jobs) {
+    try {
+      type JobRow = { id: string; tenant_id: string; conversation_id: string; contact_phone: string; whatsapp_number_id: string | null };
+      const j = job as unknown as JobRow;
+
+      // Check if conversation is still open and not yet booked
+      const { data: conv } = await db
+        .from('conversations')
+        .select('id, status, stage, contact_id')
+        .eq('id', j.conversation_id)
+        .maybeSingle();
+
+      const stage = (conv as unknown as { stage?: string | null } | null)?.stage ?? '';
+      const status = (conv as unknown as { status?: string } | null)?.status ?? '';
+
+      if (!conv || status !== 'open' || stage === 'booked' || stage === 'confirmed') {
+        // Conversation resolved or already booked — cancel silently
+        await db.from('enquiry_followup_jobs')
+          .update({ cancelled_at: now })
+          .eq('id', j.id);
+        continue;
+      }
+
+      // Load WA number for messaging + routing config for custom message
+      const { data: wn } = await db
+        .from('whatsapp_numbers')
+        .select('config_json, provider, routing_config')
+        .eq('id', j.whatsapp_number_id ?? '')
+        .maybeSingle();
+
+      if (!wn) {
+        await db.from('enquiry_followup_jobs').update({ cancelled_at: now }).eq('id', j.id);
+        continue;
+      }
+
+      const routingCfg = ((wn as unknown as { routing_config?: unknown }).routing_config ?? {}) as RoutingConfig;
+      const msgTemplate = routingCfg.enquiry_followup_message
+        ?? "Hi {name}! 👋 You reached out to us earlier — would you like to go ahead with a booking? We'd love to help!";
+
+      // Get contact name
+      const contactId = (conv as unknown as { contact_id: string }).contact_id;
+      const { data: contactRow } = await db
+        .from('contacts')
+        .select('name')
+        .eq('id', contactId)
+        .maybeSingle();
+      const firstName = (contactRow as { name?: string | null } | null)?.name?.split(' ')[0] ?? 'there';
+      const text = msgTemplate.replace(/\{name\}/gi, firstName);
+
+      const gateway  = new WhatsAppGateway((wn as { provider: string }).provider as WhatsAppProvider);
+      const wnConfig = (wn as { config_json: { phone_number_id: string; access_token: string } }).config_json;
+
+      await gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+        type: 'text', to: j.contact_phone, text,
+      });
+
+      // Store message + mark job fired
+      await Promise.all([
+        db.from('messages').insert({ conversation_id: j.conversation_id, role: 'assistant', content: text }),
+        db.from('enquiry_followup_jobs').update({ fired_at: now }).eq('id', j.id),
+      ]);
+
+      console.log(`[EnquiryFollowup] Sent nudge for conversation ${j.conversation_id}`);
+    } catch (err) {
+      console.error(`[EnquiryFollowup] Failed for job ${(job as { id: string }).id}:`, err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
 async function recoverStaleCampaigns(): Promise<void> {
   const db = getServerClient();
   const staleThreshold = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -642,6 +726,13 @@ export function startScheduler(): void {
   cron.schedule('* * * * *', () => {
     void withJobLock('scheduled_messages_dispatch', 55, () => processScheduledMessages()).catch(err =>
       alertJobFailure('scheduled_messages_dispatch', err)
+    );
+  });
+
+  // Enquiry follow-up nudges — every 5 min  [TTL: 270s = 4.5min]
+  cron.schedule('*/5 * * * *', () => {
+    void withJobLock('enquiry_followups', 270, () => processEnquiryFollowups()).catch(err =>
+      alertJobFailure('enquiry_followups', err)
     );
   });
 

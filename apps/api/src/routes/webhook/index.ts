@@ -564,6 +564,22 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
         'track-conversation-started',
         fastify.log,
       );
+
+      // Schedule enquiry follow-up nudge (+2h by default; unique index deduplicates silently)
+      if (whatsappNumberId) {
+        const fireAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+        fireForget(
+          db.from('enquiry_followup_jobs').insert({
+            tenant_id:          tenantId,
+            conversation_id:    (newConvo as Conversation).id,
+            contact_phone:      phoneValue,
+            whatsapp_number_id: whatsappNumberId,
+            fire_at:            fireAt,
+          }),
+          'schedule-enquiry-followup',
+          fastify.log,
+        );
+      }
     }
 
     if (!conversation) return;
@@ -1501,6 +1517,62 @@ Which branch works best for you?
           });
         })(),
         'handle-return-request',
+        fastify.log,
+      );
+    }
+
+    // ── Cancel enquiry follow-up when booking is made ────────────────────────
+    if (stageMatch?.[1] === 'booked') {
+      fireForget(
+        db.from('enquiry_followup_jobs')
+          .update({ cancelled_at: new Date().toISOString() })
+          .eq('conversation_id', conversation.id)
+          .is('fired_at', null)
+          .is('cancelled_at', null),
+        'cancel-enquiry-followup-on-booked',
+        fastify.log,
+      );
+    }
+
+    // ── Post-booking directions trigger ──────────────────────────────────────
+    // When the AI transitions to [STAGE:booked], fire a directions message using
+    // branch details from routing_config.branches (matched by convAiVars.branch).
+    if (stageMatch?.[1] === 'booked' && whatsappNumberId) {
+      fireForget(
+        (async () => {
+          const { data: wnForDirs } = await db
+            .from('whatsapp_numbers')
+            .select('routing_config')
+            .eq('id', whatsappNumberId)
+            .maybeSingle();
+          const branches = ((wnForDirs?.routing_config ?? {}) as RoutingConfig).branches;
+          if (!branches?.length) return;
+
+          // Try to match branch captured by AI (ENTITY:branch=...) or first branch
+          const latestVars = entityMatches.length > 0
+            ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
+            : convAiVars;
+          const branchName = latestVars['branch'] ?? latestVars['location'] ?? '';
+          const branch = branches.find(b =>
+            branchName && b.name.toLowerCase().includes(branchName.toLowerCase()),
+          ) ?? branches[0]!;
+
+          const lines: string[] = [`Here's how to find us! 📍`];
+          if (branch.address) lines.push(`*${branch.name}*\n${branch.address}`);
+          else                 lines.push(`*${branch.name}*`);
+          if (branch.access)   lines.push(`🏢 ${branch.access}`);
+          if (branch.hours)    lines.push(`🕐 Open ${branch.hours}`);
+          if (branch.phone)    lines.push(`📞 ${branch.phone}`);
+          lines.push(`\nSee you soon! 🙏`);
+
+          await gateway.sendMessage(config.phone_number_id, config.access_token, {
+            type: 'text',
+            to:   incoming.from,
+            text: lines.join('\n'),
+          });
+          fastify.log.info({ tenantId, branch: branch.name }, '[Webhook] post-booking directions sent');
+        })(),
+        'post-booking-directions',
         fastify.log,
       );
     }

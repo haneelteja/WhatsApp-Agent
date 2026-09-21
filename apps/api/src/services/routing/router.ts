@@ -15,15 +15,20 @@ export interface BranchLocation {
   longitude: number;
   phone?:    string;
   hours?:    string;
+  access?:   string;  // floor, parking, lift info — e.g. "2nd floor, lift access, mall parking"
 }
 
 export interface RoutingConfig {
-  greeting?:             string;
-  general_question?:     string;
-  menu_intro?:           string;
-  confidence_threshold?: number;
-  menu_labels?:          Partial<Record<string, string>>;
-  branches?:             BranchLocation[];
+  greeting?:                   string;
+  general_question?:           string;
+  menu_intro?:                 string;
+  confidence_threshold?:       number;
+  menu_labels?:                Partial<Record<string, string>>;
+  branches?:                   BranchLocation[];
+  /** Hours after first enquiry before a nudge is sent (default: 2) */
+  enquiry_followup_hours?:     number;
+  /** Message sent by the follow-up nudge; {name} is replaced with contact name */
+  enquiry_followup_message?:   string;
 }
 
 // Slab hierarchy: activating a higher-tier bot implicitly includes all lower tiers.
