@@ -12,10 +12,9 @@ import { businessDaysCutoff } from '../lib/business-days.js';
 import { resetAllDailyCounts } from '../lib/sender-capacity.js';
 import { classifyAndPersistOutcome } from '../lib/outcome-classifier.js';
 import { captureException } from '../lib/sentry.js';
-import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
+import type { BotVoiceConfig, Conversation, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 import type { RoutingConfig } from '../services/routing/router.js';
 import { escalateConversation } from '../services/escalation/index.js';
-import type { Conversation } from '@alphabot/shared';
 
 function alertJobFailure(jobName: string, err: unknown): void {
   console.error(`[Scheduler] ${jobName} failed:`, (err as Error).message);
@@ -700,7 +699,8 @@ async function processAutoEscalate(): Promise<void> {
       .eq('tenant_id', row.tenant_id)
       .eq('product_type', row.product_slug)
       .eq('status', 'open')
-      .lt('updated_at', cutoff);
+      .lt('updated_at', cutoff)
+      .limit(100);
 
     if (!convs?.length) continue;
 
