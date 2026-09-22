@@ -14,6 +14,8 @@ import { classifyAndPersistOutcome } from '../lib/outcome-classifier.js';
 import { captureException } from '../lib/sentry.js';
 import type { BotVoiceConfig, SalesConfig, WhatsAppProvider } from '@alphabot/shared';
 import type { RoutingConfig } from '../services/routing/router.js';
+import { escalateConversation } from '../services/escalation/index.js';
+import type { Conversation } from '@alphabot/shared';
 
 function alertJobFailure(jobName: string, err: unknown): void {
   console.error(`[Scheduler] ${jobName} failed:`, (err as Error).message);
@@ -675,6 +677,47 @@ async function recoverStaleCampaigns(): Promise<void> {
   }
 }
 
+async function processAutoEscalate(): Promise<void> {
+  const db = getServerClient();
+
+  const { data: botCfgs } = await db
+    .from('bot_configs')
+    .select('tenant_id, product_slug, escalation_policy')
+    .not('escalation_policy', 'is', null);
+
+  if (!botCfgs?.length) return;
+
+  for (const row of botCfgs) {
+    const policy = row.escalation_policy as { auto_escalate_after_hours?: number | null } | null;
+    const hours  = policy?.auto_escalate_after_hours;
+    if (!hours || hours <= 0) continue;
+
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+    const { data: convs } = await db
+      .from('conversations')
+      .select('id, tenant_id, contact_id, product_type, status, updated_at')
+      .eq('tenant_id', row.tenant_id)
+      .eq('product_type', row.product_slug)
+      .eq('status', 'open')
+      .lt('updated_at', cutoff);
+
+    if (!convs?.length) continue;
+
+    for (const conv of convs) {
+      try {
+        await escalateConversation(
+          conv as unknown as Conversation,
+          `Stale conversation auto-escalated after ${hours}h with no customer reply`,
+        );
+        console.log(`[AutoEscalate] Escalated conversation ${conv.id} (idle ${hours}h)`);
+      } catch (err) {
+        console.error(`[AutoEscalate] Failed for conversation ${conv.id}:`, err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+}
+
 export function startScheduler(): void {
   // Keep Supabase alive (free tier pauses after 7 days inactivity)
   void pingSupabase();
@@ -691,6 +734,13 @@ export function startScheduler(): void {
   cron.schedule('0 * * * *', () => {
     void withJobLock('follow_ups', 3540, () => processFollowUps()).catch(err =>
       alertJobFailure('follow_ups', err)
+    );
+  });
+
+  // Auto-escalate stale conversations — every hour  [TTL: 3540s = 59min]
+  cron.schedule('0 * * * *', () => {
+    void withJobLock('auto_escalate', 3540, () => processAutoEscalate()).catch(err =>
+      alertJobFailure('auto_escalate', err)
     );
   });
 
