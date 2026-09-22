@@ -3,105 +3,58 @@
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
 import { getSession }             from '@/lib/session';
 
-export type KBTopEntry = {
-  entry_id:     string | null;
-  question:     string;
-  category:     string;
-  hit_count:    number;
-};
+export interface QueryCount {
+  query: string;
+  count: number;
+}
 
-export type KBUnansweredQuery = {
-  query:     string;
-  count:     number;
-  last_seen: string;
-};
+export interface KBAnalytics {
+  hitCount:        number;
+  unansweredCount: number;
+  topQueries:      QueryCount[];
+  topUnanswered:   QueryCount[];
+}
 
-export type KBAnalyticsResult = {
-  top_entries:     KBTopEntry[];
-  unanswered:      KBUnansweredQuery[];
-  period_days:     number;
-  total_hits:      number;
-  unanswered_total: number;
-};
-
-export async function getKBAnalyticsAction(): Promise<KBAnalyticsResult | null> {
+export async function getKBAnalyticsAction(days = 30): Promise<KBAnalytics> {
   const session = await getSession();
-  if (!session) return null;
+  if (!session) return { hitCount: 0, unansweredCount: 0, topQueries: [], topUnanswered: [] };
 
-  const admin   = getSupabaseAdminClient();
-  const since   = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const admin = getSupabaseAdminClient();
+  const since = new Date(Date.now() - days * 86400000).toISOString();
 
-  const [{ data: hitRows }, { data: unansweredRows }] = await Promise.all([
+  const [{ data: hits }, { data: unanswered }] = await Promise.all([
     admin
       .from('kb_hit_log')
-      .select('entry_id, query, created_at')
+      .select('query')
       .eq('tenant_id', session.tenantId)
       .gte('created_at', since)
-      .order('created_at', { ascending: false })
       .limit(2000),
     admin
       .from('kb_unanswered_queries')
-      .select('query, created_at')
+      .select('query')
       .eq('tenant_id', session.tenantId)
       .gte('created_at', since)
-      .order('created_at', { ascending: false })
-      .limit(1000),
+      .limit(2000),
   ]);
 
-  // Aggregate hit counts by entry_id
-  const entryHits = new Map<string, number>();
-  for (const row of hitRows ?? []) {
-    if (!row.entry_id) continue;
-    entryHits.set(row.entry_id, (entryHits.get(row.entry_id) ?? 0) + 1);
+  function groupByQuery(rows: { query: string }[]): QueryCount[] {
+    const countMap: Record<string, number> = {};
+    const displayMap: Record<string, string> = {};
+    for (const r of rows) {
+      const key = r.query.trim().toLowerCase().slice(0, 120);
+      if (!displayMap[key]) displayMap[key] = r.query.trim().slice(0, 120);
+      countMap[key] = (countMap[key] ?? 0) + 1;
+    }
+    return Object.entries(countMap)
+      .map(([key, count]) => ({ query: displayMap[key] ?? key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
   }
-
-  // Look up questions for the top-hit entry IDs
-  const topEntryIds = [...entryHits.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([id]) => id);
-
-  let top_entries: KBTopEntry[] = [];
-  if (topEntryIds.length > 0) {
-    const { data: kbRows } = await admin
-      .from('knowledge_base')
-      .select('id, question, category')
-      .in('id', topEntryIds);
-
-    const kbMap = new Map((kbRows ?? []).map(r => [r.id, r]));
-    top_entries = topEntryIds.map(id => {
-      const kb = kbMap.get(id);
-      return {
-        entry_id:  id,
-        question:  kb?.question ?? '(deleted entry)',
-        category:  kb?.category ?? '',
-        hit_count: entryHits.get(id) ?? 0,
-      };
-    });
-  }
-
-  // Aggregate unanswered queries
-  const queryCount  = new Map<string, number>();
-  const queryLast   = new Map<string, string>();
-  for (const row of unansweredRows ?? []) {
-    const q = row.query.toLowerCase().trim();
-    queryCount.set(q, (queryCount.get(q) ?? 0) + 1);
-    if (!queryLast.has(q)) queryLast.set(q, row.created_at);
-  }
-  const unanswered: KBUnansweredQuery[] = [...queryCount.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 30)
-    .map(([query, count]) => ({
-      query,
-      count,
-      last_seen: queryLast.get(query) ?? '',
-    }));
 
   return {
-    top_entries,
-    unanswered,
-    period_days:      30,
-    total_hits:       hitRows?.length ?? 0,
-    unanswered_total: unansweredRows?.length ?? 0,
+    hitCount:        (hits ?? []).length,
+    unansweredCount: (unanswered ?? []).length,
+    topQueries:      groupByQuery(hits ?? []),
+    topUnanswered:   groupByQuery(unanswered ?? []),
   };
 }
