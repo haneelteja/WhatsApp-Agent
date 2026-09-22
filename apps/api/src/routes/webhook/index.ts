@@ -3,7 +3,7 @@ import { getServerClient } from '@alphabot/database';
 import type { BotConfig, Contact, Conversation, LayeredGuardrailsConfig, OutgoingInteractiveMessage, PlatformGuardrails, Product, ProductType, WhatsAppProvider } from '@alphabot/shared';
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { getAIResponse } from '../../services/ai/claude.js';
-import { lookupKB } from '../../services/kb/lookup.js';
+import { lookupKBWithScore } from '../../services/kb/lookup.js';
 import { escalateConversation } from '../../services/escalation/index.js';
 import { detectAndStoreSentiment } from '../../services/sentiment/detector.js';
 import { checkTokenQuota, incrementTokenCounter } from '../../services/ai/token-quota.js';
@@ -25,6 +25,33 @@ import { isOptOutMessage, isSuppressed, writeSuppression } from '../../lib/suppr
 import { classifyMessageKind, KIND_CLASSIFIER_VERSION } from '../../lib/message-kind.js';
 import { maybeUpdateChatSummary } from '../../lib/chat-summary.js';
 import { createHash } from 'crypto';
+
+// ── Reasoning Effort Tiers ───────────────────────────────────────────────────
+// Classify each inbound message into a tier that controls max_tokens and whether
+// the LLM call can be bypassed entirely when the KB already has a confident answer.
+
+type ReasoningTier = 'bypass' | 'faq' | 'standard' | 'complex';
+
+const COMPLEX_KEYWORDS = /\b(book|reserv|table for|party of|occasion|complaint|refund|wrong order|damaged|defective|escalat|cancel|urgent|dispute|exchange|replace)\b/i;
+
+function classifyReasoningTier(text: string, topKbScore: number, hasKbResults: boolean): ReasoningTier {
+  const isShort   = text.length < 80;
+  const isSimple  = !/[.!?].*[.!?]/.test(text); // not multi-sentence
+  const isComplex = COMPLEX_KEYWORDS.test(text);
+
+  if (isComplex) return 'complex';
+  if (hasKbResults && topKbScore >= 0.92 && isShort) return 'bypass';
+  if (hasKbResults && topKbScore >= 0.75 && isShort && isSimple) return 'faq';
+  if (isShort && isSimple && !isComplex) return 'standard';
+  return 'complex';
+}
+
+const TIER_MAX_TOKENS: Record<ReasoningTier, number> = {
+  bypass:   0,   // not used — LLM is skipped
+  faq:      280,
+  standard: 400,
+  complex:  560,
+};
 
 const RETURN_REQUEST_INSTRUCTION = `
 
@@ -820,17 +847,23 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
     fastify.log.info(historyStats, '[Webhook] history assembled');
 
     const contactData = contact as Contact;
-    const kbResults = incoming.text && toolEnabled(allowedTools, TOOL_IDS.KNOWLEDGE_BASE)
-      ? await lookupKB(tenantId, productType, incoming.text)
-      : [];
+    const kbToolEnabled = Boolean(incoming.text && toolEnabled(allowedTools, TOOL_IDS.KNOWLEDGE_BASE));
+    const { results: kbResults, topScore: kbTopScore } = kbToolEnabled
+      ? await lookupKBWithScore(tenantId, productType, incoming.text!)
+      : { results: [], topScore: 0 };
 
-    if (incoming.text && toolEnabled(allowedTools, TOOL_IDS.KNOWLEDGE_BASE) && kbResults.length === 0) {
+    if (kbToolEnabled && kbResults.length === 0) {
       void db.from('kb_unanswered_queries').insert({
         tenant_id:    tenantId,
-        query:        incoming.text.slice(0, 500),
+        query:        incoming.text!.slice(0, 500),
         product_type: productType,
       }).then(() => {}, () => {});
     }
+
+    const reasoningTier = incoming.text
+      ? classifyReasoningTier(incoming.text, kbTopScore, kbResults.length > 0)
+      : 'standard';
+    fastify.log.info({ reasoningTier, kbTopScore, kbCount: kbResults.length }, '[Webhook] reasoning tier');
 
     const contactMemory = formatContactMemory(contactData.memory_json as unknown as Record<string, unknown> | null);
 
@@ -1047,7 +1080,18 @@ Which branch works best for you?
     }
 
     // ── Generate AI response ──────────────────────────────────────────────
+    // bypass tier: KB confidence is high enough — skip LLM, serve top KB answer directly
     let aiResult: Awaited<ReturnType<typeof getAIResponse>>;
+    if (reasoningTier === 'bypass' && kbResults[0]) {
+      fastify.log.info({ tenantId, kbTopScore }, '[Webhook] KB bypass — skipping LLM');
+      aiResult = {
+        content:         kbResults[0].answer,
+        confidenceScore: kbTopScore,
+        inputTokens:     0,
+        outputTokens:    0,
+        costInr:         0,
+      };
+    } else {
     try {
       aiResult = await getAIResponse(
         systemPrompt,
@@ -1055,6 +1099,7 @@ Which branch works best for you?
         kbResults,
         contactMemory,
         llmOverride,
+        TIER_MAX_TOKENS[reasoningTier],
       );
     } catch (aiErr) {
       const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
@@ -1070,6 +1115,7 @@ Which branch works best for you?
             kbResults,
             contactMemory,
             llmOverride.model ? { model: llmOverride.model } : undefined,
+            TIER_MAX_TOKENS[reasoningTier],
           );
         } catch (fallbackErr) {
           fastify.log.error({ fallbackErr: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr), tenantId }, '[Webhook] Platform key fallback also failed');
@@ -1092,6 +1138,7 @@ Which branch works best for you?
         return;
       }
     }
+    } // end else (non-bypass)
 
     // ── Parse AI response markers ─────────────────────────────────────────
     const rawContent    = aiResult.content;

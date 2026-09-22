@@ -4,6 +4,12 @@ import { generateEmbedding } from './embedding.js';
 import { cacheGet, cacheSet, cacheDelPattern } from '../../lib/redis.js';
 import { createHash } from 'crypto';
 
+export interface KBLookupResult {
+  results: KnowledgeBase[];
+  /** Top similarity score from semantic search (0 when no vector search ran). */
+  topScore: number;
+}
+
 function logKBHits(tenantId: string, query: string, productType: ProductSlug, results: KnowledgeBase[]): void {
   if (!results.length) return;
   const db = getServerClient();
@@ -32,29 +38,49 @@ const KB_CACHE_TTL = 300; // 5 minutes — KB content changes infrequently
  *
  * Returns the top K most relevant KB entries.
  */
-export async function lookupKB(
+/**
+ * Full RAG lookup returning entries AND the top semantic similarity score.
+ * Use this in the webhook pipeline to enable reasoning-effort tier decisions.
+ */
+export async function lookupKBWithScore(
   tenantId: string,
   productSlug: ProductSlug,
   query: string,
   limit = 5
-): Promise<KnowledgeBase[]> {
+): Promise<KBLookupResult> {
   const queryHash = createHash('sha256')
     .update(`${tenantId}:${query}`)
     .digest('hex')
     .slice(0, 16);
   const cacheKey = `kb:${tenantId}:${queryHash}`;
 
-  const cached = await cacheGet<KnowledgeBase[]>(cacheKey);
+  const cached = await cacheGet<KBLookupResult | KnowledgeBase[]>(cacheKey);
   if (cached) {
-    logKBHits(tenantId, query, productSlug, cached);
+    // Handle both new { results, topScore } format and old KnowledgeBase[] format
+    if (Array.isArray(cached)) {
+      logKBHits(tenantId, query, productSlug, cached);
+      return { results: cached, topScore: 0 };
+    }
+    logKBHits(tenantId, query, productSlug, cached.results);
     return cached;
   }
 
-  const results = await _lookupKBFromDb(tenantId, productSlug, query, limit);
-  if (results.length > 0) {
-    await cacheSet(cacheKey, results, KB_CACHE_TTL);
-    logKBHits(tenantId, query, productSlug, results);
+  const lookup = await _lookupKBFromDb(tenantId, productSlug, query, limit);
+  if (lookup.results.length > 0) {
+    await cacheSet(cacheKey, lookup, KB_CACHE_TTL);
+    logKBHits(tenantId, query, productSlug, lookup.results);
   }
+  return lookup;
+}
+
+/** Backward-compatible wrapper — returns only the KB entries. */
+export async function lookupKB(
+  tenantId: string,
+  productSlug: ProductSlug,
+  query: string,
+  limit = 5
+): Promise<KnowledgeBase[]> {
+  const { results } = await lookupKBWithScore(tenantId, productSlug, query, limit);
   return results;
 }
 
@@ -68,7 +94,7 @@ async function _lookupKBFromDb(
   productSlug: ProductSlug,
   query: string,
   limit: number,
-): Promise<KnowledgeBase[]> {
+): Promise<KBLookupResult> {
   const db = getServerClient();
 
   // 1. Find all KB collection IDs for this tenant (KB is shared across all bots)
@@ -82,8 +108,8 @@ async function _lookupKBFromDb(
 
   // 2. If we have collections, do semantic + keyword search
   if (collectionIds.length > 0) {
-    const results = await lookupKBByCollections(collectionIds, query, limit);
-    if (results.length > 0) return results;
+    const lookup = await lookupKBByCollections(collectionIds, query, limit);
+    if (lookup.results.length > 0) return lookup;
   }
 
   // 3. Final fallback: tenant-wide keyword search across legacy (non-collection) entries
@@ -101,21 +127,22 @@ async function _lookupKBFromDb(
 
   if (error) {
     console.error('[KB] Legacy fallback lookup failed:', error.message);
-    return [];
+    return { results: [], topScore: 0 };
   }
 
-  return (data ?? []) as KnowledgeBase[];
+  return { results: (data ?? []) as KnowledgeBase[], topScore: 0 };
 }
 
 /**
  * Search KB entries belonging to specific collections.
  * Tries vector similarity first (if embeddings available), falls back to keyword.
+ * Returns entries AND the top similarity score (0 when only keyword search ran).
  */
 export async function lookupKBByCollections(
   collectionIds: string[],
   query: string,
   limit = 5
-): Promise<KnowledgeBase[]> {
+): Promise<KBLookupResult> {
   const db = getServerClient();
 
   // Try semantic search if API key is configured
@@ -132,31 +159,35 @@ export async function lookupKBByCollections(
       });
 
       if (!error && semanticResults && (semanticResults as RAGResult[]).length > 0) {
-        return (semanticResults as RAGResult[]).map(r => {
-          // Cast to access collection_id returned by the RPC (not in the base RAGResult type)
-          const row = r as RAGResult & { collection_id?: string | null };
-          return {
-            id: r.id,
-            question: r.question,
-            answer: r.answer,
-            category: r.category,
-            tenant_id: '',
-            product_type: 'support_bot' as ProductSlug,
-            collection_id: row.collection_id ?? null,
-            embedding: null,
-            status: 'live' as const,
-            version: 1,
-            created_at: '',
-            updated_at: '',
-          };
-        });
+        const rows = semanticResults as RAGResult[];
+        const topScore = rows[0]?.similarity ?? 0;
+        return {
+          results: rows.map(r => {
+            const row = r as RAGResult & { collection_id?: string | null };
+            return {
+              id: r.id,
+              question: r.question,
+              answer: r.answer,
+              category: r.category,
+              tenant_id: '',
+              product_type: 'support_bot' as ProductSlug,
+              collection_id: row.collection_id ?? null,
+              embedding: null,
+              status: 'live' as const,
+              version: 1,
+              created_at: '',
+              updated_at: '',
+            };
+          }),
+          topScore,
+        };
       }
     } catch (err) {
       console.warn('[KB] Semantic search failed, falling back to keyword:', (err as Error).message);
     }
   }
 
-  // Keyword fallback via RPC
+  // Keyword fallback via RPC — no similarity score available
   const { data: textResults, error: textError } = await db.rpc('search_knowledge_base_text', {
     query_text: query,
     collection_ids: collectionIds,
@@ -165,24 +196,27 @@ export async function lookupKBByCollections(
 
   if (textError) {
     console.error('[KB] Text search failed:', textError.message);
-    return [];
+    return { results: [], topScore: 0 };
   }
 
-  return ((textResults ?? []) as RAGResult[]).map(r => {
-    const row = r as RAGResult & { collection_id?: string | null };
-    return {
-      id: r.id,
-      question: r.question,
-      answer: r.answer,
-      category: r.category,
-      tenant_id: '',
-      product_type: 'support_bot' as ProductSlug,
-      collection_id: row.collection_id ?? null,
-      embedding: null,
-      status: 'live' as const,
-      version: 1,
-      created_at: '',
-      updated_at: '',
-    };
-  });
+  return {
+    results: ((textResults ?? []) as RAGResult[]).map(r => {
+      const row = r as RAGResult & { collection_id?: string | null };
+      return {
+        id: r.id,
+        question: r.question,
+        answer: r.answer,
+        category: r.category,
+        tenant_id: '',
+        product_type: 'support_bot' as ProductSlug,
+        collection_id: row.collection_id ?? null,
+        embedding: null,
+        status: 'live' as const,
+        version: 1,
+        created_at: '',
+        updated_at: '',
+      };
+    }),
+    topScore: 0,
+  };
 }

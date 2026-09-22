@@ -34,6 +34,7 @@ export async function getAIResponse(
   kbContext:      KnowledgeBase[],
   contactMemory?: string,
   llmOverride?:   { apiKey?: string; model?: string; provider?: string; baseUrl?: string },
+  maxTokens?:     number,
 ): Promise<AIResponseResult> {
   const contextWindow = history.slice(-MAX_CONTEXT_MESSAGES);
 
@@ -59,7 +60,7 @@ export async function getAIResponse(
   const { content, inputTokens, outputTokens, costInr } = await routedChatCompletion({
     messages,
     system:     fullSystemPrompt,
-    max_tokens: 560,
+    max_tokens: maxTokens ?? 560,
     override: {
       provider: llmOverride?.provider,
       model:    llmOverride?.model ?? REPLY_MODEL,
