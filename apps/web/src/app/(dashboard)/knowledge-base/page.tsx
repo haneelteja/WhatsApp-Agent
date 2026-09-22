@@ -12,7 +12,7 @@ import { kbFetch, kbUpload } from '@/lib/kb-client';
 import { ProductCatalogueManager } from '@/app/(dashboard)/catalogue/ProductCatalogueManager';
 import { getProductsAction } from '@/app/actions/products';
 import type { ProductCatalogueItem } from '@alphabot/shared';
-import { getKBAnalyticsAction, type KBAnalyticsResult } from '@/app/actions/kb-analytics';
+import { getKBPageAnalyticsAction, type KBAnalyticsResult } from '@/app/actions/kb-analytics';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -250,7 +250,7 @@ export default function KnowledgeBasePage() {
   useEffect(() => {
     if (activeTab === 'analytics' && analytics === null && !analyticsLoading) {
       setAnalyticsLoading(true);
-      void getKBAnalyticsAction().then(result => {
+      void getKBPageAnalyticsAction().then(result => {
         setAnalytics(result);
         setAnalyticsLoading(false);
       });
