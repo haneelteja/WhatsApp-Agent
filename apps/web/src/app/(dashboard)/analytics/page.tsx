@@ -43,7 +43,7 @@ function getAnalyticsData(tenantId: string) {
         { count: openConvs },
         { count: resolvedConvs },
         { count: escalatedTotal },
-        { count: activeContacts },
+        { data: activeContactsRow },
         { data: tokenRow },
         { data: weekEvents },
         { data: monthEvents },
@@ -52,14 +52,15 @@ function getAnalyticsData(tenantId: string) {
         admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'open'),
         admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'resolved'),
         admin.from('conversations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['escalated']),
-        // Distinct contacts active in the last 30 days
-        admin.from('conversations').select('contact_id', { count: 'exact', head: true }).eq('tenant_id', tenantId).gte('updated_at', thirtyDaysAgo),
+        // Distinct contacts active in the last 30 days via RPC
+        admin.rpc('count_active_contacts', { p_tenant_id: tenantId, p_days: 30 }),
         // Single-row aggregate lookup — O(1) vs full usage_events table scan
         admin.from('tenant_token_usage_monthly').select('tokens_used').eq('tenant_id', tenantId).eq('month', currentMonth).maybeSingle(),
         admin.from('usage_events').select('event_type, created_at').eq('tenant_id', tenantId).gte('created_at', sevenDaysAgo).limit(10000),
         admin.from('usage_events').select('event_type, product_type').eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo).limit(10000),
       ]);
 
+      const activeContacts = (activeContactsRow as number | null) ?? 0;
       return { totalConvs, openConvs, resolvedConvs, escalatedTotal, activeContacts, tokenRow, weekEvents, monthEvents };
     },
     ['analytics', tenantId],
