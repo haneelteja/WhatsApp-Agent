@@ -13,6 +13,13 @@ import { ProductCatalogueManager } from '@/app/(dashboard)/catalogue/ProductCata
 import { getProductsAction } from '@/app/actions/products';
 import type { ProductCatalogueItem } from '@alphabot/shared';
 import { getKBPageAnalyticsAction, type KBAnalyticsResult } from '@/app/actions/kb-analytics';
+import {
+  getKBSuggestionsAction,
+  generateKBSuggestionsAction,
+  approveKBSuggestionAction,
+  rejectKBSuggestionAction,
+  type KBSuggestion,
+} from '@/app/actions/kb-suggestions';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -110,7 +117,7 @@ export default function KnowledgeBasePage() {
   }, []);
 
   // ── Collections tab state ──────────────────────────────────────────────────
-  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media' | 'catalogue' | 'analytics'>('collections');
+  const [activeTab,    setActiveTab]    = useState<'collections' | 'builder' | 'media' | 'catalogue' | 'analytics' | 'suggestions'>('collections');
   const [collections,  setCollections]  = useState<CollectionRow[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [showNew,      setShowNew]      = useState(false);
@@ -184,6 +191,12 @@ export default function KnowledgeBasePage() {
   const [analytics,        setAnalytics]          = useState<KBAnalyticsResult | null>(null);
   const [analyticsLoading, setAnalyticsLoading]   = useState(false);
 
+  // ── Suggestions tab state ─────────────────────────────────────────────────
+  const [suggestions,      setSuggestions]        = useState<KBSuggestion[] | null>(null);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [sugGenerating,    setSugGenerating]       = useState(false);
+  const [approveTarget,    setApproveTarget]      = useState<{ id: string; collectionId: string } | null>(null);
+
   // ── Load collections ───────────────────────────────────────────────────────
   const loadCollections = useCallback(async () => {
     setLoading(true);
@@ -256,6 +269,16 @@ export default function KnowledgeBasePage() {
       });
     }
   }, [activeTab, analytics, analyticsLoading]);
+
+  useEffect(() => {
+    if (activeTab === 'suggestions' && suggestions === null && !suggestionsLoading) {
+      setSuggestionsLoading(true);
+      void getKBSuggestionsAction().then(rows => {
+        setSuggestions(rows);
+        setSuggestionsLoading(false);
+      });
+    }
+  }, [activeTab, suggestions, suggestionsLoading]);
 
   function addFilesToQueue(files: FileList | File[]) {
     const arr = Array.from(files);
@@ -582,6 +605,12 @@ export default function KnowledgeBasePage() {
             activeTab === 'analytics' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}>
           <BarChart2 size={14} /> Analytics
+        </button>
+        <button type="button" onClick={() => setActiveTab('suggestions')}
+          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'suggestions' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}>
+          <Wand2 size={14} /> Suggestions
         </button>
       </div>
 
@@ -1501,6 +1530,104 @@ export default function KnowledgeBasePage() {
                 )}
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* ── SUGGESTIONS TAB ─────────────────────────────────────────────────── */}
+      {activeTab === 'suggestions' && (
+        <div className="space-y-5">
+          {/* Header + generate button */}
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-gray-600">AI-drafted KB entries based on your top unanswered customer questions. Review, edit, and approve them directly into a collection.</p>
+            </div>
+            <button
+              type="button"
+              disabled={sugGenerating}
+              onClick={async () => {
+                setSugGenerating(true);
+                const result = await generateKBSuggestionsAction();
+                if (result.generated > 0) {
+                  const rows = await getKBSuggestionsAction();
+                  setSuggestions(rows);
+                }
+                setSugGenerating(false);
+              }}
+              className="shrink-0 flex items-center gap-2 bg-emerald-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-emerald-700 disabled:opacity-60 transition-colors"
+            >
+              {sugGenerating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Wand2 size={14} />}
+              {sugGenerating ? 'Generating…' : 'Generate Suggestions'}
+            </button>
+          </div>
+
+          {suggestionsLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : !suggestions || suggestions.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-green-100 shadow-sm flex flex-col items-center justify-center py-20 text-center gap-3">
+              <Wand2 size={28} className="text-emerald-300" />
+              <p className="text-sm font-semibold text-gray-700">No pending suggestions</p>
+              <p className="text-xs text-gray-400 max-w-xs">Click <span className="font-semibold">Generate Suggestions</span> to analyse your unanswered queries and draft new KB entries automatically.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {suggestions.map(s => (
+                <div key={s.id} className="bg-white rounded-2xl border border-green-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4">
+                    <p className="text-sm font-semibold text-gray-800 mb-1">{s.question}</p>
+                    <p className="text-sm text-gray-600 leading-relaxed">{s.answer_draft}</p>
+                    {s.source_queries.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {s.source_queries.slice(0, 3).map((q, i) => (
+                          <span key={i} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-100 rounded px-1.5 py-0.5">{q.slice(0, 60)}{q.length > 60 ? '…' : ''}</span>
+                        ))}
+                        {s.source_queries.length > 3 && (
+                          <span className="text-[10px] text-gray-400">+{s.source_queries.length - 3} more</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 px-5 py-3 bg-gray-50 border-t border-gray-100">
+                    {/* Collection picker for approve */}
+                    <select
+                      className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-300"
+                      value={approveTarget?.id === s.id ? approveTarget.collectionId : ''}
+                      onChange={e => setApproveTarget({ id: s.id, collectionId: e.target.value })}
+                    >
+                      <option value="">Select collection to add to…</option>
+                      {collections.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!approveTarget || approveTarget.id !== s.id || !approveTarget.collectionId}
+                      onClick={async () => {
+                        if (!approveTarget || approveTarget.id !== s.id) return;
+                        await approveKBSuggestionAction(s.id, approveTarget.collectionId);
+                        setSuggestions(prev => prev?.filter(x => x.id !== s.id) ?? null);
+                        setApproveTarget(null);
+                      }}
+                      className="flex items-center gap-1.5 bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+                    >
+                      <Check size={12} /> Add to KB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await rejectKBSuggestionAction(s.id);
+                        setSuggestions(prev => prev?.filter(x => x.id !== s.id) ?? null);
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      <X size={12} /> Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

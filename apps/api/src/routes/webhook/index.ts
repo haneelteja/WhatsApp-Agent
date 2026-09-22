@@ -12,6 +12,7 @@ import { fireForget } from '../../lib/fire-forget.js';
 import { getBotContext } from '../../services/bot-context.js';
 import { calcLeadScore, generateLeadSummary } from '../../lib/lead-scoring.js';
 import { formatContactMemory } from '../../services/contact/memory.js';
+import { extractAndMergeFacts } from '../../services/contact/fact-extractor.js';
 import { cacheGet, cacheSet } from '../../lib/redis.js';
 import { resolveMultiBotRouting } from '../../services/routing/router.js';
 import type { BranchLocation, RoutingConfig } from '../../services/routing/router.js';
@@ -1280,6 +1281,16 @@ Which branch works best for you?
         incoming.text,
         replyText,
       );
+    }
+
+    // Fire-and-forget: extract contact facts from this exchange for richer future context
+    if (incoming.text && reasoningTier !== 'bypass') {
+      void extractAndMergeFacts(
+        contactData.id,
+        incoming.text,
+        replyText,
+        contactData.memory_json as unknown as Record<string, unknown> | null,
+      ).catch(() => {});
     }
 
     // Track token usage (DB insert triggers aggregate table update via trigger)

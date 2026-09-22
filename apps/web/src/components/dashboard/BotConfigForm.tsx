@@ -108,8 +108,9 @@ function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: bool
 }
 
 function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPrompt: string }) {
-  const g  = config.guardrails_json as GuardrailsConfig;
-  const vc = (config.voice_config ?? {}) as Partial<BotVoiceConfig>;
+  const g   = config.guardrails_json as GuardrailsConfig;
+  const vc  = (config.voice_config ?? {}) as Partial<BotVoiceConfig>;
+  const ep  = config.escalation_policy;
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -120,6 +121,10 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
   const [kbOnly,               setKbOnly]               = useState(config.kb_only_mode ?? false);
   const [confidence,           setConfidence]           = useState(config.confidence_threshold);
   const [escalationTriggers,   setEscalationTriggers]   = useState<string[]>(config.escalation_triggers ?? []);
+  // Escalation policy
+  const [maxReprompts,         setMaxReprompts]         = useState(ep?.max_low_confidence_reprompts ?? 2);
+  const [repromptMessage,      setRepromptMessage]      = useState(ep?.reprompt_message ?? '');
+  const [autoEscalateHours,    setAutoEscalateHours]    = useState<string>(ep?.auto_escalate_after_hours != null ? String(ep.auto_escalate_after_hours) : '');
   const [tone,                 setTone]                 = useState<GuardrailsConfig['tone']>(g?.tone ?? 'professional');
   const [maxLength,            setMaxLength]            = useState(g?.max_response_length ?? 1000);
   const [blockedTopics,        setBlockedTopics]        = useState<string[]>(g?.blocked_topics ?? []);
@@ -159,8 +164,11 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
         voiceLanguage,
         voiceGreeting,
         voiceVoicemail,
-        autoDispatchOnEscalation: autoDispatch,
-        escalationVoiceDelaySeconds: dispatchDelay,
+        autoDispatchOnEscalation:     autoDispatch,
+        escalationVoiceDelaySeconds:  dispatchDelay,
+        maxLowConfidenceReprompts:    maxReprompts,
+        repromptMessage,
+        autoEscalateAfterHours:       autoEscalateHours !== '' ? parseInt(autoEscalateHours, 10) : null,
       });
       if (result.error) {
         setError(result.error);
@@ -268,7 +276,26 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
                 />
                 <span className="text-sm font-mono text-gray-700 w-10 text-right">{confidence.toFixed(2)}</span>
               </div>
-              <p className="text-xs text-gray-400">Escalate if AI confidence falls below this</p>
+              <p className="text-xs text-gray-400">Escalate if AI confidence falls below this threshold</p>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor={`reprompts-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                Low-Confidence Reprompts Before Escalation
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  id={`reprompts-${config.product_slug}`}
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value={maxReprompts}
+                  onChange={(e) => setMaxReprompts(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-emerald-500"
+                />
+                <span className="text-sm font-mono text-gray-700 w-6 text-right">{maxReprompts}</span>
+              </div>
+              <p className="text-xs text-gray-400">How many consecutive low-confidence replies before escalating to a human</p>
             </div>
           </div>
 
@@ -286,6 +313,40 @@ function BotCard({ config, defaultPrompt }: { config: ResolvedConfig; defaultPro
               onChange={(e) => setMaxLength(parseInt(e.target.value, 10))}
               className="w-40 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
             />
+          </div>
+
+          {/* Reprompt message */}
+          <div className="space-y-1.5">
+            <label htmlFor={`reprompt-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Low-Confidence Reprompt Message <span className="normal-case font-normal text-gray-400">(optional)</span>
+            </label>
+            <input
+              id={`reprompt-${config.product_slug}`}
+              type="text"
+              placeholder="e.g. I want to make sure I understand you correctly — could you rephrase?"
+              value={repromptMessage}
+              onChange={(e) => setRepromptMessage(e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            />
+            <p className="text-xs text-gray-400">Sent to the customer on each low-confidence reply before escalating. Leave blank to escalate silently.</p>
+          </div>
+
+          {/* Auto-escalate after hours */}
+          <div className="space-y-1.5">
+            <label htmlFor={`autohours-${config.product_slug}`} className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Auto-Escalate Stale Conversations After <span className="normal-case font-normal text-gray-400">(hours, optional)</span>
+            </label>
+            <input
+              id={`autohours-${config.product_slug}`}
+              type="number"
+              min={1}
+              max={168}
+              placeholder="e.g. 24"
+              value={autoEscalateHours}
+              onChange={(e) => setAutoEscalateHours(e.target.value)}
+              className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            />
+            <p className="text-xs text-gray-400">Escalate open conversations to a human if they have no resolution after this many hours. Leave blank to disable.</p>
           </div>
 
           {/* Blocked topics */}

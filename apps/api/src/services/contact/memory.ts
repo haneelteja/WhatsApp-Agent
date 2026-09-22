@@ -17,8 +17,20 @@ interface PastConversation {
   summary: string; // 3-5 bullet points
 }
 
+interface LiveFacts {
+  name?:                string;
+  city?:                string;
+  occasion?:            string;
+  product_preference?:  string;
+  order_reference?:     string;
+  dietary_restriction?: string;
+  budget?:              string;
+  [key: string]:        string | undefined;
+}
+
 interface ContactMemoryJson {
   past_conversations?: PastConversation[];
+  live_facts?:         LiveFacts;
   awaiting_csat?:      boolean;
   csat_score?:         number;
   sentiment?:          string;
@@ -126,6 +138,19 @@ export function formatContactMemory(memJson: Record<string, unknown> | null): st
 
   if (sentiment)           lines.push(`Customer sentiment: ${sentiment}`);
   if (csat !== undefined)  lines.push(`Last satisfaction score: ${csat}/5`);
+
+  // Surface live facts extracted from previous turns
+  const facts = memJson['live_facts'] as LiveFacts | undefined;
+  if (facts) {
+    const factLines = Object.entries(facts)
+      .filter(([, v]) => v && String(v).trim())
+      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
+    if (factLines.length > 0) {
+      lines.push('');
+      lines.push('Known facts about this customer:');
+      lines.push(...factLines);
+    }
+  }
 
   const past = memJson['past_conversations'] as PastConversation[] | undefined;
   if (past?.length) {

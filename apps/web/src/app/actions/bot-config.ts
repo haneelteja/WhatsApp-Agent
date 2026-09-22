@@ -27,6 +27,10 @@ export interface SaveBotConfigInput {
   voiceVoicemail:                string;
   autoDispatchOnEscalation:      boolean;
   escalationVoiceDelaySeconds:   number;
+  // Escalation policy
+  maxLowConfidenceReprompts: number;
+  repromptMessage:           string;
+  autoEscalateAfterHours:    number | null;
 }
 
 export async function saveBotConfigAction(input: SaveBotConfigInput) {
@@ -73,6 +77,14 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
     escalation_voice_delay_seconds: input.escalationVoiceDelaySeconds,
   };
 
+  const escalation_policy = {
+    confidence_threshold:        input.confidenceThreshold,
+    max_low_confidence_reprompts: input.maxLowConfidenceReprompts,
+    on_exhaust:                  'escalate' as const,
+    reprompt_message:            input.repromptMessage.trim() || null,
+    auto_escalate_after_hours:   input.autoEscalateAfterHours,
+  };
+
   const { data: updated, error } = await admin
     .from('bot_configs')
     .update({
@@ -82,6 +94,7 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
       escalation_triggers:  input.escalationTriggers,
       guardrails_json,
       voice_config,
+      escalation_policy,
       updated_by:           session.userId,
     })
     .eq('tenant_id', session.tenantId)
