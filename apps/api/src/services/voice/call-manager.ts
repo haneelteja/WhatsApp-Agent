@@ -229,7 +229,7 @@ export async function dispatchCall(req: DispatchCallRequest): Promise<DispatchCa
       stt_provider:       voiceCfg.stt_provider  ?? 'deepgram',
       tts_provider:       voiceCfg.tts_provider  ?? 'twilio_say',
       status:             'initiated',
-      triggered_by:       req.triggered_by ?? 'manual',
+      triggered_by:       (['escalation', 'campaign', 'manual', 'inbound'] as const).includes(req.triggered_by as never) ? req.triggered_by! : 'manual',
       bridge_mode:        isBridgeCall,
       agent_number:       req.agent_number ?? null,
     })
