@@ -1652,6 +1652,14 @@ Which branch works best for you?
       );
     }
 
+    // ── Escalate on booking — moves conversation to team Inbox for manual confirmation ──
+    if (stageMatch?.[1] === 'booked' && conversation.status === 'open') {
+      void escalateConversation(
+        conversation,
+        'Table booking received — awaiting manual confirmation by team',
+      ).catch(err => fastify.log.error({ err }, '[Webhook] booking escalation failed'));
+    }
+
     // ── Check call triggers (keyword / sentiment) ─────────────────────────
     // Runs after the WhatsApp reply is already sent — triggers a parallel voice call.
     if (incoming.text && botConfig?.voice_config && conversation.status === 'open') {
