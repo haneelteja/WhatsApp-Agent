@@ -30,6 +30,7 @@ const STAGE_MAPS: Record<string, StageDefinition[]> = {
     { id: 'engaging',       label: 'Engaging',       description: 'Building interest and engagement' },
     { id: 'converting',     label: 'Converting',     description: 'Moving toward a specific action or conversion' },
     { id: 'confirming',     label: 'Confirming',     description: 'Confirming intent and next steps' },
+    { id: 'booked',         label: 'Booked',         description: 'Table/reservation successfully booked', isTerminal: true },
     { id: 'closing',        label: 'Closing',        description: 'Closing the loop on this interaction', isTerminal: true },
   ],
   _default: [
