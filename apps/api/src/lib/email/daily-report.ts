@@ -1,5 +1,7 @@
 import { Resend } from 'resend';
 import { getServerClient } from '@alphabot/database';
+import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
+import type { WhatsAppProvider } from '@alphabot/shared';
 
 const resend = new Resend(process.env['RESEND_API_KEY']);
 
@@ -25,6 +27,7 @@ interface ReportData {
   open: number;
   escalated: number;
   resolvedToday: number;
+  leadsToday: number;
   bots: BotStat[];
   pendingEscalations: PendingEscalation[];
   dashboardUrl: string;
@@ -84,28 +87,34 @@ function buildHtml(d: ReportData): string {
       <!-- Stat cards -->
       <tr><td style="background:white;padding:16px 28px 24px;">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
-          <td width="25%" style="padding:4px;">
-            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;text-align:center;">
-              <div style="font-size:28px;font-weight:700;color:#059669;">${d.newToday}</div>
+          <td width="20%" style="padding:4px;">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;text-align:center;">
+              <div style="font-size:26px;font-weight:700;color:#059669;">${d.newToday}</div>
               <div style="font-size:11px;color:#6b7280;margin-top:4px;">New Today</div>
             </div>
           </td>
-          <td width="25%" style="padding:4px;">
-            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;text-align:center;">
-              <div style="font-size:28px;font-weight:700;color:#2563eb;">${d.open}</div>
+          <td width="20%" style="padding:4px;">
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px;text-align:center;">
+              <div style="font-size:26px;font-weight:700;color:#2563eb;">${d.open}</div>
               <div style="font-size:11px;color:#6b7280;margin-top:4px;">Open</div>
             </div>
           </td>
-          <td width="25%" style="padding:4px;">
-            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;text-align:center;">
-              <div style="font-size:28px;font-weight:700;color:#dc2626;">${d.escalated}</div>
+          <td width="20%" style="padding:4px;">
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:14px;text-align:center;">
+              <div style="font-size:26px;font-weight:700;color:#dc2626;">${d.escalated}</div>
               <div style="font-size:11px;color:#6b7280;margin-top:4px;">Escalated</div>
             </div>
           </td>
-          <td width="25%" style="padding:4px;">
-            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;">
-              <div style="font-size:28px;font-weight:700;color:#374151;">${d.resolvedToday}</div>
+          <td width="20%" style="padding:4px;">
+            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:14px;text-align:center;">
+              <div style="font-size:26px;font-weight:700;color:#374151;">${d.resolvedToday}</div>
               <div style="font-size:11px;color:#6b7280;margin-top:4px;">Resolved</div>
+            </div>
+          </td>
+          <td width="20%" style="padding:4px;">
+            <div style="background:#fefce8;border:1px solid #fef08a;border-radius:12px;padding:14px;text-align:center;">
+              <div style="font-size:26px;font-weight:700;color:#ca8a04;">${d.leadsToday}</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:4px;">Leads</div>
             </div>
           </td>
         </tr></table>
@@ -156,9 +165,35 @@ function buildHtml(d: ReportData): string {
 </html>`;
 }
 
+function buildWhatsAppText(d: ReportData): string {
+  const lines = [
+    `📊 *Daily Report — ${d.date}*`,
+    `*${d.tenantName}*`,
+    ``,
+    `💬 New conversations: ${d.newToday}`,
+    `📂 Open: ${d.open}`,
+    `🚨 Escalated: ${d.escalated}`,
+    `✅ Resolved today: ${d.resolvedToday}`,
+    `🎯 Leads today: ${d.leadsToday}`,
+  ];
+
+  if (d.pendingEscalations.length > 0) {
+    lines.push(``, `⏳ *Pending escalations (${d.pendingEscalations.length}):*`);
+    for (const e of d.pendingEscalations.slice(0, 5)) {
+      lines.push(`• ${e.contact} — ${e.reason.slice(0, 60)} (${ageLabel(e.ageMinutes)} ago)`);
+    }
+    if (d.pendingEscalations.length > 5) {
+      lines.push(`  …and ${d.pendingEscalations.length - 5} more`);
+    }
+  }
+
+  lines.push(``, `🔗 ${d.dashboardUrl}`);
+  return lines.join('\n');
+}
+
 export async function runDailyReports(): Promise<void> {
   const db = getServerClient();
-  const fromEmail = process.env['RESEND_FROM_EMAIL'] ?? 'onboarding@resend.dev';
+  const fromEmail  = process.env['RESEND_FROM_EMAIL'] ?? 'onboarding@resend.dev';
   const dashboardUrl = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
   const now = new Date();
   const todayStart = new Date(now);
@@ -169,23 +204,18 @@ export async function runDailyReports(): Promise<void> {
 
   for (const tenant of tenants) {
     try {
-      // Fetch admin email via auth.admin
-      const { data: adminUser } = await db
-        .from('tenant_users')
-        .select('user_id')
-        .eq('tenant_id', tenant.id)
-        .eq('role', 'admin')
-        .limit(1)
-        .single();
-
-      let recipientEmail = fromEmail;
-      if (adminUser?.user_id) {
-        const { data: authData } = await db.auth.admin.getUserById(adminUser.user_id);
-        if (authData?.user?.email) recipientEmail = authData.user.email;
-      }
-
-      // Parallel stats queries
-      const [newRes, openRes, escalatedRes, resolvedRes, escRes, botRes] = await Promise.all([
+      // Parallel: notification settings + admin user + stats
+      const [settingsRes, adminUserRes, newRes, openRes, escalatedRes, resolvedRes, escRes, botRes, leadsRes, wnRes] = await Promise.all([
+        db.from('tenant_notification_settings')
+          .select('daily_report_emails, daily_report_wa_numbers, from_email, resend_api_key')
+          .eq('tenant_id', tenant.id)
+          .maybeSingle(),
+        db.from('tenant_users')
+          .select('user_id')
+          .eq('tenant_id', tenant.id)
+          .eq('role', 'admin')
+          .limit(1)
+          .maybeSingle(),
         db.from('conversations').select('id', { count: 'exact', head: true })
           .eq('tenant_id', tenant.id).gte('created_at', todayStart.toISOString()),
         db.from('conversations').select('id', { count: 'exact', head: true })
@@ -205,7 +235,37 @@ export async function runDailyReports(): Promise<void> {
           .select('product_type, status, created_at')
           .eq('tenant_id', tenant.id)
           .gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString()),
+        db.from('escalations').select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant.id)
+          .ilike('trigger_reason', '%sales lead%')
+          .gte('created_at', todayStart.toISOString()),
+        db.from('whatsapp_numbers')
+          .select('config_json, provider')
+          .eq('tenant_id', tenant.id)
+          .eq('active', true)
+          .limit(1)
+          .maybeSingle(),
       ]);
+
+      const settings = settingsRes.data as {
+        daily_report_emails: string[] | null;
+        daily_report_wa_numbers: string[] | null;
+        from_email: string | null;
+        resend_api_key: string | null;
+      } | null;
+
+      // Resolve report recipients
+      const reportEmails = (settings?.daily_report_emails as string[] | null) ?? [];
+      const reportWaNumbers = (settings?.daily_report_wa_numbers as string[] | null) ?? [];
+
+      // Fallback to admin email if no configured addresses
+      let fallbackEmail: string | null = null;
+      if (reportEmails.length === 0 && adminUserRes.data?.user_id) {
+        const { data: authData } = await db.auth.admin.getUserById(adminUserRes.data.user_id);
+        fallbackEmail = authData?.user?.email ?? null;
+      }
+
+      const allEmailRecipients = reportEmails.length > 0 ? reportEmails : (fallbackEmail ? [fallbackEmail] : []);
 
       // Compute per-bot stats
       const allConvs = botRes.data ?? [];
@@ -221,7 +281,6 @@ export async function runDailyReports(): Promise<void> {
         };
       }).filter(b => b.newToday + b.open + b.escalated + b.resolved > 0);
 
-      // Pending escalations
       const pendingEscalations: PendingEscalation[] = (escRes.data ?? []).map(e => {
         const conv = e.conversations as unknown as { contacts: { name: string | null; phone: string } | null } | null;
         const contact = conv?.contacts?.name ?? conv?.contacts?.phone ?? 'Unknown';
@@ -229,26 +288,54 @@ export async function runDailyReports(): Promise<void> {
         return { id: e.id, contact, reason: e.trigger_reason, ageMinutes };
       });
 
-      const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+      const dateStr = now.toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC',
+      });
 
-      const html = buildHtml({
-        tenantName: tenant.name,
-        date: dateStr,
-        newToday: newRes.count ?? 0,
-        open: openRes.count ?? 0,
-        escalated: escalatedRes.count ?? 0,
+      const reportData: ReportData = {
+        tenantName:    tenant.name,
+        date:          dateStr,
+        newToday:      newRes.count ?? 0,
+        open:          openRes.count ?? 0,
+        escalated:     escalatedRes.count ?? 0,
         resolvedToday: resolvedRes.count ?? 0,
+        leadsToday:    leadsRes.count ?? 0,
         bots,
         pendingEscalations,
         dashboardUrl,
-      });
+      };
 
-      await resend.emails.send({
-        from: fromEmail,
-        to: [recipientEmail],
-        subject: `Alphabot Daily Report — ${dateStr}`,
-        html,
-      });
+      // ── Send email ─────────────────────────────────────────────────────────
+      if (allEmailRecipients.length > 0) {
+        const tenantResendKey = settings?.resend_api_key ?? undefined;
+        const tenantFromEmail = settings?.from_email ?? fromEmail;
+        const emailClient = tenantResendKey ? new Resend(tenantResendKey) : resend;
+
+        await emailClient.emails.send({
+          from:    tenantFromEmail,
+          to:      allEmailRecipients,
+          subject: `Alphabot Daily Report — ${dateStr}`,
+          html:    buildHtml(reportData),
+        });
+      }
+
+      // ── Send WhatsApp ──────────────────────────────────────────────────────
+      if (reportWaNumbers.length > 0 && wnRes.data) {
+        const wn       = wnRes.data;
+        const wnConfig = wn.config_json as { phone_number_id: string; access_token: string };
+        const gateway  = new WhatsAppGateway(wn.provider as WhatsAppProvider);
+        const text     = buildWhatsAppText(reportData);
+
+        await Promise.allSettled(
+          reportWaNumbers.map(number =>
+            gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+              type: 'text',
+              to:   number,
+              text,
+            }).catch(err => console.error(`[DailyReport] WA to ${number} failed:`, err))
+          )
+        );
+      }
     } catch (err) {
       console.error(`[DailyReport] Failed for tenant ${tenant.id}:`, err);
     }

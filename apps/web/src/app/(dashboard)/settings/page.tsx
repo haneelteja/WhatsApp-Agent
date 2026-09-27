@@ -10,6 +10,7 @@ import {
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
 import { LeadNotificationSettings } from '@/components/dashboard/LeadNotificationSettings';
+import { DailyReportSettings } from '@/components/dashboard/DailyReportSettings';
 import { NotificationPreferences } from '@/components/dashboard/NotificationPreferences';
 import { WhatsAppNumbersManager} from '@/components/dashboard/WhatsAppNumbersManager';
 import { TeamInviteForm }        from '@/components/dashboard/TeamInviteForm';
@@ -719,6 +720,13 @@ export default async function SettingsPage({
           <LeadNotificationSettings
             initialEmails={(notifSettings as { lead_notification_emails?: string[] | null } | null)?.lead_notification_emails ?? []}
             initialWaNumbers={(notifSettings as { lead_notification_wa_numbers?: string[] | null } | null)?.lead_notification_wa_numbers ?? []}
+          />
+        </Section>
+
+        <Section icon={<Bell size={16} />} title="Daily Report" hint="Sent every day at 8:00 AM UTC — conversations, leads, open/escalated/resolved counts, and pending escalations. Configure who receives the email and WhatsApp summary.">
+          <DailyReportSettings
+            initialEmails={(notifSettings as { daily_report_emails?: string[] | null } | null)?.daily_report_emails ?? []}
+            initialWaNumbers={(notifSettings as { daily_report_wa_numbers?: string[] | null } | null)?.daily_report_wa_numbers ?? []}
           />
         </Section>
 
