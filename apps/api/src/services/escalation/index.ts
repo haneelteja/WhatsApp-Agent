@@ -341,6 +341,111 @@ async function sendEscalationNotifications(
   }
 }
 
+// ─── Lead notification dispatcher ────────────────────────────────────────────
+
+export async function sendLeadNotifications(
+  conversation: Conversation,
+  leadScore: number,
+): Promise<void> {
+  const db = getServerClient();
+
+  const [settingsRes, contactRes, wnRes] = await Promise.all([
+    db.from('tenant_notification_settings')
+      .select('lead_notification_emails, lead_notification_wa_numbers, from_email, resend_api_key')
+      .eq('tenant_id', conversation.tenant_id)
+      .single(),
+    db.from('contacts')
+      .select('phone, name')
+      .eq('id', conversation.contact_id)
+      .single(),
+    db.from('whatsapp_numbers')
+      .select('config_json, provider')
+      .eq('tenant_id', conversation.tenant_id)
+      .eq('product_slug', conversation.product_type)
+      .eq('active', true)
+      .limit(1)
+      .single(),
+  ]);
+
+  const settings = settingsRes.data as {
+    lead_notification_emails:     string[] | null;
+    lead_notification_wa_numbers: string[] | null;
+    from_email:                   string | null;
+    resend_api_key:               string | null;
+  } | null;
+
+  const contact = contactRes.data;
+  const wn      = wnRes.data;
+
+  const customerName  = contact?.name ?? contact?.phone ?? 'Unknown';
+  const customerPhone = contact?.phone ?? '—';
+  const webUrl        = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
+  const convUrl       = `${webUrl}/conversations/${conversation.id}`;
+
+  // ── Email alerts ────────────────────────────────────────────────────────────
+  const leadEmails = (settings?.lead_notification_emails as string[] | null) ?? [];
+  if (leadEmails.length > 0) {
+    const apiKey = settings?.resend_api_key ?? process.env['RESEND_API_KEY'];
+    const from   = settings?.from_email ?? process.env['RESEND_FROM_EMAIL'] ?? 'alerts@alphabot.in';
+    if (apiKey) {
+      const html = `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#fff;">
+          <div style="margin-bottom:20px;">
+            <span style="font-weight:700;font-size:18px;color:#111">Alphabot</span>
+            <span style="display:inline-block;margin-left:10px;background:#f0fdf4;color:#16a34a;font-size:12px;font-weight:600;padding:3px 8px;border-radius:99px;">New Lead</span>
+          </div>
+          <h2 style="font-size:18px;font-weight:700;color:#111;margin:0 0 16px">A new lead has been captured</h2>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+            <tr><td style="padding:8px 0;color:#666;font-size:13px;width:140px;">Customer</td><td style="padding:8px 0;font-size:13px;font-weight:600;color:#111;">${customerName}</td></tr>
+            <tr><td style="padding:8px 0;color:#666;font-size:13px;">Phone</td><td style="padding:8px 0;font-size:13px;color:#111;">${customerPhone}</td></tr>
+            <tr><td style="padding:8px 0;color:#666;font-size:13px;">Lead score</td><td style="padding:8px 0;font-size:13px;color:#111;">${leadScore}</td></tr>
+          </table>
+          <a href="${convUrl}" style="display:inline-block;background:#059669;color:#fff;font-weight:600;font-size:14px;padding:12px 24px;border-radius:8px;text-decoration:none;">
+            View Conversation →
+          </a>
+        </div>
+      `;
+      void fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          from,
+          to: leadEmails,
+          subject: `[Alphabot] New lead: ${customerName}`,
+          html,
+        }),
+      }).catch(err => console.error('[LeadNotify] Resend error:', err));
+    }
+  }
+
+  // ── WhatsApp alerts ─────────────────────────────────────────────────────────
+  const leadWaNumbers = (settings?.lead_notification_wa_numbers as string[] | null) ?? [];
+  if (leadWaNumbers.length > 0 && wn) {
+    const wnConfig = wn.config_json as { phone_number_id: string; access_token: string };
+    const gateway  = new WhatsAppGateway(wn.provider as WhatsAppProvider);
+
+    const waMessage = [
+      `🎯 *New Lead Captured*`,
+      ``,
+      `*Customer:* ${customerName}`,
+      `*Phone:* ${customerPhone}`,
+      `*Lead score:* ${leadScore}`,
+      ``,
+      `View: ${convUrl}`,
+    ].join('\n');
+
+    await Promise.allSettled(
+      leadWaNumbers.map(number =>
+        gateway.sendMessage(wnConfig.phone_number_id, wnConfig.access_token, {
+          type: 'text',
+          to:   number,
+          text: waMessage,
+        }).catch(err => console.error(`[LeadNotify] Failed to send WA to ${number}:`, err))
+      )
+    );
+  }
+}
+
 async function sendEscalationEmails(
   emails: string[],
   ctx: {

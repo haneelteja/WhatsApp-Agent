@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { WhatsAppSetupSection }  from '@/components/dashboard/WhatsAppSetupSection';
 import { NotificationSettings }  from '@/components/dashboard/NotificationSettings';
+import { LeadNotificationSettings } from '@/components/dashboard/LeadNotificationSettings';
 import { NotificationPreferences } from '@/components/dashboard/NotificationPreferences';
 import { WhatsAppNumbersManager} from '@/components/dashboard/WhatsAppNumbersManager';
 import { TeamInviteForm }        from '@/components/dashboard/TeamInviteForm';
@@ -711,6 +712,13 @@ export default async function SettingsPage({
             initialResendKeyMasked={(notifSettings as { resend_api_key?: string | null } | null)?.resend_api_key
               ? '••••' + ((notifSettings as { resend_api_key: string }).resend_api_key).slice(-4)
               : ''}
+          />
+        </Section>
+
+        <Section icon={<Bell size={16} />} title="Lead Notifications" hint="Notify your sales team the moment a lead is captured — when the bot detects buying intent. Configure email addresses and WhatsApp numbers to receive instant lead alerts.">
+          <LeadNotificationSettings
+            initialEmails={(notifSettings as { lead_notification_emails?: string[] | null } | null)?.lead_notification_emails ?? []}
+            initialWaNumbers={(notifSettings as { lead_notification_wa_numbers?: string[] | null } | null)?.lead_notification_wa_numbers ?? []}
           />
         </Section>
 

@@ -4,7 +4,7 @@ import type { BotConfig, Contact, Conversation, LayeredGuardrailsConfig, Outgoin
 import { WhatsAppGateway } from '../../services/whatsapp/gateway.js';
 import { getAIResponse } from '../../services/ai/claude.js';
 import { lookupKBWithScore } from '../../services/kb/lookup.js';
-import { escalateConversation } from '../../services/escalation/index.js';
+import { escalateConversation, sendLeadNotifications } from '../../services/escalation/index.js';
 import { detectAndStoreSentiment } from '../../services/sentiment/detector.js';
 import { checkTokenQuota, incrementTokenCounter } from '../../services/ai/token-quota.js';
 import { assembleHistory } from '../../services/ai/history-assembler.js';
@@ -1242,6 +1242,7 @@ Which branch works best for you?
     if (!cleanContent.trim()) {
       fastify.log.warn({ tenantId, conversationId: conversation.id }, '[Webhook] AI returned empty content after stripping tags — skipping reply');
       if (isSalesLead && conversation.status === 'open') {
+        void sendLeadNotifications(conversation, 0);
         const escalationResult = await escalateConversation(conversation, `Sales lead detected — customer expressed buying intent${buildEscalationContext(convStage, convAiVars)}`);
         const latestVars = entityMatches.length > 0
           ? { ...convAiVars, ...Object.fromEntries(entityMatches.map(m => [m[1]!, m[2]!])) }
@@ -1321,6 +1322,10 @@ Which branch works best for you?
       : convAiVars;
     const latestStageForScore = (stageMatch ? stageMatch[1] : convStage) ?? 'greeting';
     const currentLeadScore = calcLeadScore(latestVarsForScore, latestStageForScore);
+
+    if (isSalesLead) {
+      void sendLeadNotifications(conversation, currentLeadScore);
+    }
 
     if (isSalesLead && conversation.status === 'open' && currentLeadScore >= escalationScoreThreshold) {
       fastify.log.info({ tenantId, conversationId: conversation.id, score: currentLeadScore, threshold: escalationScoreThreshold }, '[Webhook] Sales lead detected — escalating');

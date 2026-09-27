@@ -8,7 +8,7 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
     const db = getServerClient();
     const { data } = await db
       .from('tenant_notification_settings')
-      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email, resend_api_key')
+      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email, resend_api_key, lead_notification_emails, lead_notification_wa_numbers')
       .eq('tenant_id', request.tenantId)
       .single();
 
@@ -18,18 +18,21 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
       escalation_customer_message: string | null;
       from_email: string | null;
       resend_api_key: string | null;
+      lead_notification_emails: string[] | null;
+      lead_notification_wa_numbers: string[] | null;
     } | null;
 
     return {
       success: true,
       data: {
-        escalation_emails:           row?.escalation_emails ?? [],
-        escalation_wa_numbers:       row?.escalation_wa_numbers ?? [],
-        escalation_customer_message: row?.escalation_customer_message ?? 'Your query has been escalated to our team. A team member will get back to you shortly.',
-        from_email:                  row?.from_email ?? '',
-        // Mask key — only return last 4 chars so the UI can show it without exposing the full key
-        resend_api_key_masked:       row?.resend_api_key ? '••••' + row.resend_api_key.slice(-4) : '',
-        resend_configured:           !!row?.resend_api_key,
+        escalation_emails:            row?.escalation_emails ?? [],
+        escalation_wa_numbers:        row?.escalation_wa_numbers ?? [],
+        escalation_customer_message:  row?.escalation_customer_message ?? 'Your query has been escalated to our team. A team member will get back to you shortly.',
+        from_email:                   row?.from_email ?? '',
+        resend_api_key_masked:        row?.resend_api_key ? '••••' + row.resend_api_key.slice(-4) : '',
+        resend_configured:            !!row?.resend_api_key,
+        lead_notification_emails:     row?.lead_notification_emails ?? [],
+        lead_notification_wa_numbers: row?.lead_notification_wa_numbers ?? [],
       },
     };
   });
@@ -107,10 +110,15 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
       escalation_customer_message?: string;
       from_email?: string | null;
       resend_api_key?: string | null;
+      lead_notification_emails?: string[];
+      lead_notification_wa_numbers?: string[];
     };
   }>('/notifications', { preHandler: [requireAuth] }, async (request, reply) => {
     const db = getServerClient();
-    const { escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email, resend_api_key } = request.body;
+    const {
+      escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email, resend_api_key,
+      lead_notification_emails, lead_notification_wa_numbers,
+    } = request.body;
 
     const { data, error } = await db
       .from('tenant_notification_settings')
@@ -121,9 +129,11 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
         ...(escalation_customer_message !== undefined && { escalation_customer_message }),
         ...(from_email !== undefined && { from_email }),
         ...(resend_api_key !== undefined && { resend_api_key }),
+        ...(lead_notification_emails !== undefined && { lead_notification_emails }),
+        ...(lead_notification_wa_numbers !== undefined && { lead_notification_wa_numbers }),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'tenant_id' })
-      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email, resend_api_key')
+      .select('escalation_emails, escalation_wa_numbers, escalation_customer_message, from_email, resend_api_key, lead_notification_emails, lead_notification_wa_numbers')
       .single();
 
     if (error) return reply.status(500).send({ success: false, error: error.message });
