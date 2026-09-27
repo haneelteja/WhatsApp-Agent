@@ -156,14 +156,19 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
   const { data: tenant } = await admin.from('tenants').select('name').eq('id', invite.tenant_id).single();
   const webUrl   = process.env['WEB_BASE_URL'] ?? 'https://whats-app-agent-web.vercel.app';
   const loginUrl = `${webUrl}/login`;
-  const isClientManager = invite.role === 'client_manager';
+  // "New client" = first user on this tenant (platform-created account, not an additional team invite)
+  const { count: memberCount } = await admin
+    .from('tenant_users')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', invite.tenant_id);
+  const isNewClient = invite.role === 'client_manager' && (memberCount ?? 0) <= 1;
 
   void sendEmail({
     to:      invite.email,
-    subject: isClientManager
+    subject: isNewClient
       ? `Welcome to Alphabot, ${fullName}!`
       : `You're now part of ${tenant?.name ?? 'your workspace'} on Alphabot`,
-    html: isClientManager ? `
+    html: isNewClient ? `
       <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;">
         <div style="margin-bottom:24px;">
           <span style="font-weight:700;font-size:18px;color:#111">Alphabot</span>
@@ -181,7 +186,7 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
           Go to Dashboard
         </a>
         <p style="color:#999;font-size:12px;margin-top:32px;line-height:1.6">
-          Need help? Reply to this email or reach us at support@alphabot.in
+          Questions? Reply to this email and we'll help you get started.
         </p>
       </div>
     ` : `
@@ -202,7 +207,7 @@ export async function acceptInviteAction(token: string, fullName: string, passwo
           Log In Now
         </a>
         <p style="color:#999;font-size:12px;margin-top:32px;line-height:1.6">
-          Need help? Reply to this email or reach us at support@alphabot.in
+          Questions? Reply to this email and we'll help you get started.
         </p>
       </div>
     `,
