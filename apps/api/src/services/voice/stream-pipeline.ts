@@ -30,22 +30,15 @@ const MAX_TURNS = 20;
 const DEFAULT_VOICE_ID = 'meher';
 const DEFAULT_TTS_MODEL = 'lightning_v3.1_pro';
 
-// Voices only available on the base lightning model (not pro)
-const LIGHTNING_BASE_VOICES = new Set(['rahul', 'aditya', 'deepak', 'ishaan']);
-
-// Valid Smallest.ai voice IDs — anything else (e.g. legacy Polly.* IDs) falls back to default
+// Confirmed valid voice IDs on lightning_v3.1_pro — tested 2026-09-27
+// rahul/aditya/deepak/ishaan removed: returned "Invalid Voice ID" on current API
 const SMALLEST_AI_VOICES = new Set([
-  'meher', 'ananya', 'arya', 'rahul', 'zara',
-  'kavya', 'riya', 'aditya', 'deepak', 'ishaan',
+  'meher', 'ananya', 'arya', 'zara', 'kavya', 'riya',
 ]);
 
 function resolveVoiceId(voiceId: string | null | undefined): string {
   if (voiceId && SMALLEST_AI_VOICES.has(voiceId)) return voiceId;
   return DEFAULT_VOICE_ID;
-}
-
-function resolveTtsModel(voiceId: string): string {
-  return LIGHTNING_BASE_VOICES.has(voiceId) ? 'lightning_v3.1' : DEFAULT_TTS_MODEL;
 }
 
 function getApiKey(): string {
@@ -75,7 +68,7 @@ async function synthesiseSpeech(
     body: JSON.stringify({
       text,
       voice_id:      resolveVoiceId(voiceId),
-      model:         resolveTtsModel(resolveVoiceId(voiceId)),
+      model:         DEFAULT_TTS_MODEL,
       language:      langCode,
       output_format: 'ulaw',
       sample_rate:   8000,
