@@ -84,6 +84,60 @@ export async function lookupKB(
   return results;
 }
 
+/**
+ * Keyword-only KB lookup — skips Voyage AI embedding entirely.
+ * Use in latency-sensitive paths (e.g. voice calls) where ~1.4s semantic search is unacceptable.
+ */
+export async function lookupKBKeywordOnly(
+  tenantId: string,
+  productSlug: ProductSlug,
+  query: string,
+  limit = 5,
+): Promise<KnowledgeBase[]> {
+  const db = getServerClient();
+
+  const { data: assignments } = await db
+    .from('kb_collection_bots')
+    .select('collection_id')
+    .eq('tenant_id', tenantId)
+    .order('priority', { ascending: true });
+
+  const collectionIds = (assignments ?? []).map((a: { collection_id: string }) => a.collection_id);
+
+  if (collectionIds.length > 0) {
+    const { data: textResults } = await db.rpc('search_knowledge_base_text', {
+      query_text:     query,
+      collection_ids: collectionIds,
+      match_count:    limit,
+    });
+    if (textResults && (textResults as RAGResult[]).length > 0) {
+      const results = (textResults as RAGResult[]).map(r => ({
+        id: r.id, question: r.question, answer: r.answer, category: r.category,
+        tenant_id: tenantId, product_type: productSlug,
+        collection_id: (r as RAGResult & { collection_id?: string | null }).collection_id ?? null,
+        embedding: null, status: 'live' as const, version: 1, created_at: '', updated_at: '',
+      }));
+      logKBHits(tenantId, query, productSlug, results);
+      return results;
+    }
+  }
+
+  // Fallback: legacy non-collection entries
+  const safeQ = query.replace(/[,()]/g, ' ');
+  const { data } = await db
+    .from('knowledge_base')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'live')
+    .is('collection_id', null)
+    .or(`question.ilike.%${safeQ}%,answer.ilike.%${safeQ}%,category.ilike.%${safeQ}%`)
+    .limit(limit);
+
+  const results = (data ?? []) as KnowledgeBase[];
+  logKBHits(tenantId, query, productSlug, results);
+  return results;
+}
+
 /** Invalidate all KB cache entries for a tenant (call on KB create/update/delete). */
 export async function invalidateKBCache(tenantId: string): Promise<void> {
   await cacheDelPattern(`kb:${tenantId}:*`);

@@ -11,7 +11,7 @@
 import WebSocket from 'ws';
 import { getServerClient } from '@alphabot/database';
 import { getAIResponse } from '../ai/claude.js';
-import { lookupKB } from '../kb/lookup.js';
+import { lookupKBKeywordOnly } from '../kb/lookup.js';
 import {
   loadVoiceBotContextCached,
   loadPreviousContextCached,
@@ -279,7 +279,7 @@ export async function handleStreamSession(
     try {
       const t0 = Date.now();
       const [kbResults] = await Promise.all([
-        lookupKB(tenantId, productSlug, customerText),
+        lookupKBKeywordOnly(tenantId, productSlug, customerText),
       ]);
       const t1 = Date.now();
 
