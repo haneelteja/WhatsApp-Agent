@@ -26,9 +26,12 @@ const TTS_REST_URL = 'https://api.smallest.ai/waves/v1/tts';
 const END_CALL_MARKER = '[END_CALL]';
 const MAX_TURNS = 20;
 
-// Default voice: meher = Indian English + Hindi, Pro model, supports word timestamps
+// Default voice: meher = Indian English + Hindi, Pro model
 const DEFAULT_VOICE_ID = 'meher';
 const DEFAULT_TTS_MODEL = 'lightning_v3.1_pro';
+
+// Voices only available on the base lightning model (not pro)
+const LIGHTNING_BASE_VOICES = new Set(['rahul', 'aditya', 'deepak', 'ishaan']);
 
 // Valid Smallest.ai voice IDs — anything else (e.g. legacy Polly.* IDs) falls back to default
 const SMALLEST_AI_VOICES = new Set([
@@ -39,6 +42,10 @@ const SMALLEST_AI_VOICES = new Set([
 function resolveVoiceId(voiceId: string | null | undefined): string {
   if (voiceId && SMALLEST_AI_VOICES.has(voiceId)) return voiceId;
   return DEFAULT_VOICE_ID;
+}
+
+function resolveTtsModel(voiceId: string): string {
+  return LIGHTNING_BASE_VOICES.has(voiceId) ? 'lightning' : DEFAULT_TTS_MODEL;
 }
 
 function getApiKey(): string {
@@ -68,7 +75,7 @@ async function synthesiseSpeech(
     body: JSON.stringify({
       text,
       voice_id:      resolveVoiceId(voiceId),
-      model:         DEFAULT_TTS_MODEL,
+      model:         resolveTtsModel(resolveVoiceId(voiceId)),
       language:      langCode,
       output_format: 'ulaw',
       sample_rate:   8000,
