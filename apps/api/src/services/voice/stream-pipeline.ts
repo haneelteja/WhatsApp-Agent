@@ -45,7 +45,7 @@ function resolveVoiceId(voiceId: string | null | undefined): string {
 }
 
 function resolveTtsModel(voiceId: string): string {
-  return LIGHTNING_BASE_VOICES.has(voiceId) ? 'lightning' : DEFAULT_TTS_MODEL;
+  return LIGHTNING_BASE_VOICES.has(voiceId) ? 'lightning_v3.1' : DEFAULT_TTS_MODEL;
 }
 
 function getApiKey(): string {
