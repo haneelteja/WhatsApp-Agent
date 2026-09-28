@@ -213,7 +213,8 @@ export async function runDailyReports(): Promise<void> {
         db.from('tenant_users')
           .select('user_id')
           .eq('tenant_id', tenant.id)
-          .eq('role', 'admin')
+          .in('role', ['admin', 'client_manager'])
+          .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle(),
         db.from('conversations').select('id', { count: 'exact', head: true })
