@@ -17,6 +17,47 @@ const VALID_OUTCOMES = new Set<ConversationOutcome>([
   'has_solution','bad_timing','unresponsive','opted_out','undeliverable',
 ]);
 
+// ── Hard/soft score mapping (SkillOpt dual-metric framework) ──────────────────
+// outcome_hard: 1 = successful outcome, 0 = failure
+// outcome_soft: 0.0–1.0 quality proxy — even failures encode how close to success
+const OUTCOME_HARD: Record<ConversationOutcome, number> = {
+  converted:      1,
+  bad_timing:     0,
+  not_interested: 0,
+  wrong_fit:      0,
+  no_budget:      0,
+  has_solution:   0,
+  unresponsive:   0,
+  opted_out:      0,
+  undeliverable:  0,
+};
+
+const OUTCOME_SOFT: Record<ConversationOutcome, number> = {
+  converted:      1.0,  // full success
+  bad_timing:     0.6,  // interested, just not now — partial credit
+  has_solution:   0.4,  // engaged enough to explain their situation
+  no_budget:      0.35, // engaged, budget mismatch
+  not_interested: 0.2,  // explicit rejection — at least we got a clear signal
+  wrong_fit:      0.2,  // qualification failure
+  unresponsive:   0.15, // went silent — unclear signal
+  opted_out:      0.0,  // negative signal
+  undeliverable:  0.0,  // channel failure
+};
+
+export function computeOutcomeScores(
+  outcome: ConversationOutcome,
+  leadScore?: number | null,
+): { hard: number; soft: number } {
+  const hard = OUTCOME_HARD[outcome];
+  let soft   = OUTCOME_SOFT[outcome];
+  // For converted conversations, blend in the lead score if available so higher-value
+  // conversions score higher than minimum-threshold conversions.
+  if (hard === 1 && leadScore != null && leadScore > 0) {
+    soft = Math.min(1.0, 0.7 + (leadScore / 100) * 0.3);
+  }
+  return { hard, soft };
+}
+
 /**
  * Classifies why a conversation closed.
  * Called non-blocking when a conversation transitions to a terminal state
@@ -31,10 +72,13 @@ export async function classifyAndPersistOutcome(
 
   // If outcome is forced (e.g. system detects opt-out), persist directly
   if (forceOutcome) {
+    const { hard, soft } = computeOutcomeScores(forceOutcome);
     await db.from('conversations').update({
       terminal_outcome: forceOutcome,
       outcome_set_by:   setBy,
       outcome_set_at:   new Date().toISOString(),
+      outcome_hard:     hard,
+      outcome_soft:     soft,
     }).eq('id', conversationId);
     return;
   }
@@ -82,10 +126,21 @@ Reply with one word only:`;
     const raw = result.content.trim().toLowerCase() as ConversationOutcome;
     const outcome = VALID_OUTCOMES.has(raw) ? raw : 'unresponsive';
 
+    // Fetch lead_score to blend into soft score for converted outcomes
+    const { data: conv } = await db
+      .from('conversations')
+      .select('lead_score')
+      .eq('id', conversationId)
+      .maybeSingle();
+    const leadScore = (conv as { lead_score?: number | null } | null)?.lead_score ?? null;
+    const { hard, soft } = computeOutcomeScores(outcome, leadScore);
+
     await db.from('conversations').update({
       terminal_outcome: outcome,
       outcome_set_by:   'ai',
       outcome_set_at:   new Date().toISOString(),
+      outcome_hard:     hard,
+      outcome_soft:     soft,
     }).eq('id', conversationId);
   } catch (err) {
     console.error('[OutcomeClassifier] Failed:', err instanceof Error ? err.message : err);
