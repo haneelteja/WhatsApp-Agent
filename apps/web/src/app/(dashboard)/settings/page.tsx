@@ -29,6 +29,7 @@ import { getBotToolsAction } from '@/app/actions/bot-tools';
 import { DispositionCategoryManager } from '@/components/dashboard/DispositionCategoryManager';
 import { getDispositionCategoriesAction } from '@/app/actions/disposition';
 import { BotsTabContent } from '@/components/dashboard/BotsTabContent';
+import { GlobalBotPauseToggle } from '@/components/dashboard/GlobalBotPauseToggle';
 import { BranchManagerEditor } from '@/components/dashboard/BranchManagerEditor';
 import type { BranchInput } from '@/app/actions/whatsapp-numbers';
 
@@ -246,14 +247,36 @@ export default async function SettingsPage({
   // ── Bots data ────────────────────────────────────────────────────────────────
   if (activeTab === 'bots') {
     const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://your-api.onrender.com';
-    const [{ data: botProducts }, { data: botNumbers }, { data: llmRows }] = await Promise.all([
+    const [{ data: botProducts }, { data: botNumbers }, { data: llmRows }, { data: botCfgs }] = await Promise.all([
       admin.from('tenant_products').select('product_type, product_slug, instance_name, tier, active').eq('tenant_id', tenantId),
       admin.from('whatsapp_numbers').select('id, phone_number, provider, label, product_slug').eq('tenant_id', tenantId),
       admin.from('llm_configs').select('product_slug, credit_info').eq('tenant_id', tenantId),
+      admin.from('bot_configs').select('product_slug, bot_globally_paused').eq('tenant_id', tenantId),
     ]);
+
+    const pauseMap = new Map<string, boolean>(
+      (botCfgs ?? []).map(c => [(c as { product_slug: string; bot_globally_paused: boolean }).product_slug, (c as { product_slug: string; bot_globally_paused: boolean }).bot_globally_paused]),
+    );
 
     return (
       <SettingsShell activeTab={activeTab}>
+        {/* Global pause toggles — one per active bot */}
+        {(botProducts ?? []).filter(p => p.active).map(p => {
+          const slug = (p as { product_slug?: string | null }).product_slug ?? p.product_type;
+          const paused = pauseMap.get(slug) ?? false;
+          const botName = slug === 'sales_bot' ? 'Sales Bot' : slug === 'support_bot' ? 'Support Bot' : 'Lifecycle Bot';
+          return (
+            <div key={slug} className="mb-3 rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+                <Bot size={14} className="text-emerald-500" />
+                <span className="text-sm font-semibold text-gray-700">{botName}</span>
+                {paused && <span className="ml-auto text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Paused</span>}
+              </div>
+              <GlobalBotPauseToggle productSlug={slug} initialPaused={paused} />
+            </div>
+          );
+        })}
+
         <BotsTabContent
           tenantId={tenantId}
           apiBase={apiBase}

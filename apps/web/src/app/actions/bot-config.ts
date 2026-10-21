@@ -120,3 +120,31 @@ export async function saveBotConfigAction(input: SaveBotConfigInput) {
   revalidatePath('/call-triggers');
   return { success: true };
 }
+
+export async function toggleGlobalBotPauseAction(productSlug: string, paused: boolean) {
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const admin = getSupabaseAdminClient();
+  const { error } = await admin
+    .from('bot_configs')
+    .update({ bot_globally_paused: paused, updated_by: session.userId })
+    .eq('tenant_id', session.tenantId)
+    .eq('product_slug', productSlug);
+
+  if (error) return { error: error.message };
+
+  void writeAuditLog({
+    tenantId:    session.tenantId,
+    actorId:     session.userId,
+    actorEmail:  session.userEmail,
+    action:      paused ? 'bot.paused' : 'bot.resumed',
+    entityType:  'bot_config',
+    entityId:    productSlug,
+    description: `${paused ? 'Paused' : 'Resumed'} all auto-replies for ${productSlug.replace(/_/g, ' ')}`,
+    metadata:    { productSlug, bot_globally_paused: paused },
+  });
+
+  revalidatePath('/settings');
+  return { success: true };
+}

@@ -612,6 +612,20 @@ export async function webhookRoutes(fastify: FastifyInstance): Promise<void> {
 
     if (!conversation) return;
 
+    // ── If bot is globally paused (all auto-replies off for this number) ───
+    const botCfgForPause = botCtx.bot_config as (BotConfig & { bot_globally_paused?: boolean }) | null;
+    if (botCfgForPause?.bot_globally_paused) {
+      await db.from('messages').insert({
+        conversation_id: conversation.id,
+        role: 'user',
+        content: locationText ?? incoming.text ?? `[${incoming.type} received]`,
+        media_url: incoming.mediaUrl ?? null,
+        media_type: (incoming.type !== 'text') ? incoming.type : null,
+        whatsapp_msg_id: incoming.messageId,
+      });
+      return;
+    }
+
     // ── If bot is paused (human takeover), do not auto-reply ───────────────
     if (conversation.status === 'bot_paused') {
       // Still store the incoming message

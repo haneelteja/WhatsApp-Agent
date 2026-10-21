@@ -120,6 +120,8 @@ export interface BotConfig {
   escalation_policy: EscalationPolicy | null;
   /** Per-bot voice configuration (JSONB). null = voice disabled. */
   voice_config: import('./voice.js').BotVoiceConfig | null;
+  /** When true, the webhook skips AI auto-replies for ALL incoming messages on this bot. */
+  bot_globally_paused: boolean;
   updated_at: string;
   updated_by: string | null;
 }
